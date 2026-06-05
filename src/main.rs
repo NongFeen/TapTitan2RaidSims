@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tower_http::cors::{self, CorsLayer};
 
 mod routes;
+mod router;
 mod state;
 
 use state::AppState;
@@ -22,10 +23,7 @@ async fn main() {
         .allow_methods(cors::Any)
         .allow_headers(cors::Any);
 
-    let app = Router::new()
-        .route("/api/health", get(routes::health::handler))
-        .layer(cors)
-        .with_state(state);
+    let app = router::create_router(state).layer(cors);
 
     let addr = format!("localhost:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
