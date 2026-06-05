@@ -1,0 +1,12 @@
+[build]
+incremental = true
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[alias]
+dev     = "watch -x run"
+test    = "watch -x test"
+lint    = "clippy --all-targets"
+fmt     = "fmt --all"
