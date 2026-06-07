@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{Router, routing::get,routing::post};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 use crate::state::AppState;
@@ -6,8 +6,11 @@ use crate::routes;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        //GET
         .route("/api/health", get(routes::health::handler))
-        .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
+        // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
+        //POST
+        .route("/api/taptitan/player_data", post(routes::taptitan::send_player_data_json))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(state)
 }

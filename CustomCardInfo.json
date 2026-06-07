@@ -1,0 +1,418 @@
+[
+  {
+    "id": "clanship_barrage",
+    "name": "Clanship Barrage",
+    "type": "Burst",
+    "proc_chance": 0.1,
+    "has_damage": true,
+    "effect": "+4% Deals Damage per Burst(Count other card)",
+    "notes": ""
+  },
+  {
+    "id": "moon_beam",
+    "name": "Moon Beam",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": [
+      "Torso",
+      "LeftHand",
+      "RightHand",
+      "LeftShoulder",
+      "RightShoulder"
+    ],
+    "effect": "x1.5 torso,hand and shoulder damage",
+    "notes": ""
+  },
+  {
+    "id": "purifying_blast",
+    "name": "Purifying Blast",
+    "type": "Burst",
+    "proc_chance": 0.1,
+    "has_damage": true,
+    "effect": "Consumes Affliction stacks to deal +100% bonus damage.",
+    "notes": ""
+  },
+  {
+    "id": "razor_wind",
+    "name": "Razor Wind",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["Body"],
+    "effect": "Deals x1.5 Damage against body parts.",
+    "notes": ""
+  },
+  {
+    "id": "skull_bash",
+    "name": "Skull Bash",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["Head", "LeftLeg", "RightLeg"],
+    "effect": "Deals x1.5 Damage against the Head and leg. ",
+    "notes": ""
+  },
+  {
+    "id": "fragmentize",
+    "name": "Fragmentize",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["CursedArmor", "Armor"],
+    "effect": "Deals 1.1x Damage against Armor. Deal 1.5x Damage against Cursed Armor.",
+    "notes": ""
+  },
+  {
+    "id": "whip_of_lightning",
+    "name": "Whip of Lightning",
+    "type": "Burst",
+    "proc_chance": 0.02,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "Incrase proc chance by 0.02 for each part with any type of affliction. Caps at 0.12 proc chance (5 parts with affliction)",
+    "notes": "Deck must include at least 1 Affliction and boss have > 5 part to attack"
+  },
+  {
+    "id": "psychic_shackles",
+    "name": "Psychic Shackles",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": [
+      "LeftArm",
+      "RightArm",
+      "LeftLeg",
+      "RightLeg",
+      "LeftShoulder",
+      "RightShoulder"
+    ],
+    "effect": "Deals 1.5x Burst Damage against Limbs(legs, arms, shoulders).",
+    "notes": ""
+  },
+  {
+    "id": "chain_of_vengeance",
+    "name": "Chain of Vengeance",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "on proc, add chain to that part. can chain up to 6 Parts. on each burst deal split damage to all chained parts. increase total damage before split by x1.027 per chained parts.",
+    "notes": ""
+  },
+  {
+    "id": "cosmic_haymaker",
+    "name": "Cosmic Haymaker",
+    "type": "Burst",
+    "proc_chance": 0.0,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "every 70 taps proc a burst to target part",
+    "notes": "work wtih Astal echo"
+  },
+  {
+    "id": "flak_shot",
+    "name": "Flak Shot",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["Armor"],
+    "effect": "on proc on armor, deal it's burst damage to random part without armor",
+    "notes": "must have armor and body part available to attack"
+  },
+  {
+    "id": "mirror_force",
+    "name": "Mirror Force",
+    "type": "Burst",
+    "proc_chance": 0.12,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "increase dmg by 35% on 2nd Round of attack",
+    "notes": "must use every round(clan buff)"
+  },
+  {
+    "id": "celestial_static",
+    "name": "Celestial Static",
+    "type": "Burst",
+    "proc_chance": 0.0,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "attack limb build stack on card. on attack non-limb part, consume 8 stack to proc burst damage. stack up to 100 times",
+    "notes": "must have limb part to attack and non-limb part to proc"
+  },
+  {
+    "id": "fusion_bomb",
+    "name": "Fusion Bomb",
+    "type": "Affliction",
+    "proc_chance": 0.1,
+    "duration": 2,
+    "max_stacks": 1,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "On proc, apply a bomb that explodes after 2 seconds, dealing damage to the part. Can only have 1 stack at a time. Increase damage +50% per second",
+    "notes": "buff refreshable but not stackable "
+  },
+  {
+    "id": "acid_drench",
+    "name": "Acid Drench",
+    "type": "Affliction",
+    "proc_chance": 0.18,
+    "duration": 2.2,
+    "max_stacks": 15,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, if proc on part that have this buff will refresh all stacks",
+    "notes": ""
+  },
+  {
+    "id": "blazing_inferno",
+    "name": "Blazing Inferno",
+    "type": "Affliction",
+    "proc_chance": 0.14,
+    "duration": 6,
+    "max_stacks": 3,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, each part affect by this increase proc chance by 2%",
+    "notes": ""
+  },
+  {
+    "id": "thriving_plague",
+    "name": "Thriving Plague",
+    "type": "Affliction",
+    "proc_chance": 0.08,
+    "duration": 4.6,
+    "max_stacks": 5,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, each part affect by this increase this damage by 14.67% caps at 6 parts",
+    "notes": ""
+  },
+  {
+    "id": "radioactivity",
+    "name": "Radioactivity",
+    "type": "Affliction",
+    "proc_chance": 0.12,
+    "duration": 5,
+    "max_stacks": 5,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, each proc increase Radioactivity of the part that got proc on by +13% ",
+    "notes": "max stack at 5. each stack is not refresh. dmg increase is not remove until run out of Radioactivity buff which mean increase dmg can stack infinitely until buff got remove"
+  },
+  {
+    "id": "grim_shadow",
+    "name": "Grim Shadow",
+    "type": "Affliction",
+    "proc_chance": 0.09,
+    "duration": 8,
+    "max_stacks": 7,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, in each part, the more stack the more damage x1.2 per stack",
+    "notes": "keep at 7 stack as long as possible should be attack only 2 part 3 if using some increase chance"
+  },
+  {
+    "id": "decaying_strike",
+    "name": "Decaying Strike",
+    "type": "Affliction",
+    "proc_chance": 0.1,
+    "duration": 3,
+    "max_stacks": 5,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, the lower health(not armor) the more damage. Highest buff start at 30% part health from my testing (lowest 200 - highest 14.00k)",
+    "notes": "only attack if there are multple low health part"
+  },
+  {
+    "id": "ravenous_swarm",
+    "name": "Ravenous Swarm",
+    "type": "Affliction",
+    "proc_chance": 0.1,
+    "duration": 3,
+    "max_stacks": 5,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, if proc this card in part have max stack. will spread into random part. spread will prioritize body part first before armor",
+    "notes": "only attack if there are multple low health part"
+  },
+  {
+    "id": "maelstrom",
+    "name": "Maelstrom",
+    "type": "Affliction",
+    "proc_chance": 0.1,
+    "duration": 6,
+    "max_stacks": 2,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "deal damage per second, each stack make affect part take +x% damage stackable",
+    "notes": "only attack if there are multple low health part"
+  },
+  {
+    "id": "ruinous_rain",
+    "name": "Ruinous Rain",
+    "type": "Affliction",
+    "proc_chance": 0.18,
+    "duration": 99,
+    "max_stacks": 999,
+    "has_damage": true,
+    "targets": ["CursedArmor"],
+    "effect": "Applies acid stacks +x% damage persecond per stack. x1.5 damage against Cursed Armor.",
+    "notes": ""
+  },
+  {
+    "id": "corrosive_bubbles",
+    "name": "Corrosive Bubbles",
+    "type": "Affliction",
+    "proc_chance": 0.12,
+    "duration": 3,
+    "max_stacks": 5,
+    "has_damage": true,
+    "effect": "Applies bubble stacks refreshable. reaching max stacks pops the bubbles deal x26 bonus damage.",
+    "notes": ""
+  },
+  {
+    "id": "sands_of_time",
+    "name": "Sands of Time",
+    "type": "Affliction",
+    "proc_chance": 0.12,
+    "duration": 7,
+    "max_stacks": 1,
+    "has_damage": true,
+    "effect": "While have this card debuff. increase all other affliction duration +100% duration",
+    "notes": "if it apply first other card gain 100% duration 5s -> 10s. but if this apply late other buff already reduce time it will +100% of current debuff time 3.2 -> 6.4"
+  },
+  {
+    "id": "amplify",
+    "name": "Amplify",
+    "type": "Affliction",
+    "proc_chance": 0.16,
+    "duration": 6,
+    "max_stacks": 8,
+    "has_damage": true,
+    "effect": "deal damage per second. before start round increase level of other 2 cards in deck by 10% of this card level",
+    "notes": ""
+  },
+  {
+    "id": "electro_zap",
+    "name": "Electro Zap",
+    "type": "Affliction",
+    "proc_chance": 0.25,
+    "duration": 0.2,
+    "max_stacks": 7,
+    "has_damage": true,
+    "effect": "deal damage per second.",
+    "notes": ""
+  },
+  {
+    "id": "victory_march",
+    "name": "Victory March",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase all damage +x%. Increases damage +y% for exposed Skeleton parts. Max at 6 part"
+  },
+  {
+    "id": "soul_fire",
+    "name": "Soul Fire",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase damage agaisnt Head and Torso +x%. Increase affliction chance x1.1"
+  },
+  {
+    "id": "inspiring_force",
+    "name": "Inspiring Force",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase damage agaisnt body +x%."
+  },
+  {
+    "id": "crushing_instinct",
+    "name": "Crushing Instinct",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase damage agaisnt Head and Torso +x%. Increase burst chance x1.1"
+  },
+  {
+    "id": "ancestral_favor",
+    "name": "Ancestral Favor",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increases Burst damage +x% and Burst proc chance x1.3"
+  },
+  {
+    "id": "prismatic_rift",
+    "name": "Prismatic Rift",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increases damage +x% dealt to Armor."
+  },
+  {
+    "id": "rancid_gas",
+    "name": "Rancid Gas",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increases Affliction damage +x% and Affliction proc chance x1.3"
+  },
+  {
+    "id": "grasping_vines",
+    "name": "Grasping Vines",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase damage agaisnt limb +x%."
+  },
+  {
+    "id": "totem_of_power",
+    "name": "Totem of Power",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Fairy thing I told you earlier ",
+    "notee": "Always use to attack 1 target"
+  },
+  {
+    "id": "team_tactics",
+    "name": "Team Tactics",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase all damage +x%. ",
+    "notes": "must use in every attack but round of last attack of raid. this is must toggleable to use or not use"
+  },
+  {
+    "id": "insanity_void",
+    "name": "Insanity Void",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase all damage +x%. each expose body part increase all damage +y%. Max 6 part"
+  },
+  {
+    "id": "skeletal_smash",
+    "name": "Skeletal Smash",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increase armor damage +x%. if each expose any dead part(no hp left) increase damage +y%."
+  },
+  {
+    "id": "astral_echo",
+    "name": "Astral Echo",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increases all Raid Damage +x%. every 5 tap will randomly do bonus hit to random part that have been hit but reduce change to trigger card 50%",
+    "notes": "Work well with Cosmic Haymaker and Celestial Static"
+  },
+  {
+    "id": "radiant_kaleidoscope",
+    "name": "Radiant Kaleidoscope",
+    "type": "Support",
+    "has_damage": false,
+    "effect": "Increases burst damage if use 1 affliction cards, vise versa",
+    "notes": "deck that include this card must be 1 support(this card) 1 burst card and 1 affliction card"
+  },
+  {
+    "id": "guard_break",
+    "name": "Guard Break",
+    "type": "Burst",
+    "proc_chance": 0.1,
+    "has_damage": true,
+    "targets": ["All"],
+    "effect": "part that get proc by this take increase damage +y% for 6 seconds, buff refresh able but not stack"
+  }
+]
