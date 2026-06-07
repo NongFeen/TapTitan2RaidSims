@@ -3,9 +3,8 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json as ResponseJson},
 };
-use crate::models::player_data::PlayerData;
+use crate::{models::player_data::PlayerData, services::taptitan::player_service::clean_data};
 use crate::models::responses::{ApiResponse,ApiError};
-
 
 pub async fn send_player_data_json(
     Json(payload): Json<PlayerData>,
@@ -21,6 +20,11 @@ pub async fn send_player_data_json(
     }
 
     // Happy path
-    let success_response = ApiResponse::Success { data: payload };
+    
+    // resolve for clean data
+    let cleaned = clean_data(&payload);
+    // return clean data
+    let success_response = ApiResponse::Success { data: cleaned };
     (StatusCode::CREATED, ResponseJson(success_response)).into_response()
+
 }

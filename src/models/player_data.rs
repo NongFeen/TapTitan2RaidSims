@@ -27,7 +27,11 @@ pub struct PlayerData {
     #[serde(rename = "titanResearch")]
     pub titan_research: HashMap<String, String>,
 
+    #[serde(rename = "gemstonesResearch")]
+    pub gem_research: HashMap<String, String>,
     // skill points and other dynamic maps can be added here
+    #[serde(rename = "equipmentSets")]
+    pub equip_set: Vec<String>
 }
 
 // ── Player Stats ───────────────────────────────────────────────────
@@ -110,8 +114,8 @@ pub struct RaidStats {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Card {
-    pub lv: u32,
-    pub num: u32,
+    pub lv: u16,
+    pub num: u16,
 }
 
 // ── Artifact ───────────────────────────────────────────────────────
