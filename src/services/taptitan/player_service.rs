@@ -120,6 +120,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
             Some(card_name) => {
                 card_list.push(Card {
                     card_name: card_name.clone(),
+                    cardtype: card_name.card_type(),
                     level: raw_card.lv,
                 });
             }
