@@ -1,0 +1,126 @@
+use serde::{Deserialize, Serialize};
+use strum_macros::{EnumIter, EnumString};
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
+pub enum BossPartName{
+    Head,
+    Torso,
+    LeftShoulder,
+    RightShoulder,
+    LeftHand,
+    RightHand,
+    LeftLeg,
+    RightLeg,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PartState {
+    Cursed,
+    Armor,
+    Body,
+    Skeleton
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BossName{
+    Lojak,
+    Takedar,
+    Jukk,
+    Sterl,
+    Mohaca,
+    Terro,
+    Klonk,
+    Priker
+}
+
+#[derive(Debug, Clone)]
+pub struct BossPart{
+    part_name: BossPartName,
+    part_state: PartState,
+    max_armor: u64,
+    max_health: u64,
+    current_armor: u64,
+    current_health: u64,
+}
+impl BossPart {
+    /// Allows calling `.is_limb()` directly on any BossPart struct
+    pub fn is_limb(&self) -> bool {
+        self.part_name.is_limb()
+    }
+    pub fn update(&mut self){
+        // update debuff tick
+    }
+    pub fn on_hit(&mut self, damage: u64) {
+        match self.part_state {
+            PartState::Armor | PartState::Cursed => {
+                self.current_armor = self.current_armor.saturating_sub(damage);
+                //ignore leftover damage
+                if self.current_armor == 0 {
+                    self.part_state = PartState::Body;
+                }
+            }
+
+            PartState::Body => {
+                self.current_health = self.current_health.saturating_sub(damage);
+                
+                if self.current_health == 0 {
+                    self.part_state = PartState::Skeleton;
+                }
+            }
+            PartState::Skeleton => {}//do nothing
+        }
+    }
+}
+
+
+impl BossPartName {
+    pub fn is_limb(&self) -> bool {
+        match self {
+            BossPartName::Head | BossPartName::Torso => false,
+            _ => true, // Everything else (shoulders, hands, legs) are limbs
+        }
+    }
+}
+pub struct Boss {
+    pub boss_name: BossName,
+    pub head: BossPart,
+    pub torso: BossPart,
+    pub left_shoulder: BossPart,
+    pub right_shoulder: BossPart,
+    pub left_hand: BossPart,
+    pub right_hand: BossPart,
+    pub left_leg: BossPart,
+    pub right_leg: BossPart,
+}
+
+impl Boss {
+    fn parts_mut(&mut self) -> [&mut BossPart; 8] {
+        [
+            &mut self.head,
+            &mut self.torso,
+            &mut self.left_shoulder,
+            &mut self.right_shoulder,
+            &mut self.left_hand,
+            &mut self.right_hand,
+            &mut self.left_leg,
+            &mut self.right_leg,
+        ]
+    }
+
+    pub fn update(&mut self) {
+        println!("--- Running Boss Update Tick ---");
+        for part in self.parts_mut() {
+            part.update();
+        }
+    }
+        pub fn on_hit(&mut self, part_name:BossPartName, damage:u64){
+        match part_name {
+            BossPartName::Head => self.head.on_hit(damage),
+            BossPartName::Torso => self.torso.on_hit(damage),
+            BossPartName::LeftShoulder => self.left_shoulder.on_hit(damage),
+            BossPartName::RightShoulder => self.right_shoulder.on_hit(damage),
+            BossPartName::LeftHand => self.left_hand.on_hit(damage),
+            BossPartName::RightHand => self.right_hand.on_hit(damage),
+            BossPartName::LeftLeg => self.left_leg.on_hit(damage),
+            BossPartName::RightLeg => self.right_leg.on_hit(damage),
+        }
+    }
+}
