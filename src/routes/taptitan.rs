@@ -6,6 +6,7 @@ use axum::{
 use crate::{models::{cards::CardName, player_data::PlayerData}, services::taptitan::player_service::clean_data};
 use crate::models::responses::{ApiResponse,ApiError};
 use crate::dtos::cards::CardDefinitionDto;
+use strum::IntoEnumIterator; 
 pub async fn send_player_data_json(
     Json(payload): Json<PlayerData>,
 ) -> impl IntoResponse {
@@ -29,15 +30,15 @@ pub async fn send_player_data_json(
 }
 
 pub async fn get_all_card_definitions() -> impl IntoResponse {
-    let definitions: Vec<CardDefinitionDto> = CardName::all_variants()
-        .iter()
-        .map(|variant| CardDefinitionDto {
-            id: variant.id(),
-            name: variant.display_name(),
-            r#type: variant.card_type(), // Calls your existing .card_type() matching logic
-            image: variant.image_url(),
+    // 2. CardName::iter() automatically knows how to traverse all 42 items!
+    let list: Vec<CardDefinitionDto> = CardName::iter()
+        .map(|v| CardDefinitionDto {
+            id: v.id(), // Will be "moon_beam"
+            name: v.display_name(), // Will be "Moon Beam"
+            r#type: v.card_type(),
+            image: v.image_url(),
         })
         .collect();
 
-    Json(definitions)
+    Json(list)
 }

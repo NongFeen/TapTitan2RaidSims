@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 use crate::models::{player_data::PlayerData, player_raid_data::{
         PlayerRaidData, RaidSet, TitanSoulResearch, RaidCardResearch, GemstoneResearch
     },
@@ -55,76 +55,77 @@ use crate::models::{player_data::PlayerData, player_raid_data::{
 //     ])
 // }
 
-fn card_name_map() -> HashMap<&'static str, CardName> {
-    HashMap::from([
-        // Burst
-        ("MoonBeam",        CardName::MoonBeam),
-        ("Fragmentize",     CardName::Fragmentize),
-        ("SkullBash",       CardName::SkullBash),
-        ("RazorWind",       CardName::RazorWind),
-        ("WhipOfLightning", CardName::WhipOfLightning),
-        ("BurstCount",      CardName::ClanshipBarrage),
-        ("Purify",          CardName::PurifyingBlast),
-        ("LimbBurst",       CardName::PsychicShackles),
-        ("FlakShot",        CardName::FlakShot),
-        ("Haymaker",        CardName::CosmicHaymaker),
-        ("ChainLightning",  CardName::ChainOfVengeance),
-        ("MirrorForce",     CardName::MirrorForce),
-        ("CelestialStatic", CardName::CelestialStatic),
-        ("Weaken",          CardName::GuardBreak),
-        // Affliction
-        ("BurningAttack",   CardName::BlazingInferno),
-        ("PoisonAttack",    CardName::AcidDrench),
-        ("DecayingAttack",  CardName::DecayingStrike),
-        ("Fuse",            CardName::FusionBomb),
-        ("Shadow",          CardName::GrimShadow),
-        ("PlagueAttack",    CardName::ThrivingPlague),
-        ("Disease",         CardName::Radioactivity),
-        ("Swarm",           CardName::RavenousSwarm),
-        ("RuinousRust",     CardName::RuinousRain),
-        ("PowerBubble",     CardName::CorrosiveBubbles),
-        ("RuneAttack",      CardName::Maelstrom),
-        ("MagicPotion",     CardName::Amplify),
-        ("SandsOfTime",     CardName::SandsOfTime),
-        ("CosmicBarb",      CardName::ElectroZap),
-        // Support
-        ("ExecutionersAxe", CardName::CrushingInstinct),
-        ("CrushingVoid",    CardName::InsanityVoid),
-        ("MentalFocus",     CardName::RancidGas),
-        ("ImpactAttack",    CardName::InspiringForce),
-        ("InnerTruth",      CardName::SoulFire),
-        ("FinisherAttack",  CardName::VictoryMarch),
-        ("SuperheatMetal",  CardName::PrismaticRift),
-        ("BurstBoost",      CardName::AncestralFavor),
-        ("LimbSupport",     CardName::GraspingVines),
-        ("TotemFairySkill", CardName::TotemOfPower),
-        ("TeamTactics",     CardName::TeamTactics),
-        ("SpinalTap",       CardName::SkeletalSmash),
-        ("AstralEcho",      CardName::AstralEcho),
-        ("TriangleSupport", CardName::RadiantKaleidoscope),
-    ])
-}
+// fn card_name_map() -> Ha shMap<&'static str, CardName> {
+//     HashMap::from([
+//         // Burst
+//         ("MoonBeam",        CardName::MoonBeam),
+//         ("Fragmentize",     CardName::Fragmentize),
+//         ("SkullBash",       CardName::SkullBash),
+//         ("RazorWind",       CardName::RazorWind),
+//         ("WhipOfLightning", CardName::WhipOfLightning),
+//         ("BurstCount",      CardName::ClanshipBarrage),
+//         ("Purify",          CardName::PurifyingBlast),
+//         ("LimbBurst",       CardName::PsychicShackles),
+//         ("FlakShot",        CardName::FlakShot),
+//         ("Haymaker",        CardName::CosmicHaymaker),
+//         ("ChainLightning",  CardName::ChainOfVengeance),
+//         ("MirrorForce",     CardName::MirrorForce),
+//         ("CelestialStatic", CardName::CelestialStatic),
+//         ("Weaken",          CardName::GuardBreak),
+//         // Affliction
+//         ("BurningAttack",   CardName::BlazingInferno),
+//         ("PoisonAttack",    CardName::AcidDrench),
+//         ("DecayingAttack",  CardName::DecayingStrike),
+//         ("Fuse",            CardName::FusionBomb),
+//         ("Shadow",          CardName::GrimShadow),
+//         ("PlagueAttack",    CardName::ThrivingPlague),
+//         ("Disease",         CardName::Radioactivity),
+//         ("Swarm",           CardName::RavenousSwarm),
+//         ("RuinousRust",     CardName::RuinousRain),
+//         ("PowerBubble",     CardName::CorrosiveBubbles),
+//         ("RuneAttack",      CardName::Maelstrom),
+//         ("MagicPotion",     CardName::Amplify),
+//         ("SandsOfTime",     CardName::SandsOfTime),
+//         ("CosmicBarb",      CardName::ElectroZap),
+//         // Support
+//         ("ExecutionersAxe", CardName::CrushingInstinct),
+//         ("CrushingVoid",    CardName::InsanityVoid),
+//         ("MentalFocus",     CardName::RancidGas),
+//         ("ImpactAttack",    CardName::InspiringForce),
+//         ("InnerTruth",      CardName::SoulFire),
+//         ("FinisherAttack",  CardName::VictoryMarch),
+//         ("SuperheatMetal",  CardName::PrismaticRift),
+//         ("BurstBoost",      CardName::AncestralFavor),
+//         ("LimbSupport",     CardName::GraspingVines),
+//         ("TotemFairySkill", CardName::TotemOfPower),
+//         ("TeamTactics",     CardName::TeamTactics),
+//         ("SpinalTap",       CardName::SkeletalSmash),
+//         ("AstralEcho",      CardName::AstralEcho),
+//         ("TriangleSupport", CardName::RadiantKaleidoscope),
+//     ])
+// }
 
 fn parse_scientific(s: &str) -> f64 {
     s.parse::<f64>().unwrap_or(0.0)
 }
 
 pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
-    let map = card_name_map();
+    // let map = card_name_map();
 
+    // ── Build card_list from raw raidCards ─────────────────────────
     // ── Build card_list from raw raidCards ─────────────────────────
     let mut card_list: Vec<Card> = Vec::new();
 
     for (raw_name, raw_card) in &player_data.raid_cards {
-        match map.get(raw_name.as_str()) {
-            Some(card_name) => {
+        match CardName::from_str(raw_name.as_str()) {
+            Ok(parsed_enum_id) => {
                 card_list.push(Card {
-                    card_name: card_name.clone(),
-                    cardtype: card_name.card_type(),
-                    level: raw_card.lv,
+                    card_id: parsed_enum_id, // <-- Updated field assignment matching your rename
+                    cardtype: parsed_enum_id.card_type(),
+                    level: raw_card.lv as u16, // cast u32 raw level safely if u16 target
                 });
             }
-            None => {
+            Err(_) => {
                 // Log unknown card — should never happen (expected exactly 42)
                 println!("[WARN] Unknown card in raw data: '{}'", raw_name);
             }
