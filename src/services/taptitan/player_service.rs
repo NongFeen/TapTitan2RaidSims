@@ -190,7 +190,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
     let tr = &player_data.titan_research;
     let titan_soul_research = TitanSoulResearch {
         head_mult:    parse_scientific(tr.get("HeadDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
-        torso_mult:   parse_scientific(tr.get("TorsoDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
+        torso_mult:   parse_scientific(tr.get("ChestDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
         limbs_mult:   parse_scientific(tr.get("LimbDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
         armor_mult:   parse_scientific(tr.get("ArmorDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
         body_mult:    parse_scientific(tr.get("BodyDamage").map(|s| s.as_str()).unwrap_or("0")) as f32,
