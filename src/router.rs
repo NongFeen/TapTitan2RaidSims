@@ -11,6 +11,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
         //POST
         .route("/api/taptitan/player_data", post(routes::taptitan::send_player_data_json))
+        .route("/api/taptitan/cards", get(routes::taptitan::get_all_card_definitions))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(state)
 }

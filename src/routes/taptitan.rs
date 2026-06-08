@@ -3,9 +3,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json as ResponseJson},
 };
-use crate::{models::player_data::PlayerData, services::taptitan::player_service::clean_data};
+use crate::{models::{cards::CardName, player_data::PlayerData}, services::taptitan::player_service::clean_data};
 use crate::models::responses::{ApiResponse,ApiError};
-
+use crate::dtos::cards::CardDefinitionDto;
 pub async fn send_player_data_json(
     Json(payload): Json<PlayerData>,
 ) -> impl IntoResponse {
@@ -26,5 +26,18 @@ pub async fn send_player_data_json(
     // return clean data
     let success_response = ApiResponse::Success { data: cleaned };
     (StatusCode::CREATED, ResponseJson(success_response)).into_response()
+}
 
+pub async fn get_all_card_definitions() -> impl IntoResponse {
+    let definitions: Vec<CardDefinitionDto> = CardName::all_variants()
+        .iter()
+        .map(|variant| CardDefinitionDto {
+            id: variant.id(),
+            name: variant.display_name(),
+            r#type: variant.card_type(), // Calls your existing .card_type() matching logic
+            image: variant.image_url(),
+        })
+        .collect();
+
+    Json(definitions)
 }
