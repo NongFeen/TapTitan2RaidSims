@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy, EnumIter, EnumString)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum CardName {
     // Burst
     #[serde(rename = "MoonBeam")] #[strum(serialize = "MoonBeam")] MoonBeam,

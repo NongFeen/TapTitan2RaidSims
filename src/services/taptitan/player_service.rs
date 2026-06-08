@@ -131,7 +131,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
             }
         }
     }
-
+    card_list.sort_by(|a, b| a.card_id.cmp(&b.card_id));
     // Warn if card count is off
     if card_list.len() != 42 {
         println!(
