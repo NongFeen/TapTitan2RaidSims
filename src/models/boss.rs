@@ -41,7 +41,16 @@ pub struct BossPart{
     current_health: u64,
 }
 impl BossPart {
-    /// Allows calling `.is_limb()` directly on any BossPart struct
+    pub fn new(part:BossPartName,state:PartState,m_armor:u64 ,m_health:u64,c_armor:u64 ,c_health:u64) -> Self {
+        Self {
+            part_name:part,
+            part_state:state,
+            max_armor:m_armor,
+            max_health:m_health,
+            current_armor:c_armor ,
+            current_health:c_health,
+        }
+    }
     pub fn is_limb(&self) -> bool {
         self.part_name.is_limb()
     }
@@ -111,16 +120,16 @@ impl Boss {
             part.update();
         }
     }
-        pub fn on_hit(&mut self, part_name:BossPartName, damage:u64){
-        match part_name {
-            BossPartName::Head => self.head.on_hit(damage),
-            BossPartName::Torso => self.torso.on_hit(damage),
-            BossPartName::LeftShoulder => self.left_shoulder.on_hit(damage),
-            BossPartName::RightShoulder => self.right_shoulder.on_hit(damage),
-            BossPartName::LeftHand => self.left_hand.on_hit(damage),
-            BossPartName::RightHand => self.right_hand.on_hit(damage),
-            BossPartName::LeftLeg => self.left_leg.on_hit(damage),
-            BossPartName::RightLeg => self.right_leg.on_hit(damage),
-        }
+    pub fn on_hit(&mut self, part_name:BossPartName, damage:u64){
+    match part_name {
+        BossPartName::Head => self.head.on_hit(damage),
+        BossPartName::Torso => self.torso.on_hit(damage),
+        BossPartName::LeftShoulder => self.left_shoulder.on_hit(damage),
+        BossPartName::RightShoulder => self.right_shoulder.on_hit(damage),
+        BossPartName::LeftHand => self.left_hand.on_hit(damage),
+        BossPartName::RightHand => self.right_hand.on_hit(damage),
+        BossPartName::LeftLeg => self.left_leg.on_hit(damage),
+        BossPartName::RightLeg => self.right_leg.on_hit(damage),
+    }
     }
 }
