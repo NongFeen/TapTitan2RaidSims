@@ -1,0 +1,433 @@
+{
+  "player_raid_data": {
+    "player_raid_level": 1474,
+    "player_raid_base_damage": 1574,
+    "raid_set": {
+      "jade_anniversary": true,
+      "jukk_juggernaut": true,
+      "airforce_ace": true,
+      "dancer_venom": true,
+      "rose_anniversary": true
+    },
+    "titan_soul_research": {
+      "head_mult": 0.25,
+      "torso_mult": 0.25,
+      "limbs_mult": 0.25,
+      "armor_mult": 0.25,
+      "body_mult": 0.25,
+      "lojak_mult": 0.25,
+      "takedar_mult": 0.25,
+      "jukk_mult": 0.25,
+      "sterl_mult": 0.25,
+      "mohaca_mult": 0.25,
+      "terro_mult": 0.25,
+      "klonk_mult": 0.25,
+      "priker_mult": 0.25
+    },
+    "raid_card_research": {
+      "base_damage": 156,
+      "head_damage": 122,
+      "torso_damage": 122,
+      "limbs_damage": 122,
+      "armor_damage": 156,
+      "head_armor_damage": 50,
+      "torso_armor_damage": 50,
+      "limbs_armor_damage": 50,
+      "body_damage": 156,
+      "head_body_damage": 50,
+      "torso_body_damage": 50,
+      "limbs_body_damage": 50,
+      "lojak_damage": 60,
+      "takedar_damage": 116,
+      "jukk_damage": 60,
+      "sterl_damage": 116,
+      "mohaca_damage": 116,
+      "terro_damage": 116,
+      "klonk_damage": 116,
+      "priker_damage": 116,
+      "base_burst_damage": 150,
+      "burst_lojak_damage": 54,
+      "burst_takedar_damage": 54,
+      "burst_jukk_damage": 54,
+      "burst_sterl_damage": 54,
+      "burst_mohaca_damage": 54,
+      "burst_terro_damage": 54,
+      "burst_klonk_damage": 54,
+      "burst_priker_damage": 54,
+      "base_affliction_damage": 150,
+      "affliction_lojak_damage": 54,
+      "affliction_takedar_damage": 54,
+      "affliction_jukk_damage": 54,
+      "affliction_sterl_damage": 54,
+      "affliction_mohaca_damage": 54,
+      "affliction_terro_damage": 54,
+      "affliction_klonk_damage": 54,
+      "affliction_priker_damage": 54
+    },
+    "gem_stone_research": {
+      "base_damage": 0,
+      "head_damage": 0,
+      "torso_damage": 0,
+      "limbs_damage": 0,
+      "armor_damage": 0,
+      "head_armor_damage": 0,
+      "torso_armor_damage": 0,
+      "limbs_armor_damage": 0,
+      "body_damage": 0,
+      "head_body_damage": 0,
+      "torso_body_damage": 0,
+      "limbs_body_damage": 0,
+      "lojak_damage": 0,
+      "takedar_damage": 0,
+      "jukk_damage": 0,
+      "sterl_damage": 0,
+      "mohaca_damage": 0,
+      "terro_damage": 0,
+      "klonk_damage": 0,
+      "priker_damage": 0,
+      "base_burst_damage": 0,
+      "burst_lojak_damage": 0,
+      "burst_takedar_damage": 0,
+      "burst_jukk_damage": 0,
+      "burst_sterl_damage": 0,
+      "burst_mohaca_damage": 0,
+      "burst_terro_damage": 0,
+      "burst_klonk_damage": 0,
+      "burst_priker_damage": 0,
+      "base_affliction_damage": 0,
+      "affliction_lojak_damage": 0,
+      "affliction_takedar_damage": 0,
+      "affliction_jukk_damage": 0,
+      "affliction_sterl_damage": 0,
+      "affliction_mohaca_damage": 0,
+      "affliction_terro_damage": 0,
+      "affliction_klonk_damage": 0,
+      "affliction_priker_damage": 0
+    },
+    "card_list": [
+      {
+        "card_id": "MoonBeam",
+        "cardtype": "Burst",
+        "level": 53
+      },
+      {
+        "card_id": "Fragmentize",
+        "cardtype": "Burst",
+        "level": 55
+      },
+      {
+        "card_id": "SkullBash",
+        "cardtype": "Burst",
+        "level": 52
+      },
+      {
+        "card_id": "RazorWind",
+        "cardtype": "Burst",
+        "level": 50
+      },
+      {
+        "card_id": "WhipOfLightning",
+        "cardtype": "Burst",
+        "level": 51
+      },
+      {
+        "card_id": "BurstCount",
+        "cardtype": "Burst",
+        "level": 65
+      },
+      {
+        "card_id": "Purify",
+        "cardtype": "Burst",
+        "level": 70
+      },
+      {
+        "card_id": "LimbBurst",
+        "cardtype": "Burst",
+        "level": 48
+      },
+      {
+        "card_id": "FlakShot",
+        "cardtype": "Burst",
+        "level": 47
+      },
+      {
+        "card_id": "Haymaker",
+        "cardtype": "Burst",
+        "level": 62
+      },
+      {
+        "card_id": "ChainLightning",
+        "cardtype": "Burst",
+        "level": 41
+      },
+      {
+        "card_id": "MirrorForce",
+        "cardtype": "Burst",
+        "level": 81
+      },
+      {
+        "card_id": "CelestialStatic",
+        "cardtype": "Burst",
+        "level": 38
+      },
+      {
+        "card_id": "Weaken",
+        "cardtype": "Burst",
+        "level": 70
+      },
+      {
+        "card_id": "BurningAttack",
+        "cardtype": "Affliction",
+        "level": 45
+      },
+      {
+        "card_id": "PoisonAttack",
+        "cardtype": "Affliction",
+        "level": 44
+      },
+      {
+        "card_id": "DecayingAttack",
+        "cardtype": "Affliction",
+        "level": 48
+      },
+      {
+        "card_id": "Fuse",
+        "cardtype": "Affliction",
+        "level": 52
+      },
+      {
+        "card_id": "Shadow",
+        "cardtype": "Affliction",
+        "level": 44
+      },
+      {
+        "card_id": "PlagueAttack",
+        "cardtype": "Affliction",
+        "level": 62
+      },
+      {
+        "card_id": "Disease",
+        "cardtype": "Affliction",
+        "level": 52
+      },
+      {
+        "card_id": "Swarm",
+        "cardtype": "Affliction",
+        "level": 49
+      },
+      {
+        "card_id": "RuinousRust",
+        "cardtype": "Affliction",
+        "level": 63
+      },
+      {
+        "card_id": "PowerBubble",
+        "cardtype": "Affliction",
+        "level": 34
+      },
+      {
+        "card_id": "RuneAttack",
+        "cardtype": "Affliction",
+        "level": 62
+      },
+      {
+        "card_id": "MagicPotion",
+        "cardtype": "Affliction",
+        "level": 74
+      },
+      {
+        "card_id": "SandsOfTime",
+        "cardtype": "Affliction",
+        "level": 51
+      },
+      {
+        "card_id": "CosmicBarb",
+        "cardtype": "Affliction",
+        "level": 26
+      },
+      {
+        "card_id": "ExecutionersAxe",
+        "cardtype": "Support",
+        "level": 53
+      },
+      {
+        "card_id": "CrushingVoid",
+        "cardtype": "Support",
+        "level": 62
+      },
+      {
+        "card_id": "MentalFocus",
+        "cardtype": "Support",
+        "level": 63
+      },
+      {
+        "card_id": "ImpactAttack",
+        "cardtype": "Support",
+        "level": 51
+      },
+      {
+        "card_id": "InnerTruth",
+        "cardtype": "Support",
+        "level": 45
+      },
+      {
+        "card_id": "FinisherAttack",
+        "cardtype": "Support",
+        "level": 59
+      },
+      {
+        "card_id": "SuperheatMetal",
+        "cardtype": "Support",
+        "level": 53
+      },
+      {
+        "card_id": "BurstBoost",
+        "cardtype": "Support",
+        "level": 68
+      },
+      {
+        "card_id": "LimbSupport",
+        "cardtype": "Support",
+        "level": 52
+      },
+      {
+        "card_id": "TotemFairySkill",
+        "cardtype": "Support",
+        "level": 71
+      },
+      {
+        "card_id": "TeamTactics",
+        "cardtype": "Support",
+        "level": 45
+      },
+      {
+        "card_id": "SpinalTap",
+        "cardtype": "Support",
+        "level": 38
+      },
+      {
+        "card_id": "AstralEcho",
+        "cardtype": "Support",
+        "level": 50
+      },
+      {
+        "card_id": "TriangleSupport",
+        "cardtype": "Support",
+        "level": 85
+      }
+    ],
+    "title": 0
+  },
+  "boss_data": {
+    "boss_name": "Lojak",
+    "head": {
+      "part_name": "Head",
+      "part_state": "Armor",
+      "max_armor": 5000000,
+      "max_health": 10000000,
+      "current_armor": 4500000,
+      "current_health": 10000000
+    },
+    "torso": {
+      "part_name": "Torso",
+      "part_state": "Armor",
+      "max_armor": 6000000,
+      "max_health": 12000000,
+      "current_armor": 6000000,
+      "current_health": 12000000
+    },
+    "left_shoulder": {
+      "part_name": "LeftShoulder",
+      "part_state": "Armor",
+      "max_armor": 3000000,
+      "max_health": 6000000,
+      "current_armor": 1200000,
+      "current_health": 6000000
+    },
+    "right_shoulder": {
+      "part_name": "RightShoulder",
+      "part_state": "Body",
+      "max_armor": 3000000,
+      "max_health": 6000000,
+      "current_armor": 0,
+      "current_health": 5400000
+    },
+    "left_hand": {
+      "part_name": "LeftHand",
+      "part_state": "Armor",
+      "max_armor": 2500000,
+      "max_health": 5000000,
+      "current_armor": 2500000,
+      "current_health": 5000000
+    },
+    "right_hand": {
+      "part_name": "RightHand",
+      "part_state": "Cursed",
+      "max_armor": 2500000,
+      "max_health": 5000000,
+      "current_armor": 2500000,
+      "current_health": 5000000
+    },
+    "left_leg": {
+      "part_name": "LeftLeg",
+      "part_state": "Skeleton",
+      "max_armor": 3500000,
+      "max_health": 7000000,
+      "current_armor": 0,
+      "current_health": 0
+    },
+    "right_leg": {
+      "part_name": "RightLeg",
+      "part_state": "Armor",
+      "max_armor": 3500000,
+      "max_health": 7000000,
+      "current_armor": 3500000,
+      "current_health": 7000000
+    }
+  },
+  "attackable_part": ["Head", "LeftShoulder", "RightShoulder"],
+  "usable_card": [
+    "MoonBeam",
+    "Fragmentize",
+    "SkullBash",
+    "RazorWind",
+    "WhipOfLightning",
+    "BurstCount",
+    "Purify",
+    "LimbBurst",
+    "FlakShot",
+    "Haymaker",
+    "ChainLightning",
+    "MirrorForce",
+    "CelestialStatic",
+    "Weaken",
+    "BurningAttack",
+    "PoisonAttack",
+    "DecayingAttack",
+    "Fuse",
+    "Shadow",
+    "PlagueAttack",
+    "Disease",
+    "Swarm",
+    "RuinousRust",
+    "PowerBubble",
+    "RuneAttack",
+    "MagicPotion",
+    "SandsOfTime",
+    "CosmicBarb",
+    "ExecutionersAxe",
+    "CrushingVoid",
+    "MentalFocus",
+    "ImpactAttack",
+    "InnerTruth",
+    "FinisherAttack",
+    "SuperheatMetal",
+    "BurstBoost",
+    "LimbSupport",
+    "TotemFairySkill",
+    "TeamTactics",
+    "SpinalTap",
+    "AstralEcho",
+    "TriangleSupport"
+  ]
+}

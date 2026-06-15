@@ -15,3 +15,4 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.23.2", features = ["v4"] }
 strum = "0.26"
 strum_macros = "0.26"
+itertools = "0.14.0"

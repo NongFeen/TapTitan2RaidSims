@@ -1,6 +1,6 @@
 use crate::models::cards::{Card};
 use serde::{Deserialize, Serialize};
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug,Clone, Deserialize, Serialize)]
 pub struct PlayerRaidData{
     pub player_raid_level: u16,
     pub player_raid_base_damage: u16,
@@ -14,7 +14,7 @@ pub struct PlayerRaidData{
     pub title: u16
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug,Clone, Deserialize, Serialize)]
 pub struct RaidSet{
     pub jade_anniversary: bool,      // +4% All Raid Damage
     pub jukk_juggernaut: bool,       // +100 Raid Base Damage
@@ -23,7 +23,7 @@ pub struct RaidSet{
     pub rose_anniversary: bool,      // +100 Raid Base Damage
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug,Clone, Deserialize, Serialize)]
 pub struct TitanSoulResearch{
     //basic
     pub head_mult: f32,
@@ -43,7 +43,7 @@ pub struct TitanSoulResearch{
     pub priker_mult: f32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug,Clone, Deserialize, Serialize)]
 pub struct RaidCardResearch{
     pub base_damage: u16,
     //boss part
@@ -96,7 +96,7 @@ pub struct RaidCardResearch{
     pub affliction_priker_damage: u16, 
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug,Clone, Deserialize, Serialize)]
 pub struct GemstoneResearch{
     pub base_damage: u16,
 

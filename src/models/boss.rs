@@ -1,3 +1,5 @@
+use std::clone;
+
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
@@ -12,14 +14,14 @@ pub enum BossPartName{
     LeftLeg,
     RightLeg,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq,Deserialize, Serialize)]
 pub enum PartState {
     Cursed,
     Armor,
     Body,
     Skeleton
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq,Deserialize, Serialize)]
 pub enum BossName{
     Lojak,
     Takedar,
@@ -31,14 +33,14 @@ pub enum BossName{
     Priker
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,Deserialize, Serialize)]
 pub struct BossPart{
-    part_name: BossPartName,
-    part_state: PartState,
-    max_armor: u64,
-    max_health: u64,
-    current_armor: u64,
-    current_health: u64,
+   pub part_name: BossPartName,
+   pub part_state: PartState,
+   pub max_armor: u64,
+   pub max_health: u64,
+   pub current_armor: u64,
+   pub current_health: u64,
 }
 impl BossPart {
     pub fn new(part:BossPartName,state:PartState,m_armor:u64 ,m_health:u64,c_armor:u64 ,c_health:u64) -> Self {
@@ -88,6 +90,8 @@ impl BossPartName {
         }
     }
 }
+#[derive(Debug,Clone, Deserialize, Serialize)]
+
 pub struct Boss {
     pub boss_name: BossName,
     pub head: BossPart,
