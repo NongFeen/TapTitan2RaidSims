@@ -2,7 +2,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use crate::models::boss::{Boss, BossPartName};
 use crate::models::cards::{Card, CardName, CardType};
-use crate::models::player_raid_data::{self, PlayerRaidData, RaidCardResearch, RaidSet, TitanSoulResearch};
+use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
 // use super::super::sim_payload::SimPayLoad;
 
@@ -27,8 +27,7 @@ impl SimService {
         };
         let mut index = 0;
         //generate deck 
-        // let valid_deck = generate_deck(sim_stats);
-        let valid_deck = generate_deck(&sim_stats.player_stat.card_list, &sim_stats.usable_card);
+        let valid_deck = generate_deck(&sim_stats);
         //for each deck
         for deck in &valid_deck{
             let card1 = &deck[0];
@@ -53,11 +52,13 @@ impl SimService {
     }
 }
 
-pub fn generate_deck(card_list: &[Card], usable_card: &[CardName]) -> Vec<Vec<Card>>{
+pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
     // 1. Only pick cards that are in the user's explicit usable list
-    let filtered_cards: Vec<Card> = card_list
+    let filtered_cards: Vec<Card> = sim_stats
+        .player_stat
+        .card_list
         .iter()
-        .filter(|card| usable_card.contains(&card.card_id))
+        .filter(|card| sim_stats.usable_card.contains(&card.card_id))
         .cloned()
         .collect();
 
@@ -70,7 +71,7 @@ pub fn generate_deck(card_list: &[Card], usable_card: &[CardName]) -> Vec<Vec<Ca
         let c3 = combo[2];
 
         // 3. Keep the deck only if it is synergistic!
-        if is_deck_synergistic(c1, c2, c3) {
+        if is_deck_synergistic(sim_stats, c1, c2, c3) {
             // Dereference the pointers to store clean Card values
             deck_combinations.push(vec![c1.clone(), c2.clone(), c3.clone()]);
         }
@@ -79,16 +80,15 @@ pub fn generate_deck(card_list: &[Card], usable_card: &[CardName]) -> Vec<Vec<Ca
     deck_combinations
 }
 
-fn is_deck_synergistic(c1: &Card, c2: &Card, c3: &Card) -> bool {
+fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
     let deck = [c1, c2, c3];
     let burst_count = deck.iter().filter(|c| c.cardtype == CardType::Burst).count();
     let affliction_count = deck.iter().filter(|c| c.cardtype == CardType::Affliction).count();
     let support_count = deck.iter().filter(|c| c.cardtype == CardType::Support).count();
-    let has_burst = burst_count > 0;
-    let has_affliction = affliction_count > 0;
-    let has_support = support_count > 0;
     
     //total deck without any rule = 42*41*40/3/2 = 11480
+    //Policy 1 : card must be synergy by it self
+
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     let has_support = support_count > 0;
     let has_maelstrom = deck.iter().any(|c| c.card_id == CardName::Maelstrom);
@@ -115,6 +115,24 @@ fn is_deck_synergistic(c1: &Card, c2: &Card, c3: &Card) -> bool {
         }
     }
     //deck with rule 3 = 7997
+    //Rule 4 Burst support must use with burst card or other support card
+    let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
+    if has_ancestral_favor{
+        if affliction_count >= 1 || support_count ==3{
+            return  false;
+        }
+    }
+    //deck with rule 4 = 7476
+    //Rule 5 Affliction support must use with burst card or other support card
+    let has_rancid_gas = deck.iter().any(|c| c.card_id == CardName::RancidGas);
+    if has_rancid_gas{
+        if burst_count >= 1 || support_count ==3{
+            return  false;
+        }
+    }
+    //deck with rule 5 = 6991
 
+    //lastly
     true 
 }
+
