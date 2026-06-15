@@ -27,10 +27,17 @@ impl SimService {
             usable_card : payload.usable_card,
         };
         let mut index = 0;
+        //debug card
+        // let debug_card = CardName::SandsOfTime; // temporary debug filter
         //generate deck 
         let valid_deck = generate_deck(&sim_stats);
         //for each deck
         for deck in &valid_deck{
+            //for debug deck
+            // if !deck.iter().any(|card| card.card_id == debug_card) {
+            //     continue;
+            // }
+
             let card1 = &deck[0];
             let card2 = &deck[1];
             let card3 = &deck[2];
@@ -46,10 +53,14 @@ impl SimService {
                 //loop all pattern
                     //loop 20 try 
                         //simulate deck to boss
-                        //store total damage of the deck
+                //store total damage of the deck
                     // calculate average damage of the deck and save
         }
-        println!("Total synergistic decks created: {}", valid_deck.len());
+        println!(
+            "Total synergistic decks created : {}",
+            // debug_card,
+            index
+        );
     }
 }
 
@@ -111,10 +122,8 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     // Rule 3 : has Radiant also must have1 burst + 1 affliction
     let has_radiant_kaleidoscope = deck.iter().any(|c| c.card_id == CardName::RadiantKaleidoscope);
     if has_radiant_kaleidoscope {
-        if burst_count == 1 && affliction_count == 1 {
-            return true;
-        } else {
-            return false;
+        if burst_count != 1 || affliction_count != 1 {
+        return false;
         }
     }
     //deck with rule 3 = 7997
@@ -133,9 +142,23 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
             return  false;
         }
     }
-    //deck with rule 5 = 6991
-
-    //lastly
+    // //deck with rule 5 = 6991
+    //Rule 6 never 3 support card
+    if support_count == 3{
+        return false;
+    }
+    //deck with rule 6 = 6826
+    // //Rule 7 : Sand of Time card must use with another debuff inflict card 
+    let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
+    if has_sands_of_time{
+        if affliction_count <= 1{
+            return  false;
+        }
+        if has_maelstrom && affliction_count == 2{
+            return  false;
+        }
+    }
+    //deck with rule 7 = 6553
     true 
 }
 
