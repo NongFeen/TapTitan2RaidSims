@@ -27,6 +27,7 @@ impl SimService {
         };
         let mut index = 0;
         //generate deck 
+        // let valid_deck = generate_deck(sim_stats);
         let valid_deck = generate_deck(&sim_stats.player_stat.card_list, &sim_stats.usable_card);
         //for each deck
         for deck in &valid_deck{
@@ -83,6 +84,9 @@ fn is_deck_synergistic(c1: &Card, c2: &Card, c3: &Card) -> bool {
     let burst_count = deck.iter().filter(|c| c.cardtype == CardType::Burst).count();
     let affliction_count = deck.iter().filter(|c| c.cardtype == CardType::Affliction).count();
     let support_count = deck.iter().filter(|c| c.cardtype == CardType::Support).count();
+    let has_burst = burst_count > 0;
+    let has_affliction = affliction_count > 0;
+    let has_support = support_count > 0;
     
     //total deck without any rule = 42*41*40/3/2 = 11480
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
@@ -94,5 +98,23 @@ fn is_deck_synergistic(c1: &Card, c2: &Card, c3: &Card) -> bool {
     }
     //deck with rule 1 = 8880
     
+    // Rule 2 : Purify card require 1 alffication card
+    let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
+    let has_affliction = affliction_count > 0;
+    if has_purify && !has_affliction{
+        return false;
+    }
+    //deck with rule 2 = 8595
+    // Rule 3 : has Radiant also must have1 burst + 1 affliction
+    let has_radiant_kaleidoscope = deck.iter().any(|c| c.card_id == CardName::RadiantKaleidoscope);
+    if has_radiant_kaleidoscope {
+        if burst_count == 1 && affliction_count == 1 {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    //deck with rule 3 = 7997
+
     true 
 }
