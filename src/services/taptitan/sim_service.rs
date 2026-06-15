@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use crate::models::boss::{Boss, BossPartName};
+use strum::IntoEnumIterator;
+use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
@@ -70,8 +71,10 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
         let c2 = combo[1];
         let c3 = combo[2];
 
-        // 3. Keep the deck only if it is synergistic!
-        if is_deck_synergistic(sim_stats, c1, c2, c3) {
+        // 3. Keep the deck only if it is synergistic and boss-compatible!
+        if is_deck_synergistic(sim_stats, c1, c2, c3)
+            && is_deck_boss_suitable(sim_stats, c1, c2, c3)
+        {
             // Dereference the pointers to store clean Card values
             deck_combinations.push(vec![c1.clone(), c2.clone(), c3.clone()]);
         }
@@ -136,3 +139,91 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     true 
 }
 
+fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
+    let boss = &sim_stats.boss_stat;
+    let deck = [c1, c2, c3];
+
+    // If every attackable part is already gone, there is no useful target left.
+    let has_any_active_attackable_part = sim_stats
+        .attackable_part
+        .iter()
+        .map(|part_name| boss.part(*part_name))
+        .any(|part| part.part_state != PartState::Skeleton);
+
+    if !has_any_active_attackable_part {
+        return false;
+    }
+    //Policy 2 : card must be synergy to boss state
+
+    let has_grasping_vines = deck.iter().any(|c| c.card_id == CardName::GraspingVines);
+    let has_celestial_static = deck.iter().any(|c| c.card_id == CardName::CelestialStatic);
+    let has_prismatic_rift = deck.iter().any(|c| c.card_id == CardName::PrismaticRift);
+    let has_inspiring_force = deck.iter().any(|c| c.card_id == CardName::InspiringForce);
+    let has_crushing_instinct = deck.iter().any(|c| c.card_id == CardName::CrushingInstinct);
+    let has_soul_fire = deck.iter().any(|c| c.card_id == CardName::SoulFire);
+
+    //Rule 1 : if have Limb Support, boss must have limb attackable or not skeleton
+    if has_grasping_vines {
+        let boss_has_active_limb = sim_stats
+            .attackable_part
+            .iter()
+            .copied()
+            .filter(BossPartName::is_limb)
+            .any(|part_name| boss.part(part_name).part_state != PartState::Skeleton);
+
+        if !boss_has_active_limb {
+            return false;
+        }
+    }
+    //Rule 2 : if have celestial_static, boss must have one limb that's not skeleton
+    // (even is not select as target it can attack that to build stack)
+    if has_celestial_static {
+        let boss_has_any_limb = BossPartName::iter()
+            .filter(BossPartName::is_limb)
+            .any(|part_name| boss.part(part_name).part_state != PartState::Skeleton);
+
+        if !boss_has_any_limb {
+            return false;
+        }
+    }
+    // Rule 3 : if use Prismatic Rift, boss must have attackable armor
+    if has_prismatic_rift {
+        let boss_has_active_armor = sim_stats
+            .attackable_part
+            .iter()
+            .copied()
+            .any(|part_name| boss.part(part_name).part_state == PartState::Armor);
+
+        if !boss_has_active_armor {
+            return false;
+        }
+    }
+    //Rule 4 : if use Inspiring Force, boss must have attackable body
+    if has_inspiring_force {
+        let boss_has_active_body = sim_stats
+            .attackable_part
+            .iter()
+            .copied()
+            .any(|part_name| boss.part(part_name).part_state == PartState::Body);
+
+        if !boss_has_active_body {
+            return false;
+        }
+    }
+    //Rule 5 :if use Crushing Instinct or Soul Fire, boss must have attakable Head or Torso
+    if has_crushing_instinct || has_soul_fire {
+        let boss_has_active_head_or_torso = sim_stats
+            .attackable_part
+            .iter()
+            .copied()
+            .any(|part_name| {
+                    (part_name == BossPartName::Head || part_name == BossPartName::Torso)
+                    && boss.part(part_name).part_state != PartState::Skeleton
+                });
+
+        if !boss_has_active_head_or_torso {
+            return false;
+        }
+    }
+    true
+}

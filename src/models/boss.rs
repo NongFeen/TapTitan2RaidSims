@@ -105,6 +105,19 @@ pub struct Boss {
 }
 
 impl Boss {
+    pub fn part(&self, part_name: BossPartName) -> &BossPart {
+        match part_name {
+            BossPartName::Head => &self.head,
+            BossPartName::Torso => &self.torso,
+            BossPartName::LeftShoulder => &self.left_shoulder,
+            BossPartName::RightShoulder => &self.right_shoulder,
+            BossPartName::LeftHand => &self.left_hand,
+            BossPartName::RightHand => &self.right_hand,
+            BossPartName::LeftLeg => &self.left_leg,
+            BossPartName::RightLeg => &self.right_leg,
+        }
+    }
+
     fn parts_mut(&mut self) -> [&mut BossPart; 8] {
         [
             &mut self.head,
