@@ -146,6 +146,19 @@ pub struct Boss {
 }
 
 impl Boss {
+    pub fn part_mut(&mut self, part_name: BossPartName) -> &mut BossPart {
+        match part_name {
+            BossPartName::Head => &mut self.head,
+            BossPartName::Torso => &mut self.torso,
+            BossPartName::LeftShoulder => &mut self.left_shoulder,
+            BossPartName::RightShoulder => &mut self.right_shoulder,
+            BossPartName::LeftHand => &mut self.left_hand,
+            BossPartName::RightHand => &mut self.right_hand,
+            BossPartName::LeftLeg => &mut self.left_leg,
+            BossPartName::RightLeg => &mut self.right_leg,
+        }
+    }
+
     pub fn part(&self, part_name: BossPartName) -> &BossPart {
         match part_name {
             BossPartName::Head => &self.head,
@@ -157,6 +170,19 @@ impl Boss {
             BossPartName::LeftLeg => &self.left_leg,
             BossPartName::RightLeg => &self.right_leg,
         }
+    }
+
+    pub fn parts(&self) -> [&BossPart; 8] {
+        [
+            &self.head,
+            &self.torso,
+            &self.left_shoulder,
+            &self.right_shoulder,
+            &self.left_hand,
+            &self.right_hand,
+            &self.left_leg,
+            &self.right_leg,
+        ]
     }
 
     pub fn apply_affliction(&mut self, part_name: BossPartName, affliction: Affliction) {
