@@ -1,7 +1,7 @@
-use std::clone;
-
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
+
+use crate::models::affliction::Affliction;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum BossPartName{
@@ -41,6 +41,8 @@ pub struct BossPart{
    pub max_health: u64,
    pub current_armor: u64,
    pub current_health: u64,
+   #[serde(default)]
+   pub afflictions: Vec<Affliction>,
 }
 impl BossPart {
     pub fn new(part:BossPartName,state:PartState,m_armor:u64 ,m_health:u64,c_armor:u64 ,c_health:u64) -> Self {
@@ -51,13 +53,52 @@ impl BossPart {
             max_health:m_health,
             current_armor:c_armor ,
             current_health:c_health,
+            afflictions: Vec::new(),
         }
     }
     pub fn is_limb(&self) -> bool {
         self.part_name.is_limb()
     }
     pub fn update(&mut self){
-        // update debuff tick
+        self.tick_afflictions();
+    }
+    pub fn apply_affliction(&mut self, affliction: Affliction) {
+        let incoming_stack_count = affliction.stack_count() as u8;
+        let incoming_duration = affliction
+            .stacks
+            .first()
+            .map(|stack| stack.attached_duration)
+            .unwrap_or(0);
+        let incoming_tick_damage = affliction.damage_per_tick;
+        let incoming_expire_damage = affliction.expire_damage_per_duration;
+
+        if let Some(existing) = self
+            .afflictions
+            .iter_mut()
+            .find(|current| current.kind == affliction.kind)
+        {
+            existing.apply_stacks(incoming_stack_count, incoming_duration);
+            existing.damage_per_tick = existing.damage_per_tick.max(incoming_tick_damage);
+            existing.expire_damage_per_duration = existing
+                .expire_damage_per_duration
+                .max(incoming_expire_damage);
+            return;
+        }
+
+        self.afflictions.push(affliction);
+    }
+    fn tick_afflictions(&mut self) {
+        let mut total_damage = 0u64;
+
+        for affliction in &mut self.afflictions {
+            total_damage = total_damage.saturating_add(affliction.tick());
+        }
+
+        self.afflictions.retain(|affliction| !affliction.is_expired());
+
+        if total_damage > 0 {
+            self.on_hit(total_damage);
+        }
     }
     pub fn on_hit(&mut self, damage: u64) {
         match self.part_state {
@@ -115,6 +156,19 @@ impl Boss {
             BossPartName::RightHand => &self.right_hand,
             BossPartName::LeftLeg => &self.left_leg,
             BossPartName::RightLeg => &self.right_leg,
+        }
+    }
+
+    pub fn apply_affliction(&mut self, part_name: BossPartName, affliction: Affliction) {
+        match part_name {
+            BossPartName::Head => self.head.apply_affliction(affliction),
+            BossPartName::Torso => self.torso.apply_affliction(affliction),
+            BossPartName::LeftShoulder => self.left_shoulder.apply_affliction(affliction),
+            BossPartName::RightShoulder => self.right_shoulder.apply_affliction(affliction),
+            BossPartName::LeftHand => self.left_hand.apply_affliction(affliction),
+            BossPartName::RightHand => self.right_hand.apply_affliction(affliction),
+            BossPartName::LeftLeg => self.left_leg.apply_affliction(affliction),
+            BossPartName::RightLeg => self.right_leg.apply_affliction(affliction),
         }
     }
 
