@@ -3,16 +3,12 @@ use crate::models::{
     cards::Card,
 };
 
-use super::CardProcSnapshot;
-
-pub fn on_proc(card: &Card, _boss: &mut Boss, _target_part: BossPartName) -> CardProcSnapshot {
-    CardProcSnapshot {
-        card_id: card.card_id,
-        proc_chance: 0.12,
-        damage_multiplier: 1.0,
-        notes: vec![
-            "Second-round boost is round-state driven, so the simulator should handle it."
-                .to_string(),
-        ],
-    }
+pub fn on_proc(
+    _card: &Card,
+    _boss: &mut Boss,
+    _target_part: BossPartName,
+    damage: f64,
+    round_index: u32,
+) -> f64 {
+    if round_index == 2 { damage * 1.35 } else { damage }
 }

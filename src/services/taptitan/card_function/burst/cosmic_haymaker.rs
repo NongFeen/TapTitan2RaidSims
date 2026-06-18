@@ -3,20 +3,20 @@ use crate::models::{
     cards::Card,
 };
 
-use super::CardProcSnapshot;
-
-pub fn roll_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
-    0.0
+pub fn roll_proc_chance(_card: &Card, _boss: &Boss, tap_count: u32) -> f64 {
+    if tap_count > 0 && tap_count % 70 == 0 {
+        1.0
+    } else {
+        0.0
+    }
 }
 
-pub fn on_proc(card: &Card, _boss: &mut Boss, _target_part: BossPartName) -> CardProcSnapshot {
-    CardProcSnapshot {
-        card_id: card.card_id,
-        proc_chance: 1.0,
-        damage_multiplier: 1.0,
-        notes: vec![
-            "This card is tap-driven, so proc chance is forced by the simulator."
-                .to_string(),
-        ],
-    }
+pub fn on_proc(
+    _card: &Card,
+    _boss: &mut Boss,
+    _target_part: BossPartName,
+    damage: f64,
+    _tap_count: u32,
+) -> f64 {
+    damage
 }

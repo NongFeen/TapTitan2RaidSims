@@ -55,6 +55,7 @@ impl SimService {
                         //simulate deck to boss
                 //store total damage of the deck
                     // calculate average damage of the deck and save
+            
         }
         println!(
             "Total synergistic decks created : {}",
