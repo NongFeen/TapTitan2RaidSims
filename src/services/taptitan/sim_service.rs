@@ -5,6 +5,7 @@ use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
+use super::attack_pattern::generate_attack_patterns;
 // use super::super::sim_payload::SimPayLoad;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,19 +53,15 @@ impl SimService {
             );
             //generate attack pattern
             let attack_patterns = generate_attack_patterns(&sim_stats, deck);
+            //loop all pattern
             for pattern in &attack_patterns {
-                println!("  Pattern: {}", pattern.describe());
+                // println!("  Pattern: {}", pattern.describe());
                 sysdex+=1;
-                println!(
-                    "  Next target: {:?}",
-                    pattern.next_target(&sim_stats.boss_stat, None, deck)
-                );
-            }
-                //loop all pattern
                     //loop 20 try 
-                        //simulate deck to boss
-                //store total damage of the deck
-                    // calculate average damage of the deck and save
+                            //simulate deck to boss
+                    //store total damage of the deck
+                        // calculate average damage of the deck and save
+            }
             
         }
         println!(
@@ -74,161 +71,6 @@ impl SimService {
             sysdex
         );
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum AttackPattern {
-    Single(BossPartName),
-    Ordered(Vec<BossPartName>),
-    AnyLimb,
-}
-
-impl AttackPattern {
-    pub fn describe(&self) -> String {
-        match self {
-            AttackPattern::Single(part) => format!("Single({:?})", part),
-            AttackPattern::Ordered(parts) => format!("Ordered({:?})", parts),
-            AttackPattern::AnyLimb => "AnyLimb".to_string(),
-        }
-    }
-
-    pub fn next_target(
-        &self,
-        boss: &Boss,
-        last_target: Option<BossPartName>,
-        deck: &[Card],
-    ) -> Option<BossPartName> {
-        let candidates = self.candidate_parts(boss);
-        if candidates.is_empty() {
-            return None;
-        }
-
-        if deck.iter().any(|card| card.card_id == CardName::FusionBomb) {
-            if let Some(open_part) = candidates.iter().copied().find(|part| {
-                !boss
-                    .part(*part)
-                    .afflictions
-                    .iter()
-                    .any(|aff| aff.kind == crate::models::affliction::AfflictionKind::Fusion)
-            }) {
-                return Some(open_part);
-            }
-
-            if let Some(last) = last_target {
-                if candidates.contains(&last) {
-                    return Some(last);
-                }
-            }
-
-            return candidates.first().copied();
-        }
-
-        match last_target {
-            Some(last) => {
-                if let Some(index) = candidates.iter().position(|part| *part == last) {
-                    candidates
-                        .get((index + 1) % candidates.len())
-                        .copied()
-                        .or_else(|| candidates.first().copied())
-                } else {
-                    candidates.first().copied()
-                }
-            }
-            None => candidates.first().copied(),
-        }
-    }
-
-    fn candidate_parts(&self, boss: &Boss) -> Vec<BossPartName> {
-        match self {
-            AttackPattern::Single(part) => {
-                if boss.part(*part).part_state != PartState::Skeleton {
-                    vec![*part]
-                } else {
-                    Vec::new()
-                }
-            }
-            AttackPattern::Ordered(parts) => parts
-                .iter()
-                .copied()
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::AnyLimb => BossPartName::iter()
-                .filter(BossPartName::is_limb)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-        }
-    }
-}
-
-pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
-    let mut active_parts: Vec<BossPartName> = sim_stats
-        .attackable_part
-        .iter()
-        .copied()
-        .filter(|part| sim_stats.boss_stat.part(*part).part_state != PartState::Skeleton)
-        .collect();
-
-    let has_head_torso_support_focus = deck.iter().any(|card| {
-        matches!(
-            card.card_id,
-            CardName::CrushingInstinct | CardName::SoulFire
-        )
-    });
-    let has_limb_only_support_focus = deck.iter().any(|card| {
-        matches!(card.card_id, CardName::GraspingVines)
-    });
-    let has_single_target_support_focus = deck.iter().any(|card| {
-        matches!(card.card_id, CardName::TotemOfPower)
-    });
-    let has_body_only_support_focus = deck.iter().any(|card| {
-        matches!(card.card_id, CardName::InspiringForce)
-    });
-    let has_armor_only_support_focus = deck.iter().any(|card| {
-        matches!(card.card_id, CardName::PrismaticRift)
-    });
-
-    if has_head_torso_support_focus {
-        active_parts.retain(|part| matches!(part, BossPartName::Head | BossPartName::Torso));
-    }
-    if has_limb_only_support_focus {
-        active_parts.retain(BossPartName::is_limb);
-    }
-    if has_single_target_support_focus {
-        // Keep the active parts, but block any multi-part cycling patterns below.
-    }
-    if has_body_only_support_focus {
-        active_parts.retain(|part| {
-            matches!(sim_stats.boss_stat.part(*part).part_state, PartState::Body)
-        });
-    }
-    if has_armor_only_support_focus {
-        active_parts.retain(|part| {
-            matches!(sim_stats.boss_stat.part(*part).part_state, PartState::Armor)
-        });
-    }
-
-    let mut patterns = Vec::new();
-
-    for part in &active_parts {
-        patterns.push(AttackPattern::Single(*part));
-    }
-
-    if active_parts.len() >= 2 && !has_single_target_support_focus {
-        patterns.push(AttackPattern::Ordered(active_parts.clone()));
-    }
-
-    if !has_head_torso_support_focus
-        && !has_single_target_support_focus
-        && active_parts.iter().any(BossPartName::is_limb)
-    {
-        patterns.push(AttackPattern::AnyLimb);
-    }
-
-    if patterns.is_empty() && !active_parts.is_empty() {
-        patterns.push(AttackPattern::Ordered(active_parts));
-    }
-
-    patterns
 }
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
