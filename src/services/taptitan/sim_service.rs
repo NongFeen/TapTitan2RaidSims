@@ -56,7 +56,7 @@ impl SimService {
             //loop all pattern
             for pattern in &attack_patterns {
                 // println!("  Pattern: {}", pattern.describe());
-                sysdex+=1;
+                // sysdex+=1;
                     //loop 20 try 
                             //simulate deck to boss
                     //store total damage of the deck
@@ -72,6 +72,7 @@ impl SimService {
         );
     }
 }
+
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
     // 1. Only pick cards that are in the user's explicit usable list
