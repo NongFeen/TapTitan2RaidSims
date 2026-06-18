@@ -18,8 +18,8 @@ pub struct PlayerRaidData{
 pub struct RaidSet{
     pub jade_anniversary: bool,      // +4% All Raid Damage
     pub jukk_juggernaut: bool,       // +100 Raid Base Damage
-    pub airforce_ace: bool,          // +100 Raid Burst Base Damage
-    pub dancer_venom: bool,          // +100 Raid Affliction Base Damage
+    pub airforce_ace: bool,          // +120 Raid Burst Base Damage
+    pub dancer_venom: bool,          // +120 Raid Affliction Base Damage
     pub rose_anniversary: bool,      // +100 Raid Base Damage
 }
 

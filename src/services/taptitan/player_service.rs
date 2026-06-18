@@ -208,8 +208,8 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
     let raid_set = RaidSet {
         jade_anniversary: rs.contains(&"Jade".to_string()),      // +4% All Raid Damage
         jukk_juggernaut: rs.contains(&"Jukk".to_string()),       // +100 Raid Base Damage
-        airforce_ace: rs.contains(&"Airforce".to_string()),          // +100 Raid Burst Base Damage
-        dancer_venom: rs.contains(&"Dancer".to_string()),          // +100 Raid Affliction Base Damage
+        airforce_ace: rs.contains(&"Airforce".to_string()),          // +120 Raid Burst Base Damage
+        dancer_venom: rs.contains(&"Dancer".to_string()),          // +120 Raid Affliction Base Damage
         rose_anniversary: rs.contains(&"RoseAnniversary".to_string()),      // +100 Raid Base Damage
     };
     let gmr = &player_data.gem_research;
