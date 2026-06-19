@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::Affliction;
-use crate::models::cards::CardName;
+use crate::models::damage_source::DamageSource;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum BossPartName{
@@ -32,24 +32,6 @@ pub enum BossName{
     Terro,
     Klonk,
     Priker
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value")]
-pub enum DamageSource {
-    Tap,
-    Card(CardName),
-}
-
-impl DamageSource {
-    pub fn label(&self) -> &'static str {
-        match self {
-            DamageSource::Tap => "Tap",
-            DamageSource::Card(card_name) => match card_name {
-                _ => card_name.id(),
-            },
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

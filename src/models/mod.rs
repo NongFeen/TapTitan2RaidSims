@@ -4,6 +4,7 @@ pub mod player_raid_data;
 pub mod cards;
 pub mod card_skill_data;
 pub mod affliction;
+pub mod damage_source;
 pub mod boss;
 pub mod taptitan_game_dto;
 pub mod sim_payload;
