@@ -93,3 +93,29 @@ pub async fn send_sim_payload(
     let success_response = ApiResponse::Success { data: simdata };
     (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
 }
+
+pub async fn send_sim_deck(
+    Json(simdata): Json<SimPayLoad>
+)-> impl IntoResponse{
+        // 1. Verify that at least one attackable part is selected
+    if simdata.attackable_part.is_empty() {
+        let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+            error: ApiError {
+                code: "ATTACKABLE_PART_EMPTY".to_string(),
+                message: "Attackable part cannot be empty. Must select at least 1 part.".to_string(),
+            },
+        };
+        return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
+    }
+    if simdata.usable_card.len() > 3 {
+        let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+            error: ApiError {
+                code: "DECK_EXCEED_LIMIT".to_string(),
+                message: "Deck cannot contain more than 3 card".to_string(),
+            },
+        };
+        return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
+    }
+    SimService::run_deck_simulation(simdata.clone());
+    (StatusCode::ACCEPTED, ResponseJson(simdata)).into_response()
+}

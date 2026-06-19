@@ -1,10 +1,13 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use strum::IntoEnumIterator;
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
+use super::card_function::CardFunction;
 use super::attack_pattern::generate_attack_patterns;
 // use super::super::sim_payload::SimPayLoad;
 
@@ -70,6 +73,68 @@ impl SimService {
             index,
             sysdex
         );
+    }
+    pub fn run_deck_simulation(payload: SimPayLoad){
+        let sim_stats = SimStats{
+            player_stat : payload.player_raid_data,
+            boss_stat : payload.boss_data,
+            attackable_part: payload.attackable_part,
+            usable_card : payload.usable_card,
+        };
+
+        let player_cards = &sim_stats.player_stat.card_list;
+        let usable_cards = &sim_stats.usable_card;
+
+        //current deck
+        let deck: Vec<Card> = usable_cards
+            .iter()
+            .filter_map(|card_name| {
+                player_cards
+                    .iter()
+                    .find(|card| card.card_id == *card_name)
+                    .cloned()
+            })
+            .collect();
+
+        if deck.len() != 3 {
+            println!(
+                "Deck simulation requires exactly 3 cards, but received {}.",
+                deck.len()
+            );
+            return;
+        }
+
+        println!(
+            "Deck ready: [{}, {}, {}]",
+            deck[0].card_id.display_name(),
+            deck[1].card_id.display_name(),
+            deck[2].card_id.display_name()
+        );
+
+        let mut boss = sim_stats.boss_stat.clone();
+
+    }
+    fn tap_boss(
+        boss: &mut Boss,
+        attack_part: BossPartName,
+        deck: &[Card],
+        base_damage: u64,
+    ) {
+        boss.on_hit(attack_part, base_damage);
+
+        for card in deck{
+        }
+    }
+
+    fn proc_roll(card: &Card, attack_part: BossPartName, tap_count: u32) -> f64 {
+        let mut hasher = DefaultHasher::new();
+        card.card_id.hash(&mut hasher);
+        card.level.hash(&mut hasher);
+        attack_part.hash(&mut hasher);
+        tap_count.hash(&mut hasher);
+
+        let value = hasher.finish();
+        (value as f64) / (u64::MAX as f64)
     }
 }
 
