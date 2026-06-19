@@ -134,6 +134,7 @@ impl SimService {
         boss.on_hit(attack_part, base_damage);
         for card in deck.iter() {
             if card.cardtype != CardType::Burst {
+                
                 continue;
             }
 
