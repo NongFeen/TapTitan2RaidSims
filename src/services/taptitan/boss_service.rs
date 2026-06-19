@@ -20,6 +20,7 @@ impl BossService {
             right_hand: BossPart::new(BossPartName::RightHand, PartState::Armor, default_armor, default_health, default_armor, default_health),
             left_leg: BossPart::new(BossPartName::LeftLeg, PartState::Armor, default_armor, default_health, default_armor, default_health),
             right_leg: BossPart::new(BossPartName::RightLeg, PartState::Armor, default_armor, default_health, default_armor, default_health),
+            damage_results: Vec::new(),
         }
     }
 

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::Affliction;
+use crate::models::cards::CardName;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum BossPartName{
@@ -31,6 +32,30 @@ pub enum BossName{
     Terro,
     Klonk,
     Priker
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value")]
+pub enum DamageSource {
+    Tap,
+    Card(CardName),
+}
+
+impl DamageSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DamageSource::Tap => "Tap",
+            DamageSource::Card(card_name) => match card_name {
+                _ => card_name.id(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DamageResult {
+    pub source: DamageSource,
+    pub damage: u64,
 }
 
 #[derive(Debug, Clone,Deserialize, Serialize)]
@@ -143,6 +168,8 @@ pub struct Boss {
     pub right_hand: BossPart,
     pub left_leg: BossPart,
     pub right_leg: BossPart,
+    #[serde(default)]
+    pub damage_results: Vec<DamageResult>,
 }
 
 impl Boss {
@@ -217,6 +244,30 @@ impl Boss {
             part.update();
         }
     }
+    pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
+        let source_label = source.label();
+
+        if let Some(existing) = self
+            .damage_results
+            .iter_mut()
+            .find(|entry| entry.source.label() == source_label)
+        {
+            existing.damage = existing.damage.saturating_add(damage);
+            return;
+        }
+
+        self.damage_results.push(DamageResult { source, damage });
+    }
+
+    pub fn on_hit_with_source(
+        &mut self,
+        part_name: BossPartName,
+        damage: u64,
+        source: DamageSource,
+    ) {
+        self.record_damage(source, damage);
+        self.on_hit(part_name, damage);
+    }
     pub fn on_hit(&mut self, part_name:BossPartName, damage:u64){
     match part_name {
         BossPartName::Head => self.head.on_hit(damage),
@@ -228,5 +279,18 @@ impl Boss {
         BossPartName::LeftLeg => self.left_leg.on_hit(damage),
         BossPartName::RightLeg => self.right_leg.on_hit(damage),
     }
+    }
+
+    pub fn get_damage_result(&self) -> String {
+        self.damage_results
+            .iter()
+            .map(|entry| format!("{} : {}", entry.source.label(), entry.damage))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[allow(non_snake_case)]
+    pub fn getDamageResult(&self) -> String {
+        self.get_damage_result()
     }
 }

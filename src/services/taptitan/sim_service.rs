@@ -2,7 +2,7 @@ use itertools::Itertools;
 use rand::random;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
-use crate::models::boss::{Boss, BossPartName, PartState};
+use crate::models::boss::{Boss, BossPartName, DamageSource, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
@@ -121,6 +121,7 @@ impl SimService {
             );
         }
         println!("Boss Head hp {}",boss.head.current_health);
+        println!("{}", boss.getDamageResult());
         
     }
 
@@ -131,9 +132,9 @@ impl SimService {
         player_raid_data: &PlayerRaidData,
     ) {
         let base_damage = player_raid_data.player_raid_base_damage as u64;
-        boss.on_hit(attack_part, base_damage);
+        boss.on_hit_with_source(attack_part, base_damage, DamageSource::Tap);
         for card in deck.iter() {
-            if card.cardtype != CardType::Burst {
+            if card.cardtype != CardType::Burst{
                 
                 continue;
             }
@@ -144,7 +145,11 @@ impl SimService {
             if roll <= proc_chance {
                 
                 let proc_damage = card.on_proc(boss, attack_part, base_damage as f64, 0, 0);
-                boss.on_hit(attack_part, proc_damage.max(0.0).round() as u64);
+                boss.on_hit_with_source(
+                    attack_part,
+                    proc_damage.max(0.0).round() as u64,
+                    DamageSource::Card(card.card_id),
+                );
             }
         }
     }
