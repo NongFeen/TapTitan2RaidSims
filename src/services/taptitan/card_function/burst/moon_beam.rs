@@ -4,6 +4,10 @@ use crate::models::{
     cards::Card,
 };
 
+pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
+    0.12
+}
+
 pub fn on_proc(
     card: &Card,
     _boss: &mut Boss,

@@ -116,6 +116,7 @@ pub async fn send_sim_deck(
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
+    println!("run deck sim");
     SimService::run_deck_simulation(simdata.clone());
     (StatusCode::ACCEPTED, ResponseJson(simdata)).into_response()
 }

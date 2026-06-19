@@ -3,7 +3,7 @@ use crate::models::{
     cards::Card,
 };
 
-pub fn roll_proc_chance(_card: &Card, boss: &Boss, _tap_count: u32) -> f64 {
+pub fn get_proc_chance(_card: &Card, boss: &Boss) -> f64 {
     let afflicted_parts = boss
         .parts()
         .into_iter()
@@ -18,7 +18,6 @@ pub fn on_proc(
     _boss: &mut Boss,
     _target_part: BossPartName,
     damage: f64,
-    _tap_count: u32,
 ) -> f64 {
     damage
 }

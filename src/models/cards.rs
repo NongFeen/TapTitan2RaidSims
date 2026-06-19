@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
+use crate::models::boss::{Boss, BossPartName};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum CardName {
@@ -191,5 +192,29 @@ impl CardName {
             CardName::TotemOfPower | CardName::TeamTactics | CardName::SkeletalSmash | 
             CardName::AstralEcho | CardName::RadiantKaleidoscope => CardType::Support,
         }
+    }
+}
+
+impl Card {
+    pub fn get_proc_chance(&self, boss: &Boss) -> f64 {
+        crate::services::taptitan::card_function::get_proc_chance(self, boss)
+    }
+
+    pub fn on_proc(
+        &self,
+        boss: &mut Boss,
+        target_part: BossPartName,
+        damage: f64,
+        round_index: u32,
+        burst_trigger_count: u32,
+    ) -> f64 {
+        crate::services::taptitan::card_function::on_proc(
+            self,
+            boss,
+            target_part,
+            damage,
+            round_index,
+            burst_trigger_count,
+        )
     }
 }

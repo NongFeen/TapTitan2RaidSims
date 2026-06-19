@@ -3,7 +3,7 @@ use crate::models::{
     cards::Card,
 };
 
-pub fn roll_proc_chance(_card: &Card, _boss: &Boss, _tap_count: u32) -> f64 {
+pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
     0.10
 }
 

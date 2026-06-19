@@ -1,13 +1,11 @@
 use itertools::Itertools;
+use rand::random;
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use strum::IntoEnumIterator;
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
-use super::card_function::CardFunction;
 use super::attack_pattern::generate_attack_patterns;
 // use super::super::sim_payload::SimPayLoad;
 
@@ -112,31 +110,46 @@ impl SimService {
         );
 
         let mut boss = sim_stats.boss_stat.clone();
-
+        println!("Boss Head hp {}",boss.head.current_health);
+        
+        for _ in 1..=600 {
+            Self::tap_boss(
+                &mut boss,
+                BossPartName::Head,
+                &deck,
+                &sim_stats.player_stat,
+            );
+        }
+        println!("Boss Head hp {}",boss.head.current_health);
+        
     }
+
     fn tap_boss(
         boss: &mut Boss,
         attack_part: BossPartName,
         deck: &[Card],
-        base_damage: u64,
+        player_raid_data: &PlayerRaidData,
     ) {
+        let base_damage = player_raid_data.player_raid_base_damage as u64;
         boss.on_hit(attack_part, base_damage);
+        for card in deck.iter() {
+            if card.cardtype != CardType::Burst {
+                continue;
+            }
 
-        for card in deck{
+            let proc_chance = card.get_proc_chance(boss);
+            let roll: f64 = random();
+
+            if roll <= proc_chance {
+                
+                let proc_damage = card.on_proc(boss, attack_part, base_damage as f64, 0, 0);
+                boss.on_hit(attack_part, proc_damage.max(0.0).round() as u64);
+            }
         }
     }
 
-    fn proc_roll(card: &Card, attack_part: BossPartName, tap_count: u32) -> f64 {
-        let mut hasher = DefaultHasher::new();
-        card.card_id.hash(&mut hasher);
-        card.level.hash(&mut hasher);
-        attack_part.hash(&mut hasher);
-        tap_count.hash(&mut hasher);
-
-        let value = hasher.finish();
-        (value as f64) / (u64::MAX as f64)
-    }
 }
+
 
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{

@@ -117,6 +117,10 @@ fn load_card_skill_database() -> CardSkillDatabase {
 
     for record in reader.records() {
         let record = record.expect("Failed to read RaidSkillInfo.csv row");
+        if !parse_bool(field(&headers, &record, "IsActive")) {
+            continue;
+        }
+
         let row = parse_row(&headers, &record);
         rows.insert(row.card_id, row);
     }
