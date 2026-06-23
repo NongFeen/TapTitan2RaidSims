@@ -1,7 +1,10 @@
 use crate::{models::{
     boss::{Boss, BossPartName}, card_skill_data::card_skill_value_a, cards::Card,
-}, services::taptitan::card_function::burst::purifying_blast};
+}};
 
+pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
+    0.1
+}
 pub fn on_proc(
     card: &Card,
     boss: &mut Boss,

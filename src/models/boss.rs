@@ -1,3 +1,4 @@
+use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
@@ -271,7 +272,7 @@ impl Boss {
         .iter()
         .map(|entry| entry.damage)
         .sum()
-}
+    }
 
     pub fn get_damage_result(&self) -> String {
     self.damage_results
@@ -286,6 +287,22 @@ impl Boss {
         self.get_damage_result()
     }
     
+    pub fn get_random_body_part(&self) -> Option<BossPart> {
+        let mut rng = rand::rng();
+        
+        // 1. Collect references to all 8 parts using your existing helper
+        let all_parts = self.parts();
+        
+        // 2. Filter the parts to keep ONLY those where state == PartState::Body
+        let body_parts: Vec<&BossPart> = all_parts
+            .into_iter()
+            .filter(|part| part.part_state == PartState::Body)
+            .collect();
+            
+        // 3. Pick a random element out of the valid options and return a Clone
+        // Returns None if no body parts exist (e.g., everything is armor or skeleton)
+        body_parts.choose(&mut rng).map(|&part| part.clone())
+    }
     fn format_compact(damage: u64) -> String {
     let damage_f = damage as f64;
     if damage >= 1_000_000_000_000 {
