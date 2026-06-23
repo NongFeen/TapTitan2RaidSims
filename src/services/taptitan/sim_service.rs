@@ -109,23 +109,28 @@ impl SimService {
             deck[1].card_id.display_name(),
             deck[2].card_id.display_name()
         );
-
-        let mut boss = sim_stats.boss_stat.clone();
-        println!("Boss Head hp {}",boss.head.current_health);
-        
-        for _ in 1..=7 {
-            Self::tap_boss(
-                &mut boss,
-                BossPartName::Head,
-                &deck,
-                &sim_stats.player_stat,
-            );
+        let mut total_sim_damage: u64 = 0;
+        let round = 1;
+        for _ in 1..=round{
+            let mut boss = sim_stats.boss_stat.clone();
+            // println!("Boss Head hp {}",boss.head.current_health);
+            
+            for _ in 1..=8 {
+                Self::tap_boss(
+                    &mut boss,
+                    BossPartName::Torso,
+                    &deck,
+                    &sim_stats.player_stat,
+                );
+            }
+            // println!("Boss Head hp {}",boss.torso.current_health);
+            println!("{}", boss.getDamageResult());
+            total_sim_damage += boss.get_total_damage()
         }
-        println!("Boss Head hp {}",boss.head.current_health);
-        println!("{}", boss.getDamageResult());
-        //Tap 4768 
-    }
+        let avg = total_sim_damage/round;
+        println!("Average damage : {}", format_compact(avg));
 
+    }
     fn tap_boss(
     boss: &mut Boss,
     attack_part: BossPartName,
@@ -170,12 +175,12 @@ impl SimService {
         + flat_boss_add 
         + base1_set 
         + base2_set;
-    println!("true_base_tap {}, Mult {}" , true_base_tap, total_multiplier);
+    // println!("true_base_tap {}, Mult {}" , true_base_tap, total_multiplier);
 
     let tap_damage = (true_base_tap * total_multiplier).round() as u64;
-    boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
+    boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
 
-    // ─── 4. CARD PROCS PROCESSING PIPELINE ────────────────────────────
+    // card proc
     for card in deck.iter() {
         if !matches!(card.cardtype, CardType::Burst | CardType::Affliction) {
             continue;
@@ -183,7 +188,7 @@ impl SimService {
 
 
         let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
-        println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
+        // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
 
         let proc_chance = card.get_proc_chance(boss);
         let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
@@ -199,7 +204,6 @@ impl SimService {
         }
     }
 }
-
 }
 
 
@@ -389,4 +393,19 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
         }
     }
     true
+}
+
+fn format_compact(damage: u64) -> String {
+    let damage_f = damage as f64;
+    if damage >= 1_000_000_000_000 {
+        format!("{:.3}T", damage_f / 1_000_000_000_000.0)
+    } else if damage >= 1_000_000_000 {
+        format!("{:.3}B", damage_f / 1_000_000_000.0)
+    } else if damage >= 1_000_000 {
+        format!("{:.3}M", damage_f / 1_000_000.0)
+    } else if damage >= 1_000 {
+        format!("{:.3}K", damage_f / 1_000.0)
+    } else {
+        damage.to_string()
+    }
 }

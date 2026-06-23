@@ -266,16 +266,38 @@ impl Boss {
         self.part(part_name).part_state
     }
 
+    pub fn get_total_damage(&self) -> u64 {
+    self.damage_results
+        .iter()
+        .map(|entry| entry.damage)
+        .sum()
+}
+
     pub fn get_damage_result(&self) -> String {
-        self.damage_results
-            .iter()
-            .map(|entry| format!("{} : {}", entry.source.label(), entry.damage))
-            .collect::<Vec<_>>()
-            .join("\n")
+    self.damage_results
+        .iter()
+        .map(|entry| format!("{} : {}", entry.source.label(), Self::format_compact(entry.damage)))
+        .collect::<Vec<_>>()
+        .join("\n")
     }
 
     #[allow(non_snake_case)]
     pub fn getDamageResult(&self) -> String {
         self.get_damage_result()
     }
+    
+    fn format_compact(damage: u64) -> String {
+    let damage_f = damage as f64;
+    if damage >= 1_000_000_000_000 {
+        format!("{:.3}T", damage_f / 1_000_000_000_000.0)
+    } else if damage >= 1_000_000_000 {
+        format!("{:.3}B", damage_f / 1_000_000_000.0)
+    } else if damage >= 1_000_000 {
+        format!("{:.3}M", damage_f / 1_000_000.0)
+    } else if damage >= 1_000 {
+        format!("{:.3}K", damage_f / 1_000.0)
+    } else {
+        damage.to_string()
+    }
+}
 }

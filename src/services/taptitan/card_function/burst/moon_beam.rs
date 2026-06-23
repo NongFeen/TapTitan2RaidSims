@@ -15,7 +15,7 @@ pub fn on_proc(
     damage: f64,
 ) -> f64 {
     let moonbeam_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
-    let mut bonus_correct_part = 1.0f64;
+    let mut bonus_correct_part = 1.5f64;
     if target_part == BossPartName::Torso||
     target_part == BossPartName::LeftHand||
     target_part == BossPartName::RightHand||
