@@ -16,10 +16,11 @@ pub fn on_proc(
     let armor_mult = card_skill_bonusamountC(card.card_id).unwrap_or(1.0);
     let mut total_card_mult = frag_mult;
     if boss.get_state_from_part(target_part) == PartState::Cursed{
-        total_card_mult *=curse_mult;
+        total_card_mult *=curse_mult *armor_mult;
     }
-    if boss.get_state_from_part(target_part) == PartState::Armor{
+    else if boss.get_state_from_part(target_part) == PartState::Armor{
         total_card_mult *=armor_mult;
     }
+    println!("{} {} {} {}",frag_mult,curse_mult,armor_mult,total_card_mult);
     return  damage * total_card_mult;
 }
