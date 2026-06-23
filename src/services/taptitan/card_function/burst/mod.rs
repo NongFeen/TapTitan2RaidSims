@@ -28,9 +28,10 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
         // CardName::Fragmentize => fragmentize::get_proc_chance(card, boss),
         // CardName::RazorWind => razor_wind::get_proc_chance(card, boss),
         CardName::WhipOfLightning => whip_of_lightning::get_proc_chance(card, boss),
-        // CardName::ClanshipBarrage => clanship_barrage::get_proc_chance(card, boss),
-        CardName::ClanshipBarrage => 1.00,
+        CardName::ClanshipBarrage => clanship_barrage::get_proc_chance(card, boss),
         CardName::CosmicHaymaker => cosmic_haymaker::get_proc_chance(card, boss),
+        CardName::PsychicShackles => 1.00,
+        CardName::PsychicShackles => psychic_shackles::get_proc_chance(card, boss),
         _ => 0.00,
     }
 }

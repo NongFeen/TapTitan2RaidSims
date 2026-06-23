@@ -116,10 +116,10 @@ impl SimService {
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
 
-            for _ in 1..=2 {
+            for _ in 1..=1 {
                 Self::tap_boss(
                     &mut boss,
-                    BossPartName::Head,
+                    BossPartName::LeftHand,
                     &deck,
                     &sim_stats.player_stat,
                     &mut total_burst_proc
