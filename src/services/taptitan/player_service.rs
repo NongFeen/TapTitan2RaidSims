@@ -263,6 +263,6 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
         raid_card_research,
         gem_stone_research,
         card_list,
-        title: 0,  // fill in later
+        title: 0.0,  // fill in later
     }
 }

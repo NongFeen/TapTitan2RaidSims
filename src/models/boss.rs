@@ -262,6 +262,9 @@ impl Boss {
         BossPartName::RightLeg => self.right_leg.on_hit(damage),
     }
     }
+    pub fn get_state_from_part(&self, part_name: BossPartName) -> PartState{
+        self.part(part_name).part_state
+    }
 
     pub fn get_damage_result(&self) -> String {
         self.damage_results
