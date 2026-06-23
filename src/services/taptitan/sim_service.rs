@@ -114,13 +114,15 @@ impl SimService {
         for _ in 1..=round{
             let mut boss = sim_stats.boss_stat.clone();
             // println!("Boss Head hp {}",boss.head.current_health);
-            
-            for _ in 1..=1 {
+            let mut total_burst_proc: u32 = 0;
+
+            for _ in 1..=2 {
                 Self::tap_boss(
                     &mut boss,
                     BossPartName::Head,
                     &deck,
                     &sim_stats.player_stat,
+                    &mut total_burst_proc
                 );
             }
             // println!("Boss Head hp {}",boss.torso.current_health);
@@ -136,74 +138,78 @@ impl SimService {
     attack_part: BossPartName,
     deck: &[Card],
     player_raid_data: &PlayerRaidData,
-) {
-    let current_state = boss.get_state_from_part(attack_part);
+    total_burst_proc: &mut u32,
+    ) 
+    {
+        let current_state = boss.get_state_from_part(attack_part);
 
-    // flat addition & card research
-    let flat_part_state_add = player_raid_data.get_total_part_state_add(attack_part, current_state);
-    let flat_boss_add = player_raid_data.get_total_boss_add(boss.boss_name);
+        // flat addition & card research
+        let flat_part_state_add = player_raid_data.get_total_part_state_add(attack_part, current_state);
+        let flat_boss_add = player_raid_data.get_total_boss_add(boss.boss_name);
 
-    let base_add_total = (player_raid_data.raid_card_research.base_damage 
-        + player_raid_data.gem_stone_research.base_damage) as f32;
+        let base_add_total = (player_raid_data.raid_card_research.base_damage 
+            + player_raid_data.gem_stone_research.base_damage) as f32;
 
-    let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage 
-        + player_raid_data.gem_stone_research.base_burst_damage) as f32
-        + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
-        + (if player_raid_data.raid_set.airforce_ace { 120.0 } else { 0.0 });
+        let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage 
+            + player_raid_data.gem_stone_research.base_burst_damage) as f32
+            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
+            + (if player_raid_data.raid_set.airforce_ace { 120.0 } else { 0.0 });
 
-    let affli_add_total = (player_raid_data.raid_card_research.base_affliction_damage 
-        + player_raid_data.gem_stone_research.base_affliction_damage) as f32
-        + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Affliction)
-        + (if player_raid_data.raid_set.dancer_venom { 120.0 } else { 0.0 });
+        let affli_add_total = (player_raid_data.raid_card_research.base_affliction_damage 
+            + player_raid_data.gem_stone_research.base_affliction_damage) as f32
+            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Affliction)
+            + (if player_raid_data.raid_set.dancer_venom { 120.0 } else { 0.0 });
 
-    // titansoul mult
-    let jade_set = if player_raid_data.raid_set.jade_anniversary { 0.04 } else { 0.0 };
+        // titansoul mult
+        let jade_set = if player_raid_data.raid_set.jade_anniversary { 0.04 } else { 0.0 };
 
-    let raid_all_mult = 1.0 + jade_set + (player_raid_data.title as f32);
-    let boss_mult = 1.0 + player_raid_data.titan_soul_research.get_boss_mult(boss.boss_name);
-    let part_mult = 1.0 + player_raid_data.titan_soul_research.get_part_mult(attack_part);
-    let state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(current_state);
-    
-    let total_multiplier = raid_all_mult * boss_mult * part_mult * state_mult;
+        let raid_all_mult = 1.0 + jade_set + (player_raid_data.title as f32);
+        let boss_mult = 1.0 + player_raid_data.titan_soul_research.get_boss_mult(boss.boss_name);
+        let part_mult = 1.0 + player_raid_data.titan_soul_research.get_part_mult(attack_part);
+        let state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(current_state);
+        
+        let total_multiplier = raid_all_mult * boss_mult * part_mult * state_mult;
 
-    let base1_set = if player_raid_data.raid_set.jukk_juggernaut { 100.0 } else { 0.0 };
-    let base2_set = if player_raid_data.raid_set.rose_anniversary { 100.0 } else { 0.0 };
+        let base1_set = if player_raid_data.raid_set.jukk_juggernaut { 100.0 } else { 0.0 };
+        let base2_set = if player_raid_data.raid_set.rose_anniversary { 100.0 } else { 0.0 };
 
-    let true_base_tap = (player_raid_data.player_raid_base_damage as f32)
-        + base_add_total 
-        + flat_part_state_add 
-        + flat_boss_add 
-        + base1_set 
-        + base2_set;
-    // println!("true_base_tap {}, Mult {}" , true_base_tap, total_multiplier);
+        let true_base_tap = (player_raid_data.player_raid_base_damage as f32)
+            + base_add_total 
+            + flat_part_state_add 
+            + flat_boss_add 
+            + base1_set 
+            + base2_set;
+        // println!("true_base_tap {}, Mult {}" , true_base_tap, total_multiplier);
 
-    let tap_damage = (true_base_tap * total_multiplier).round() as u64;
-    boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
+        let tap_damage = (true_base_tap * total_multiplier).round() as u64;
+        boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
 
-    // card proc
-    for card in deck.iter() {
-        if !matches!(card.cardtype, CardType::Burst | CardType::Affliction) {
-            continue;
-        }
+        // card proc
+        for card in deck.iter() {
+            if !matches!(card.cardtype, CardType::Burst | CardType::Affliction) {
+                continue;
+            }
 
+            let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
+            // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
 
-        let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
-        // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
+            let proc_chance = card.get_proc_chance(boss);
+            let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
 
-        let proc_chance = card.get_proc_chance(boss);
-        let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
-
-        if roll <= proc_chance {
-            // Supply accurate damage for custom multipliers to handle internally
-            let proc_damage = card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, 0);
-            boss.on_hit_with_source(
-                attack_part,
-                proc_damage.max(0.0).round() as u64,
-                DamageSource::Card(card.card_id),
-            );
+            if roll <= proc_chance {
+                // Supply accurate damage for custom multipliers to handle internally
+                if card.cardtype == CardType::Burst {
+                    *total_burst_proc += 1;
+                }
+                let proc_damage = card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, *total_burst_proc);
+                boss.on_hit_with_source(
+                    attack_part,
+                    proc_damage.max(0.0).round() as u64,
+                    DamageSource::Card(card.card_id),
+                );
+            }
         }
     }
-}
 }
 
 

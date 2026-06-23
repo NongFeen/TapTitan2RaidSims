@@ -24,11 +24,12 @@ fn default_damage(_card: &Card, _boss: &Boss, _target_part: BossPartName, damage
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     match card.card_id {
-        // CardName::MoonBeam => moon_beam::get_proc_chance(card, boss),
+        CardName::MoonBeam => moon_beam::get_proc_chance(card, boss),
         // CardName::Fragmentize => fragmentize::get_proc_chance(card, boss),
-        CardName::RazorWind => razor_wind::get_proc_chance(card, boss),
-        CardName::WhipOfLightning => 1.00,
-        CardName::ClanshipBarrage => clanship_barrage::get_proc_chance(card, boss),
+        // CardName::RazorWind => razor_wind::get_proc_chance(card, boss),
+        CardName::WhipOfLightning => whip_of_lightning::get_proc_chance(card, boss),
+        // CardName::ClanshipBarrage => clanship_barrage::get_proc_chance(card, boss),
+        CardName::ClanshipBarrage => 1.00,
         CardName::CosmicHaymaker => cosmic_haymaker::get_proc_chance(card, boss),
         _ => 0.00,
     }

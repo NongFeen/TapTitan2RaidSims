@@ -1,6 +1,5 @@
 use crate::models::{
-    boss::{Boss, BossPartName},
-    cards::Card,
+    boss::{Boss, BossPartName}, card_skill_data::card_skill_value_a, cards::Card,
 };
 
 pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
@@ -8,11 +7,13 @@ pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
 }
 
 pub fn on_proc(
-    _card: &Card,
-    _boss: &mut Boss,
-    _target_part: BossPartName,
+    card: &Card,
+    boss: &mut Boss,
+    target_part: BossPartName,
     damage: f64,
     burst_trigger_count: u32,
 ) -> f64 {
-    damage * (1.0 + (0.04 * burst_trigger_count as f64))
+    let barrage_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
+    damage * barrage_mult * (1.0 + (0.04 * burst_trigger_count as f64))
+    
 }
