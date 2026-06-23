@@ -118,7 +118,7 @@ impl SimService {
             for _ in 1..=6 {
                 Self::tap_boss(
                     &mut boss,
-                    BossPartName::Torso,
+                    BossPartName::Head,
                     &deck,
                     &sim_stats.player_stat,
                 );
