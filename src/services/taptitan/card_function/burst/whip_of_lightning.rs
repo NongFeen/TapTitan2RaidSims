@@ -1,6 +1,5 @@
 use crate::models::{
-    boss::{Boss, BossPartName},
-    cards::Card,
+    boss::{Boss, BossPartName}, card_skill_data::card_skill_value_a, cards::Card,
 };
 
 pub fn get_proc_chance(_card: &Card, boss: &Boss) -> f64 {
@@ -14,10 +13,11 @@ pub fn get_proc_chance(_card: &Card, boss: &Boss) -> f64 {
 }
 
 pub fn on_proc(
-    _card: &Card,
-    _boss: &mut Boss,
-    _target_part: BossPartName,
+    card: &Card,
+    boss: &mut Boss,
+    target_part: BossPartName,
     damage: f64,
 ) -> f64 {
-    damage
+    let whip_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
+    return  damage * whip_mult;
 }

@@ -115,7 +115,7 @@ impl SimService {
             let mut boss = sim_stats.boss_stat.clone();
             // println!("Boss Head hp {}",boss.head.current_health);
             
-            for _ in 1..=6 {
+            for _ in 1..=1 {
                 Self::tap_boss(
                     &mut boss,
                     BossPartName::Head,
