@@ -224,15 +224,27 @@ impl SimService {
 
             let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
             // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
+            let type_mult = match card.cardtype {
+                CardType::Burst => 1.0 + combined_support.burst_damage_add,
+                CardType::Affliction => 1.0 + combined_support.affliction_damage_add,
+                _ => 1.0,
+            };
 
-            let proc_chance = card.get_proc_chance(boss);
+
+            let chance_mult = match card.cardtype {
+                CardType::Burst => 1.0 + combined_support.burst_chance_mult,
+                CardType::Affliction => 1.0 + combined_support.affliction_chance_mult,
+                _ => 1.0, // unreachable given the matches! filter above, but keeps the match exhaustive
+            };
+            let proc_chance = card.get_proc_chance(boss)*chance_mult;
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
+
 
             if roll <= proc_chance {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
-                card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, *total_burst_proc);
+                card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64) * type_mult, 0, *total_burst_proc);
             }
         }
 
