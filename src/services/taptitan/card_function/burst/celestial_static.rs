@@ -18,17 +18,14 @@ pub fn on_proc(
     let celes_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
     let current_state = boss.get_state_from_part(target_part);
 
-    // 1. Condition for Limbs: Gain stacks up to MAX_STACK
     if target_part.is_limb() {
         if card.celestial_stacks < MAX_STACK {
             card.celestial_stacks += STACK_GAIN;
         }
     } 
-    // 2. Condition for Non-Limbs (Head/Torso): Consume stacks and deal damage
     else if current_state != PartState::Skeleton && card.celestial_stacks >= STACK_USE {
         card.celestial_stacks -= STACK_USE;
         
-        // Calculate final burst damage using the skill multiplier
         let final_damage = damage * celes_mult;
 
         boss.on_hit_with_source(
