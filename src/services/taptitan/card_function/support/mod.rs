@@ -42,15 +42,15 @@ pub fn get_support_modifiers(card: &mut Card,boss: &Boss) -> SupportModifiers{
         CardName::CrushingInstinct => crushing_instinct::get_modifiers(card, boss),
         CardName::GraspingVines => grasping_vines::get_modifiers(card, boss),
         CardName::InsanityVoid => insanity_void::get_modifiers(card, boss),
-        // CardName::InspiringForce => inspiring_force::get_modifiers(card, boss),
-        // CardName::PrismaticRift => prismatic_rift::get_modifiers(card, boss),
-        // CardName::RadiantKaleidoscope => radiant_kaleidoscope::get_modifiers(card, boss),
-        // CardName::RancidGas => rancid_gas::get_modifiers(card, boss),
-        // CardName::SkeletalSmash => skeletal_smash::get_modifiers(card, boss),
-        // CardName::SoulFire => soul_fire::get_modifiers(card, boss),
-        // CardName::TeamTactics => team_tactics::get_modifiers(card, boss),
+        CardName::InspiringForce => inspiring_force::get_modifiers(card, boss),
+        CardName::PrismaticRift => prismatic_rift::get_modifiers(card, boss),
+        CardName::RadiantKaleidoscope => radiant_kaleidoscope::get_modifiers(card, boss),
+        CardName::RancidGas => rancid_gas::get_modifiers(card, boss),
+        CardName::SkeletalSmash => skeletal_smash::get_modifiers(card, boss),
+        CardName::SoulFire => soul_fire::get_modifiers(card, boss),
+        CardName::TeamTactics => team_tactics::get_modifiers(card, boss),
         // CardName::TotemOfPower => totem_of_power::get_modifiers(card, boss),
-        // CardName::VictoryMarch => victory_march::get_modifiers(card, boss),
+        CardName::VictoryMarch => victory_march::get_modifiers(card, boss),
         
         // CardName::InsanityVoid =>
         _ => SupportModifiers::default()

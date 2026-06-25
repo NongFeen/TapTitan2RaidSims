@@ -1,4 +1,4 @@
-use crate::models::{boss::Boss, card_skill_data::{card_skill_bonusamountC, card_skill_value_a, card_skill_value_b}, cards::Card, support_modifier::SupportModifiers};
+use crate::models::{boss::Boss, card_skill_data::{card_skill_bonusamountC, card_skill_value_a}, cards::Card, support_modifier::SupportModifiers};
 
 pub fn get_modifiers(card: &mut Card,boss: &Boss,) -> SupportModifiers{
 
