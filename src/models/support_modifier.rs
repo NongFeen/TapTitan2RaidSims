@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::models::boss::{BossPartName, PartState};
+use crate::models::{boss::{BossPartName, PartState}, cards::CardType};
 
 pub struct SupportModifiers{
     //additive
@@ -78,7 +78,23 @@ impl SupportModifiers {
     pub fn all_mult_bonus(&self) -> f64 {
         self.all_damage_add
     }
-
+    
+    pub fn total_damage_bonus(
+        &self,
+        attack_part: BossPartName,
+        state: PartState,
+        card_type: Option<CardType>, // None for tap damage, Some(Burst/Affliction) for procs
+    ) -> f64 {
+        let part_bonus = self.part_mult_bonus(attack_part);
+        let state_bonus = self.state_mult_bonus(state);
+        let type_bonus = match card_type {
+            Some(CardType::Burst) => self.burst_damage_add,
+            Some(CardType::Affliction) => self.affliction_damage_add,
+            _ => 0.0,
+        };
+        // part_bonus + state_bonus + type_bonus 
+        part_bonus + state_bonus + type_bonus + self.all_damage_add
+    }
 
 }
 

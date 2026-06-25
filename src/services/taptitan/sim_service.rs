@@ -203,17 +203,17 @@ impl SimService {
         .collect();
         
         let combined_support = SupportModifiers::accumulate(&support_mods);
+        let tap_support_bonus = combined_support.total_damage_bonus(attack_part, current_state, None);
         println!("Support Card {}", combined_support);
         
         let jade_set = if player_raid_data.raid_set.jade_anniversary { 0.04 } else { 0.0 };
-        let raid_all_mult = 1.0 + jade_set + player_raid_data.title + combined_support.all_mult_bonus() as f32;
-        let global_part_mult =  1.0  + combined_support.part_mult_bonus(attack_part) as f32;
-        let global_state_mult = 1.0  + combined_support.state_mult_bonus(current_state) as f32;
+        let raid_all_mult = 1.0 + jade_set + player_raid_data.title ;
+
 
         // println!("Part mult {}",part_mult);
-        let total_multiplier = raid_all_mult *global_part_mult * global_state_mult * tts_boss_mult * tts_part_mult * tts_state_mult;
+        let tap_total_multiplier = raid_all_mult * tts_boss_mult * tts_part_mult * tts_state_mult* (1.0 + tap_support_bonus as f32);
         
-        println!(" Mult {}",  total_multiplier);
+        // println!(" Mult {}",  tap_total_multiplier);
             
 
         // card proc
@@ -224,12 +224,6 @@ impl SimService {
 
             let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
             // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
-            let type_mult = match card.cardtype {
-                CardType::Burst => 1.0 + combined_support.burst_damage_add,
-                CardType::Affliction => 1.0 + combined_support.affliction_damage_add,
-                _ => 1.0,
-            };
-
 
             let chance_mult = match card.cardtype {
                 CardType::Burst => 1.0 + combined_support.burst_chance_mult,
@@ -238,18 +232,20 @@ impl SimService {
             };
             let proc_chance = card.get_proc_chance(boss)*chance_mult;
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
+            let card_support_bonus = combined_support.total_damage_bonus(attack_part, current_state, Some(card.cardtype));
+            let proc_damage_mult = raid_all_mult * tts_boss_mult * tts_part_mult * tts_state_mult* (1.0 + card_support_bonus) as f32;
 
-
+            
             if roll <= proc_chance {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
-                card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64) * type_mult, 0, *total_burst_proc);
+                card.on_proc(boss, attack_part, card_base_damage*proc_damage_mult as f64, 0, *total_burst_proc);
             }
         }
 
         // tap damage on boss
-        let tap_damage = (true_base_tap * total_multiplier).round() as u64;
+        let tap_damage = (true_base_tap * tap_total_multiplier).round() as u64;
         boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
     }
 }
