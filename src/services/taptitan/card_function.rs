@@ -17,7 +17,7 @@ pub fn on_proc(
     damage: f64,
     round_index: u32,
     burst_trigger_count: u32,
-) -> f64 {
+) {
     debug_assert_eq!(card.cardtype, CardType::Burst);
     burst::on_proc(
         card,

@@ -123,7 +123,8 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                     card_id: parsed_enum_id, // <-- Updated field assignment matching your rename
                     cardtype: parsed_enum_id.card_type(),
                     level: raw_card.lv as u16, // cast u32 raw level safely if u16 target
-                    tap_count : 0//
+                    tap_count : 0,
+                    chained_parts : Default::default()
                 });
             }
             Err(_) => {

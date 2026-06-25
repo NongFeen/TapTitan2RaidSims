@@ -16,6 +16,7 @@ pub enum AfflictionKind {
     Amplify,
     SandsOfTime,
     CosmicBarb,
+    GuardBreak
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

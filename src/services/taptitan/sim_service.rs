@@ -110,23 +110,40 @@ impl SimService {
             select_deck[2].card_id.display_name()
         );
         let mut total_sim_damage: u64 = 0;
-        let round = 2;
-        let tap_count = 600;
+        
+        let round = 1;
+        let tap_count = 7 ;
+        //for debug attack multiple part
+        let attack_sequence = [
+            BossPartName::Head,
+            BossPartName::Torso,
+            BossPartName::LeftShoulder,
+            BossPartName::LeftHand,
+            BossPartName::LeftLeg,
+            BossPartName::RightShoulder,
+            BossPartName::RightHand,
+            BossPartName::RightLeg,
+        ];
+        //
+
+
         for _ in 1..=round{
             let mut boss = sim_stats.boss_stat.clone();
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
             let mut deck = select_deck.clone();
-            for _ in 1..=tap_count {
+            for i in 0..tap_count {
+                let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
                 Self::tap_boss(
                     &mut boss,
-                    BossPartName::Torso,
+                    current_target, // 👈 Pass the shifting target down
                     &mut deck,
                     &sim_stats.player_stat,
                     &mut total_burst_proc
                 );
                 boss.update();
             }
+            
             // println!("Boss Head hp {}",boss.torso.current_health);
             println!("{}", boss.getDamageResult());
             total_sim_damage += boss.get_total_damage()
@@ -184,7 +201,6 @@ impl SimService {
         // println!("true_base_tap {}, Mult {}" , true_base_tap, total_multiplier);
 
         let tap_damage = (true_base_tap * total_multiplier).round() as u64;
-        boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
 
         // card proc
         for card in deck.iter_mut() {
@@ -203,14 +219,18 @@ impl SimService {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
-                let proc_damage = card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, *total_burst_proc);
-                boss.on_hit_with_source(
-                    attack_part,
-                    proc_damage.max(0.0).round() as u64,
-                    DamageSource::Card(card.card_id),
-                );
+                card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, *total_burst_proc);
+                // let proc_damage = card.on_proc(boss, attack_part, card_base_damage*(total_multiplier as f64), 0, *total_burst_proc);
+                // boss.on_hit_with_source(
+                //     attack_part,
+                //     proc_damage.max(0.0).round() as u64,
+                //     DamageSource::Card(card.card_id),
+                // );
             }
         }
+
+        // tap damage on boss
+        boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
     }
 }
 

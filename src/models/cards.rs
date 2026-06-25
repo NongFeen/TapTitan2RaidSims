@@ -66,7 +66,9 @@ pub struct Card {
     pub cardtype: CardType,
     pub level: u16,
     #[serde(default)]
-    pub tap_count : u16
+    pub tap_count : u16,
+    #[serde(default)]
+    pub chained_parts: Vec<BossPartName>,
 }
 
 impl CardName {
@@ -209,7 +211,7 @@ impl Card {
         damage: f64,
         round_index: u32,
         burst_trigger_count: u32,
-    ) -> f64 {
+    ) {
         crate::services::taptitan::card_function::on_proc(
             self,
             boss,

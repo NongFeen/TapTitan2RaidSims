@@ -33,7 +33,9 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
         CardName::PsychicShackles => psychic_shackles::get_proc_chance(card, boss),
         CardName::FlakShot => flak_shot::get_proc_chance(card, boss),
         CardName::CosmicHaymaker => cosmic_haymaker::get_proc_chance(card, boss),
-        CardName::MirrorForce => 1.0,
+        CardName::MirrorForce => mirror_force::get_proc_chance(card, boss),
+        CardName::GuardBreak => guard_break::get_proc_chance(card, boss),
+        CardName::ChainOfVengeance => chain_of_vengeance::get_proc_chance(card, boss),
         _ => 0.00,
     }
 }
@@ -45,7 +47,7 @@ pub fn on_proc(
     damage: f64,
     round_index: u32,
     burst_trigger_count: u32,
-) -> f64 {
+){
     match card.card_id {
         CardName::ClanshipBarrage => {
             clanship_barrage::on_proc(card, boss, target_part, damage, burst_trigger_count)
@@ -63,6 +65,6 @@ pub fn on_proc(
         CardName::MirrorForce => mirror_force::on_proc(card, boss, target_part, damage, round_index),
         CardName::CelestialStatic => celestial_static::on_proc(card, boss, target_part, damage),
         CardName::GuardBreak => guard_break::on_proc(card, boss, target_part, damage),
-        _ => default_damage(card, boss, target_part, damage),
+        _ => {}
     }
 }

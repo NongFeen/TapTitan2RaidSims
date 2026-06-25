@@ -8,6 +8,5 @@ pub fn on_proc(
     _boss: &mut Boss,
     _target_part: BossPartName,
     damage: f64,
-) -> f64 {
-    damage
+) {
 }
