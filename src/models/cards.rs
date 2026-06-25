@@ -65,6 +65,8 @@ pub struct Card {
     pub card_id: CardName,
     pub cardtype: CardType,
     pub level: u16,
+    #[serde(default)]
+    pub tap_count : u16
 }
 
 impl CardName {
@@ -201,7 +203,7 @@ impl Card {
     }
 
     pub fn on_proc(
-        &self,
+        &mut self,
         boss: &mut Boss,
         target_part: BossPartName,
         damage: f64,

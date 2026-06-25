@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, default, str::FromStr};
 use crate::models::{player_data::PlayerData, player_raid_data::{
         PlayerRaidData, RaidSet, TitanSoulResearch, RaidCardResearch, GemstoneResearch
     },
@@ -123,6 +123,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                     card_id: parsed_enum_id, // <-- Updated field assignment matching your rename
                     cardtype: parsed_enum_id.card_type(),
                     level: raw_card.lv as u16, // cast u32 raw level safely if u16 target
+                    tap_count : 0//
                 });
             }
             Err(_) => {

@@ -29,17 +29,17 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
         // CardName::RazorWind => razor_wind::get_proc_chance(card, boss),
         CardName::WhipOfLightning => whip_of_lightning::get_proc_chance(card, boss),
         CardName::ClanshipBarrage => clanship_barrage::get_proc_chance(card, boss),
-        CardName::CosmicHaymaker => cosmic_haymaker::get_proc_chance(card, boss),
         CardName::PurifyingBlast => purifying_blast::get_proc_chance(card, boss),
         CardName::PsychicShackles => psychic_shackles::get_proc_chance(card, boss),
-        CardName::FlakShot => 1.0,
+        CardName::FlakShot => flak_shot::get_proc_chance(card, boss),
+        CardName::CosmicHaymaker => cosmic_haymaker::get_proc_chance(card, boss),
         CardName::MirrorForce => 1.0,
         _ => 0.00,
     }
 }
 
 pub fn on_proc(
-    card: &Card,
+    card: &mut Card,
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,

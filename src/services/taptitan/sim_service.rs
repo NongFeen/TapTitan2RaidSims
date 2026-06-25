@@ -85,7 +85,7 @@ impl SimService {
         let usable_cards = &sim_stats.usable_card;
 
         //current deck
-        let deck: Vec<Card> = usable_cards
+        let select_deck: Vec<Card> = usable_cards
             .iter()
             .filter_map(|card_name| {
                 player_cards
@@ -95,35 +95,37 @@ impl SimService {
             })
             .collect();
 
-        if deck.len() != 3 {
+        if select_deck.len() != 3 {
             println!(
-                "Deck simulation requires exactly 3 cards, but received {}.",
-                deck.len()
+                "Selected Deck simulation requires exactly 3 cards, but received {}.",
+                select_deck.len()
             );
             return;
         }
 
         println!(
             "Deck ready: [{}, {}, {}]",
-            deck[0].card_id.display_name(),
-            deck[1].card_id.display_name(),
-            deck[2].card_id.display_name()
+            select_deck[0].card_id.display_name(),
+            select_deck[1].card_id.display_name(),
+            select_deck[2].card_id.display_name()
         );
         let mut total_sim_damage: u64 = 0;
-        let round = 1;
+        let round = 2;
+        let tap_count = 600;
         for _ in 1..=round{
             let mut boss = sim_stats.boss_stat.clone();
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
-
-            for _ in 1..=4 {
+            let mut deck = select_deck.clone();
+            for _ in 1..=tap_count {
                 Self::tap_boss(
                     &mut boss,
                     BossPartName::Torso,
-                    &deck,
+                    &mut deck,
                     &sim_stats.player_stat,
                     &mut total_burst_proc
                 );
+                boss.update();
             }
             // println!("Boss Head hp {}",boss.torso.current_health);
             println!("{}", boss.getDamageResult());
@@ -136,7 +138,7 @@ impl SimService {
     fn tap_boss(
     boss: &mut Boss,
     attack_part: BossPartName,
-    deck: &[Card],
+    deck: &mut [Card],
     player_raid_data: &PlayerRaidData,
     total_burst_proc: &mut u32,
     ) 
@@ -185,7 +187,7 @@ impl SimService {
         boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
 
         // card proc
-        for card in deck.iter() {
+        for card in deck.iter_mut() {
             if !matches!(card.cardtype, CardType::Burst | CardType::Affliction) {
                 continue;
             }

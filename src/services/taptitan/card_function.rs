@@ -11,7 +11,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
 }
 
 pub fn on_proc(
-    card: &Card,
+    card: &mut Card,
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,

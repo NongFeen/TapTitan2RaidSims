@@ -222,7 +222,7 @@ impl Boss {
     }
 
     pub fn update(&mut self) {
-        println!("--- Running Boss Update Tick ---");
+        // println!("--- Running Boss Update Tick ---");
         for part in self.parts_mut() {
             part.update();
         }

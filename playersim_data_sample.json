@@ -1,7 +1,7 @@
 {
   "player_raid_data": {
-    "player_raid_level": 1474,
-    "player_raid_base_damage": 1574,
+    "player_raid_level": 1482,
+    "player_raid_base_damage": 1582,
     "raid_set": {
       "jade_anniversary": true,
       "jukk_juggernaut": true,
@@ -118,7 +118,7 @@
       {
         "card_id": "SkullBash",
         "cardtype": "Burst",
-        "level": 52
+        "level": 53
       },
       {
         "card_id": "RazorWind",
@@ -128,7 +128,7 @@
       {
         "card_id": "WhipOfLightning",
         "cardtype": "Burst",
-        "level": 51
+        "level": 52
       },
       {
         "card_id": "BurstCount",
@@ -153,7 +153,7 @@
       {
         "card_id": "Haymaker",
         "cardtype": "Burst",
-        "level": 62
+        "level": 63
       },
       {
         "card_id": "ChainLightning",
@@ -178,12 +178,12 @@
       {
         "card_id": "BurningAttack",
         "cardtype": "Affliction",
-        "level": 45
+        "level": 46
       },
       {
         "card_id": "PoisonAttack",
         "cardtype": "Affliction",
-        "level": 44
+        "level": 45
       },
       {
         "card_id": "DecayingAttack",
@@ -198,12 +198,12 @@
       {
         "card_id": "Shadow",
         "cardtype": "Affliction",
-        "level": 44
+        "level": 45
       },
       {
         "card_id": "PlagueAttack",
         "cardtype": "Affliction",
-        "level": 62
+        "level": 63
       },
       {
         "card_id": "Disease",
@@ -218,7 +218,7 @@
       {
         "card_id": "RuinousRust",
         "cardtype": "Affliction",
-        "level": 63
+        "level": 64
       },
       {
         "card_id": "PowerBubble",
@@ -278,7 +278,7 @@
       {
         "card_id": "SuperheatMetal",
         "cardtype": "Support",
-        "level": 53
+        "level": 54
       },
       {
         "card_id": "BurstBoost",
@@ -298,12 +298,12 @@
       {
         "card_id": "TeamTactics",
         "cardtype": "Support",
-        "level": 45
+        "level": 46
       },
       {
         "card_id": "SpinalTap",
         "cardtype": "Support",
-        "level": 38
+        "level": 39
       },
       {
         "card_id": "AstralEcho",
@@ -313,43 +313,43 @@
       {
         "card_id": "TriangleSupport",
         "cardtype": "Support",
-        "level": 85
+        "level": 88
       }
     ],
-    "title": 0
+    "title": 0.01
   },
   "boss_data": {
     "boss_name": "Lojak",
     "head": {
       "part_name": "Head",
-      "part_state": "Armor",
-      "max_armor": 5000000,
-      "max_health": 10000000,
-      "current_armor": 4500000,
-      "current_health": 10000000
+      "part_state": "Body",
+      "max_armor": 50000000,
+      "max_health": 100000000,
+      "current_armor": 0,
+      "current_health": 100000000
     },
     "torso": {
       "part_name": "Torso",
-      "part_state": "Armor",
+      "part_state": "Cursed",
       "max_armor": 6000000,
-      "max_health": 12000000,
-      "current_armor": 6000000,
-      "current_health": 12000000
+      "max_health": 120000000,
+      "current_armor": 120000000,
+      "current_health": 120000000
     },
     "left_shoulder": {
       "part_name": "LeftShoulder",
-      "part_state": "Armor",
-      "max_armor": 3000000,
-      "max_health": 6000000,
-      "current_armor": 1200000,
-      "current_health": 6000000
-    },
-    "right_shoulder": {
-      "part_name": "RightShoulder",
       "part_state": "Body",
       "max_armor": 3000000,
       "max_health": 6000000,
       "current_armor": 0,
+      "current_health": 6000000
+    },
+    "right_shoulder": {
+      "part_name": "RightShoulder",
+      "part_state": "Armor",
+      "max_armor": 3000000,
+      "max_health": 6000000,
+      "current_armor": 5400000,
       "current_health": 5400000
     },
     "left_hand": {
@@ -385,49 +385,15 @@
       "current_health": 7000000
     }
   },
-  "attackable_part": ["Head", "LeftShoulder", "RightShoulder"],
-  "usable_card": [
-    "MoonBeam",
-    "Fragmentize",
-    "SkullBash",
-    "RazorWind",
-    "WhipOfLightning",
-    "BurstCount",
-    "Purify",
-    "LimbBurst",
-    "FlakShot",
-    "Haymaker",
-    "ChainLightning",
-    "MirrorForce",
-    "CelestialStatic",
-    "Weaken",
-    "BurningAttack",
-    "PoisonAttack",
-    "DecayingAttack",
-    "Fuse",
-    "Shadow",
-    "PlagueAttack",
-    "Disease",
-    "Swarm",
-    "RuinousRust",
-    "PowerBubble",
-    "RuneAttack",
-    "MagicPotion",
-    "SandsOfTime",
-    "CosmicBarb",
-    "ExecutionersAxe",
-    "CrushingVoid",
-    "MentalFocus",
-    "ImpactAttack",
-    "InnerTruth",
-    "FinisherAttack",
-    "SuperheatMetal",
-    "BurstBoost",
-    "LimbSupport",
-    "TotemFairySkill",
-    "TeamTactics",
-    "SpinalTap",
-    "AstralEcho",
-    "TriangleSupport"
-  ]
+  "attackable_part": [
+    "Head",
+    "Torso",
+    "LeftShoulder",
+    "RightShoulder",
+    "LeftHand",
+    "RightHand",
+    "LeftLeg",
+    "RightLeg"
+  ],
+  "usable_card": ["Haymaker", "Fragmentize", "RazorWind"]
 }

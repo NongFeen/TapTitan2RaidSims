@@ -1,6 +1,6 @@
 {
-  "player_raid_level": 1474,
-  "player_raid_base_damage": 1574,
+  "player_raid_level": 1482,
+  "player_raid_base_damage": 1582,
   "raid_set": {
     "jade_anniversary": true,
     "jukk_juggernaut": true,
@@ -117,7 +117,7 @@
     {
       "card_id": "SkullBash",
       "cardtype": "Burst",
-      "level": 52
+      "level": 53
     },
     {
       "card_id": "RazorWind",
@@ -127,7 +127,7 @@
     {
       "card_id": "WhipOfLightning",
       "cardtype": "Burst",
-      "level": 51
+      "level": 52
     },
     {
       "card_id": "BurstCount",
@@ -152,7 +152,7 @@
     {
       "card_id": "Haymaker",
       "cardtype": "Burst",
-      "level": 62
+      "level": 63
     },
     {
       "card_id": "ChainLightning",
@@ -177,12 +177,12 @@
     {
       "card_id": "BurningAttack",
       "cardtype": "Affliction",
-      "level": 45
+      "level": 46
     },
     {
       "card_id": "PoisonAttack",
       "cardtype": "Affliction",
-      "level": 44
+      "level": 45
     },
     {
       "card_id": "DecayingAttack",
@@ -197,12 +197,12 @@
     {
       "card_id": "Shadow",
       "cardtype": "Affliction",
-      "level": 44
+      "level": 45
     },
     {
       "card_id": "PlagueAttack",
       "cardtype": "Affliction",
-      "level": 62
+      "level": 63
     },
     {
       "card_id": "Disease",
@@ -217,7 +217,7 @@
     {
       "card_id": "RuinousRust",
       "cardtype": "Affliction",
-      "level": 63
+      "level": 64
     },
     {
       "card_id": "PowerBubble",
@@ -277,7 +277,7 @@
     {
       "card_id": "SuperheatMetal",
       "cardtype": "Support",
-      "level": 53
+      "level": 54
     },
     {
       "card_id": "BurstBoost",
@@ -297,12 +297,12 @@
     {
       "card_id": "TeamTactics",
       "cardtype": "Support",
-      "level": 45
+      "level": 46
     },
     {
       "card_id": "SpinalTap",
       "cardtype": "Support",
-      "level": 38
+      "level": 39
     },
     {
       "card_id": "AstralEcho",
@@ -312,8 +312,8 @@
     {
       "card_id": "TriangleSupport",
       "cardtype": "Support",
-      "level": 85
+      "level": 88
     }
   ],
-  "title": 0
+  "title": 0.01
 }
