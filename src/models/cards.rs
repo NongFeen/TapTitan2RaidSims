@@ -69,6 +69,8 @@ pub struct Card {
     pub tap_count : u16,
     #[serde(default)]
     pub chained_parts: Vec<BossPartName>,
+    #[serde(default)]
+    pub celestial_stacks: usize,
 }
 
 impl CardName {

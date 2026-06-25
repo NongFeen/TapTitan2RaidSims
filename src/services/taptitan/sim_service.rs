@@ -112,16 +112,23 @@ impl SimService {
         let mut total_sim_damage: u64 = 0;
         
         let round = 1;
-        let tap_count = 7 ;
+        let tap_count = 10 ;
         //for debug attack multiple part
         let attack_sequence = [
-            BossPartName::Head,
+            // BossPartName::Torso,
+            // BossPartName::LeftShoulder,
+            // BossPartName::LeftHand,
+            // BossPartName::LeftLeg,
+            // BossPartName::RightShoulder,
+            // BossPartName::RightHand,
             BossPartName::Torso,
-            BossPartName::LeftShoulder,
-            BossPartName::LeftHand,
-            BossPartName::LeftLeg,
-            BossPartName::RightShoulder,
-            BossPartName::RightHand,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
+            BossPartName::RightLeg,
             BossPartName::RightLeg,
         ];
         //
@@ -152,6 +159,7 @@ impl SimService {
         println!("Average damage : {}", format_compact(avg));
 
     }
+    
     fn tap_boss(
     boss: &mut Boss,
     attack_part: BossPartName,
