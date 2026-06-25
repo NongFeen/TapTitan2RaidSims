@@ -35,6 +35,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
         CardName::MoonBeam => moon_beam::get_proc_chance(card, boss),
         CardName::PsychicShackles => psychic_shackles::get_proc_chance(card, boss),
         CardName::PurifyingBlast => purifying_blast::get_proc_chance(card, boss),
+        CardName::RazorWind => 1.0,
         // CardName::RazorWind => razor_wind::get_proc_chance(card, boss),
         CardName::SkullBash => skull_bash::get_proc_chance(card, boss),
         CardName::WhipOfLightning => whip_of_lightning::get_proc_chance(card, boss),
@@ -65,10 +66,7 @@ pub fn on_proc(
         CardName::CosmicHaymaker => cosmic_haymaker::on_proc(card, boss, target_part, damage),
         CardName::FlakShot => flak_shot::on_proc(card, boss, target_part, damage),
         CardName::MirrorForce => mirror_force::on_proc(card, boss, target_part, damage, round_index),
-
-        
         CardName::CelestialStatic => celestial_static::on_proc(card, boss, target_part, damage),
-
         CardName::GuardBreak => guard_break::on_proc(card, boss, target_part, damage),
         _ => {}
     }

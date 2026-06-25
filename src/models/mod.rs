@@ -8,3 +8,4 @@ pub mod damage_source;
 pub mod boss;
 pub mod taptitan_game_dto;
 pub mod sim_payload;
+pub mod support_modifier;

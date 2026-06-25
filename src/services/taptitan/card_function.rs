@@ -1,9 +1,10 @@
 use crate::models::{
-    boss::{Boss, BossPartName},
-    cards::{Card, CardType},
+    boss::{Boss, BossPartName}, cards::{Card, CardType}, support_modifier::SupportModifiers,
 };
 
 mod burst;
+mod support;
+mod affliction;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     debug_assert_eq!(card.cardtype, CardType::Burst);
@@ -27,4 +28,9 @@ pub fn on_proc(
         round_index,
         burst_trigger_count,
     )
+}
+
+pub fn get_support_modifiers(card: &mut Card,boss: &Boss) -> SupportModifiers{
+    debug_assert_eq!(card.cardtype, CardType::Support);
+    support::get_support_modifiers(card,boss)
 }

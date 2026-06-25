@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
-use crate::models::boss::{Boss, BossPartName};
+use crate::models::{boss::{Boss, BossPartName}, support_modifier::SupportModifiers};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
 pub enum CardName {
@@ -71,6 +71,33 @@ pub struct Card {
     pub chained_parts: Vec<BossPartName>,
     #[serde(default)]
     pub celestial_stacks: usize,
+}
+
+impl Card {
+    pub fn get_proc_chance(&self, boss: &Boss) -> f64 {
+        crate::services::taptitan::card_function::get_proc_chance(self, boss)
+    }
+
+    pub fn on_proc(
+        &mut self,
+        boss: &mut Boss,
+        target_part: BossPartName,
+        damage: f64,
+        round_index: u32,
+        burst_trigger_count: u32,
+    ) {
+        crate::services::taptitan::card_function::on_proc(
+            self,
+            boss,
+            target_part,
+            damage,
+            round_index,
+            burst_trigger_count,
+        )
+    }
+    pub fn support_modifiers(&mut self,boss :&Boss) -> SupportModifiers {
+        crate::services::taptitan::card_function::get_support_modifiers(self,boss)
+    }
 }
 
 impl CardName {
@@ -201,26 +228,4 @@ impl CardName {
     }
 }
 
-impl Card {
-    pub fn get_proc_chance(&self, boss: &Boss) -> f64 {
-        crate::services::taptitan::card_function::get_proc_chance(self, boss)
-    }
 
-    pub fn on_proc(
-        &mut self,
-        boss: &mut Boss,
-        target_part: BossPartName,
-        damage: f64,
-        round_index: u32,
-        burst_trigger_count: u32,
-    ) {
-        crate::services::taptitan::card_function::on_proc(
-            self,
-            boss,
-            target_part,
-            damage,
-            round_index,
-            burst_trigger_count,
-        )
-    }
-}

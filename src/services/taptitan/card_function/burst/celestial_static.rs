@@ -3,7 +3,6 @@ use crate::models::{
 };
 pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
     1.0
-    //0.12
 }
 const MAX_STACK:usize = 100;
 const STACK_USE:usize = 8;
