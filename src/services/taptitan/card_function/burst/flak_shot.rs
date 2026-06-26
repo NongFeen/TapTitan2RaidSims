@@ -17,7 +17,7 @@ pub fn on_proc(
 
     boss.on_hit_with_source(
         target_part,
-        (total_flak_damage).max(0.0).round() as u64,
+        (total_flak_damage).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
 
@@ -26,7 +26,7 @@ pub fn on_proc(
             // Apply the ricochet damage directly to the random Body part
             boss.on_hit_with_source(
                 random_body_part.part_name,
-                total_flak_damage.round() as u64,
+                total_flak_damage as u64,
                 DamageSource::Card(card.card_id),
             );
         }

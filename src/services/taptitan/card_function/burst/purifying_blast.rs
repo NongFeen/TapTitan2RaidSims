@@ -23,7 +23,7 @@ pub fn on_proc(
 
     boss.on_hit_with_source(
         target_part,
-        (damage *purifying_mult * affliction_count).max(0.0).round() as u64,
+        (damage *purifying_mult * affliction_count).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
 }

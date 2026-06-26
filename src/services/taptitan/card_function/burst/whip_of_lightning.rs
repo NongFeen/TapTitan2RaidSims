@@ -21,7 +21,7 @@ pub fn on_proc(
     let whip_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
     boss.on_hit_with_source(
         target_part,
-        (damage * whip_mult).max(0.0).round() as u64,
+        (damage * whip_mult).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
 }

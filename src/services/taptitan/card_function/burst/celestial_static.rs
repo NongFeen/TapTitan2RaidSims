@@ -29,7 +29,7 @@ pub fn on_proc(
 
         boss.on_hit_with_source(
             target_part,
-            final_damage.max(0.0).round() as u64,
+            final_damage.max(0.0)as u64,
             DamageSource::Card(card.card_id),
         );
     }

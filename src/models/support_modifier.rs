@@ -102,7 +102,7 @@ impl fmt::Display for SupportModifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SupportModifiers {{ head: +{:.0}%, torso: +{:.0}%, limb: +{:.0}%, body: +{:.0}%, armor: +{:.0}%, burst_dmg: +{:.0}%, affliction_dmg: +{:.0}%, all: +{:.0}%, burst_chance: x{:.2}, affliction_chance: x{:.2} }}",
+            "SupportModifiers {{ head: +{}%, torso: +{}%, limb: +{}%, body: +{}%, armor: +{}%, burst_dmg: +{}%, affliction_dmg: +{}%, all: +{}%, burst_chance: x{:.2}, affliction_chance: x{:.2} }}",
             self.head_damage_add * 100.0,
             self.torso_damage_add * 100.0,
             self.limb_damage_add * 100.0,

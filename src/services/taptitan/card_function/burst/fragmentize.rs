@@ -24,7 +24,7 @@ pub fn on_proc(
     // println!("{} {} {} {}",frag_mult,curse_mult,armor_mult,total_card_mult);
     boss.on_hit_with_source(
         target_part,
-        (damage * total_card_mult).max(0.0).round() as u64,
+        (damage * total_card_mult).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
 }

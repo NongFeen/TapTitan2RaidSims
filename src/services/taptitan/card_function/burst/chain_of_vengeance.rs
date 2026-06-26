@@ -44,7 +44,7 @@ pub fn on_proc(
     for part in &card.chained_parts {
         boss.on_hit_with_source(
             *part,
-            split_damage.max(0.0).round() as u64,
+            split_damage.max(0.0) as u64,
             DamageSource::Card(card.card_id),
         );
     }

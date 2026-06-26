@@ -17,7 +17,7 @@ pub fn on_proc(
     
     boss.on_hit_with_source(
         target_part,
-        (damage * barrage_mult * (1.0 + (0.04 * burst_trigger_count as f64))).max(0.0).round() as u64,
+        (damage * barrage_mult * (1.0 + (0.04 * burst_trigger_count as f64))).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
 }

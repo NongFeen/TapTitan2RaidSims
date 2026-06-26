@@ -35,7 +35,7 @@ pub fn on_proc(
     }
 }
 
-pub fn get_support_modifiers(card: &mut Card,boss: &Boss) -> SupportModifiers{
+pub fn get_support_modifiers(card: &mut Card,boss: &Boss, deck: Vec<Card>) -> SupportModifiers{
     match card.card_id{
         CardName::AncestralFavor => ancestral_favor::get_modifiers(card, boss),
         // CardName::AstralEcho => astral_echo::get_modifiers(card, boss),
@@ -44,7 +44,7 @@ pub fn get_support_modifiers(card: &mut Card,boss: &Boss) -> SupportModifiers{
         CardName::InsanityVoid => insanity_void::get_modifiers(card, boss),
         CardName::InspiringForce => inspiring_force::get_modifiers(card, boss),
         CardName::PrismaticRift => prismatic_rift::get_modifiers(card, boss),
-        CardName::RadiantKaleidoscope => radiant_kaleidoscope::get_modifiers(card, boss),
+        CardName::RadiantKaleidoscope => radiant_kaleidoscope::get_modifiers(card, boss,deck),
         CardName::RancidGas => rancid_gas::get_modifiers(card, boss),
         CardName::SkeletalSmash => skeletal_smash::get_modifiers(card, boss),
         CardName::SoulFire => soul_fire::get_modifiers(card, boss),

@@ -117,8 +117,8 @@ impl SimService {
         //for debug attack multiple part
         let attack_sequence = [
             // BossPartName::Head,
-            BossPartName::Torso,
-            // BossPartName::LeftShoulder,
+            // BossPartName::Torso,
+            BossPartName::LeftShoulder,
             // BossPartName::LeftHand,
             // BossPartName::LeftLeg,
             // BossPartName::RightShoulder,
@@ -197,9 +197,10 @@ impl SimService {
         let tts_state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(current_state);
         
         //support card
+        let deck_snapshot: Vec<Card> = deck.to_vec();
         let support_mods: Vec<SupportModifiers> = deck.iter_mut()
         .filter(|c| c.cardtype == CardType::Support)
-        .map(|c| c.support_modifiers(boss))
+        .map(|c| c.support_modifiers(boss,deck_snapshot.clone()))
         .collect();
         
         let combined_support = SupportModifiers::accumulate(&support_mods);
@@ -245,7 +246,7 @@ impl SimService {
         }
 
         // tap damage on boss
-        let tap_damage = (true_base_tap * tap_total_multiplier).round() as u64;
+        let tap_damage = (true_base_tap * tap_total_multiplier) as u64;
         boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
     }
 }

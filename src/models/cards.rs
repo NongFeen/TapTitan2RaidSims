@@ -95,8 +95,8 @@ impl Card {
             burst_trigger_count,
         )
     }
-    pub fn support_modifiers(&mut self,boss :&Boss) -> SupportModifiers {
-        crate::services::taptitan::card_function::get_support_modifiers(self,boss)
+    pub fn support_modifiers(&mut self,boss :&Boss,deck: Vec<Card>) -> SupportModifiers {
+        crate::services::taptitan::card_function::get_support_modifiers(self,boss,deck)
     }
 }
 

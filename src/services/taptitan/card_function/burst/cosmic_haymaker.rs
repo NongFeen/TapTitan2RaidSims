@@ -19,7 +19,7 @@ pub fn on_proc(
         // card_damage = damage * cosmic_hay_mult;
         boss.on_hit_with_source(
         target_part,
-        (damage*cosmic_hay_mult).max(0.0).round() as u64,
+        (damage*cosmic_hay_mult).max(0.0) as u64,
         DamageSource::Card(card.card_id),
     );
         card.tap_count = 0;

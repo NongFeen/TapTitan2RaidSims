@@ -306,11 +306,11 @@ impl Boss {
     fn format_compact(damage: u64) -> String {
     let damage_f = damage as f64;
     if damage >= 1_000_000_000_000 {
-        format!("{:.3}T", damage_f / 1_000_000_000_000.0)
+        format!("{:.12}T", damage_f / 1_000_000_000_000.0)
     } else if damage >= 1_000_000_000 {
-        format!("{:.3}B", damage_f / 1_000_000_000.0)
+        format!("{:.9}B", damage_f / 1_000_000_000.0)
     } else if damage >= 1_000_000 {
-        format!("{:.3}M", damage_f / 1_000_000.0)
+        format!("{:.6}M", damage_f / 1_000_000.0)
     } else if damage >= 1_000 {
         format!("{:.3}K", damage_f / 1_000.0)
     } else {

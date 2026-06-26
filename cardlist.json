@@ -1,0 +1,50 @@
+{
+  "Burst": [
+    "MoonBeam",
+    "Fragmentize",
+    "SkullBash",
+    "RazorWind",
+    "WhipOfLightning",
+    "BurstCount",
+    "Purify",
+    "LimbBurst",
+    "FlakShot",
+    "Haymaker",
+    "ChainLightning",
+    "MirrorForce",
+    "CelestialStatic",
+    "Weaken"
+  ],
+  "Affliction": [
+    "BurningAttack",
+    "PoisonAttack",
+    "DecayingAttack",
+    "Fuse",
+    "Shadow",
+    "PlagueAttack",
+    "Disease",
+    "Swarm",
+    "RuinousRust",
+    "PowerBubble",
+    "RuneAttack",
+    "MagicPotion",
+    "SandsOfTime",
+    "CosmicBarb"
+  ],
+  "Support": [
+    "ExecutionersAxe",
+    "CrushingVoid",
+    "MentalFocus",
+    "ImpactAttack",
+    "InnerTruth",
+    "FinisherAttack",
+    "SuperheatMetal",
+    "BurstBoost",
+    "LimbSupport",
+    "TotemFairySkill",
+    "TeamTactics",
+    "SpinalTap",
+    "AstralEcho",
+    "TriangleSupport"
+  ]
+}
