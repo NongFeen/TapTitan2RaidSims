@@ -169,7 +169,12 @@ fn parse_row(headers: &StringRecord, record: &StringRecord) -> CardSkillRow {
     }
 }
 
-fn parse_series(headers: &StringRecord, record: &StringRecord, prefix: &str, count: usize) -> Vec<f64> {
+fn parse_series(
+    headers: &StringRecord,
+    record: &StringRecord,
+    prefix: &str,
+    count: usize,
+) -> Vec<f64> {
     (1..=count)
         .map(|index| {
             let key = format!("{prefix}{index}");

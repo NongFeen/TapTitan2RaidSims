@@ -1,5 +1,7 @@
 use crate::models::{
-    boss::{Boss, BossPartName}, cards::Card, damage_source::DamageSource,
+    boss::{Boss, BossPartName},
+    cards::Card,
+    damage_source::DamageSource,
 };
 pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
     0.12
@@ -10,11 +12,11 @@ pub fn on_proc(
     target_part: BossPartName,
     damage: f64,
     round_index: u32,
-){
-    let final_damage = if round_index == 2 { 
-        damage * 1.35 
-    } else { 
-        damage 
+) {
+    let final_damage = if round_index == 2 {
+        damage * 1.35
+    } else {
+        damage
     };
     boss.on_hit_with_source(
         target_part,

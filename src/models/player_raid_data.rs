@@ -1,7 +1,10 @@
-use crate::models::{boss::{BossName, BossPartName, PartState}, cards::{Card, CardType}};
+use crate::models::{
+    boss::{BossName, BossPartName, PartState},
+    cards::{Card, CardType},
+};
 use serde::{Deserialize, Serialize};
-#[derive(Debug,Clone, Deserialize, Serialize)]
-pub struct PlayerRaidData{
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PlayerRaidData {
     pub player_raid_level: u16,
     pub player_raid_base_damage: u16,
 
@@ -11,27 +14,27 @@ pub struct PlayerRaidData{
     pub gem_stone_research: GemstoneResearch,
 
     pub card_list: Vec<Card>,
-    pub title: f32
+    pub title: f32,
 }
 
-#[derive(Debug,Clone, Deserialize, Serialize)]
-pub struct RaidSet{
-    pub jade_anniversary: bool,      // +4% All Raid Damage
-    pub jukk_juggernaut: bool,       // +100 Raid Base Damage
-    pub airforce_ace: bool,          // +120 Raid Burst Base Damage
-    pub dancer_venom: bool,          // +120 Raid Affliction Base Damage
-    pub rose_anniversary: bool,      // +100 Raid Base Damage
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RaidSet {
+    pub jade_anniversary: bool, // +4% All Raid Damage
+    pub jukk_juggernaut: bool,  // +100 Raid Base Damage
+    pub airforce_ace: bool,     // +120 Raid Burst Base Damage
+    pub dancer_venom: bool,     // +120 Raid Affliction Base Damage
+    pub rose_anniversary: bool, // +100 Raid Base Damage
 }
 
-#[derive(Debug,Clone, Deserialize, Serialize)]
-pub struct TitanSoulResearch{
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TitanSoulResearch {
     //basic
     pub head_mult: f32,
     pub torso_mult: f32,
     pub limbs_mult: f32,
     pub armor_mult: f32,
     pub body_mult: f32,
-    
+
     //boss
     pub lojak_mult: f32,
     pub takedar_mult: f32,
@@ -70,17 +73,17 @@ impl TitanSoulResearch {
             0.0
         }
     }
-    pub fn get_state_mult(&self, state: PartState) -> f32{
-        if state == PartState::Body{
+    pub fn get_state_mult(&self, state: PartState) -> f32 {
+        if state == PartState::Body {
             self.body_mult
-        }else{
+        } else {
             self.armor_mult
         }
     }
 }
 
-#[derive(Debug,Clone, Deserialize, Serialize)]
-pub struct RaidCardResearch{
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RaidCardResearch {
     pub base_damage: u16,
     //boss part
     pub head_damage: u16,
@@ -129,7 +132,7 @@ pub struct RaidCardResearch{
     pub affliction_mohaca_damage: u16,
     pub affliction_terro_damage: u16,
     pub affliction_klonk_damage: u16,
-    pub affliction_priker_damage: u16, 
+    pub affliction_priker_damage: u16,
 }
 impl RaidCardResearch {
     pub fn get_part_state_add(&self, part: BossPartName, state: PartState) -> f32 {
@@ -197,8 +200,8 @@ impl RaidCardResearch {
     }
 }
 
-#[derive(Debug,Clone, Deserialize, Serialize)]
-pub struct GemstoneResearch{
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GemstoneResearch {
     pub base_damage: u16,
 
     //boss part
@@ -248,7 +251,7 @@ pub struct GemstoneResearch{
     pub affliction_mohaca_damage: u16,
     pub affliction_terro_damage: u16,
     pub affliction_klonk_damage: u16,
-    pub affliction_priker_damage: u16, 
+    pub affliction_priker_damage: u16,
 }
 impl GemstoneResearch {
     pub fn get_part_state_add(&self, part: BossPartName, state: PartState) -> f32 {
@@ -328,7 +331,10 @@ impl PlayerRaidData {
     }
 
     pub fn get_total_card_type_boss_add(&self, boss_name: BossName, card_type: CardType) -> f32 {
-        self.raid_card_research.get_card_type_boss_add(boss_name, card_type)
-            + self.gem_stone_research.get_card_type_boss_add(boss_name, card_type)
+        self.raid_card_research
+            .get_card_type_boss_add(boss_name, card_type)
+            + self
+                .gem_stone_research
+                .get_card_type_boss_add(boss_name, card_type)
     }
 }

@@ -51,7 +51,7 @@ impl AttackPattern {
         }
 
         if let AttackPattern::FocusParts(focus_count) = self {
-            let disease_parts: Vec<(BossPartName, usize, u8)> = candidates
+            let disease_parts: Vec<(BossPartName, usize, f64)> = candidates
                 .iter()
                 .copied()
                 .filter_map(|part| {
@@ -68,8 +68,8 @@ impl AttackPattern {
                             .stacks
                             .iter()
                             .map(|stack| stack.remaining_duration)
-                            .min()
-                            .unwrap_or(0),
+                            .min_by(|left, right| left.total_cmp(right))
+                            .unwrap_or(0.0),
                     ))
                 })
                 .collect();
@@ -92,10 +92,11 @@ impl AttackPattern {
                 }
             }
 
-            if let Some((target, _, _)) = disease_parts
-                .into_iter()
-                .min_by_key(|(_, stack_count, remaining_duration)| (*remaining_duration, *stack_count))
-            {
+            if let Some((target, _, _)) = disease_parts.into_iter().min_by(|left, right| {
+                left.2
+                    .total_cmp(&right.2)
+                    .then_with(|| left.1.cmp(&right.1))
+            }) {
                 return Some(target);
             }
         }
@@ -134,7 +135,7 @@ impl AttackPattern {
         }
 
         if deck.iter().any(|card| card.card_id == CardName::AcidDrench) {
-            let poisoned_parts: Vec<(BossPartName, usize, u8)> = candidates
+            let poisoned_parts: Vec<(BossPartName, usize, f64)> = candidates
                 .iter()
                 .copied()
                 .filter_map(|part| {
@@ -151,17 +152,17 @@ impl AttackPattern {
                             .stacks
                             .iter()
                             .map(|stack| stack.remaining_duration)
-                            .min()
-                            .unwrap_or(0),
+                            .min_by(|left, right| left.total_cmp(right))
+                            .unwrap_or(0.0),
                     ))
                 })
                 .collect();
 
-            let mut focus_parts: Vec<(BossPartName, usize, u8)> = poisoned_parts
+            let mut focus_parts: Vec<(BossPartName, usize, f64)> = poisoned_parts
                 .iter()
                 .copied()
                 .filter(|(_, stack_count, remaining_duration)| {
-                    *stack_count < 15 && *remaining_duration <= 2
+                    *stack_count < 15 && *remaining_duration <= 2.0
                 })
                 .collect();
 
@@ -173,16 +174,20 @@ impl AttackPattern {
                     .collect();
             }
 
-            if let Some((target, _, _)) = focus_parts
-                .into_iter()
-                .min_by_key(|(_, stack_count, remaining_duration)| (*remaining_duration, *stack_count))
-            {
+            if let Some((target, _, _)) = focus_parts.into_iter().min_by(|left, right| {
+                left.2
+                    .total_cmp(&right.2)
+                    .then_with(|| left.1.cmp(&right.1))
+            }) {
                 return Some(target);
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::ThrivingPlague) {
-            let plague_parts: Vec<(BossPartName, usize, u8)> = candidates
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::ThrivingPlague)
+        {
+            let plague_parts: Vec<(BossPartName, usize, f64)> = candidates
                 .iter()
                 .copied()
                 .filter_map(|part| {
@@ -199,8 +204,8 @@ impl AttackPattern {
                             .stacks
                             .iter()
                             .map(|stack| stack.remaining_duration)
-                            .min()
-                            .unwrap_or(0),
+                            .min_by(|left, right| left.total_cmp(right))
+                            .unwrap_or(0.0),
                     ))
                 })
                 .collect();
@@ -220,16 +225,20 @@ impl AttackPattern {
                 return Some(target);
             }
 
-            if let Some((target, _, _)) = plague_parts
-                .into_iter()
-                .min_by_key(|(_, stack_count, remaining_duration)| (*remaining_duration, *stack_count))
-            {
+            if let Some((target, _, _)) = plague_parts.into_iter().min_by(|left, right| {
+                left.2
+                    .total_cmp(&right.2)
+                    .then_with(|| left.1.cmp(&right.1))
+            }) {
                 return Some(target);
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::Radioactivity) {
-            let disease_parts: Vec<(BossPartName, usize, u8)> = candidates
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::Radioactivity)
+        {
+            let disease_parts: Vec<(BossPartName, usize, f64)> = candidates
                 .iter()
                 .copied()
                 .filter_map(|part| {
@@ -246,8 +255,8 @@ impl AttackPattern {
                             .stacks
                             .iter()
                             .map(|stack| stack.remaining_duration)
-                            .min()
-                            .unwrap_or(0),
+                            .min_by(|left, right| left.total_cmp(right))
+                            .unwrap_or(0.0),
                     ))
                 })
                 .collect();
@@ -266,15 +275,19 @@ impl AttackPattern {
                 }
             }
 
-            if let Some((target, _, _)) = disease_parts
-                .into_iter()
-                .min_by_key(|(_, stack_count, remaining_duration)| (*remaining_duration, *stack_count))
-            {
+            if let Some((target, _, _)) = disease_parts.into_iter().min_by(|left, right| {
+                left.2
+                    .total_cmp(&right.2)
+                    .then_with(|| left.1.cmp(&right.1))
+            }) {
                 return Some(target);
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::DecayingStrike) {
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::DecayingStrike)
+        {
             let decay_limit = 5usize;
             let mut eligible_parts: Vec<(BossPartName, u64)> = candidates
                 .iter()
@@ -344,7 +357,10 @@ impl AttackPattern {
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::BlazingInferno) {
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::BlazingInferno)
+        {
             let best_burning_stack_count = candidates
                 .iter()
                 .map(|part| {
@@ -373,7 +389,10 @@ impl AttackPattern {
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::CelestialStatic) {
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::CelestialStatic)
+        {
             let limb_candidates: Vec<BossPartName> = candidates
                 .iter()
                 .copied()
@@ -405,7 +424,9 @@ impl AttackPattern {
             if !head_torso_candidates.is_empty() {
                 return match last_target {
                     Some(last) => {
-                        if let Some(index) = head_torso_candidates.iter().position(|part| *part == last) {
+                        if let Some(index) =
+                            head_torso_candidates.iter().position(|part| *part == last)
+                        {
                             head_torso_candidates
                                 .get((index + 1) % head_torso_candidates.len())
                                 .copied()
@@ -419,7 +440,10 @@ impl AttackPattern {
             }
         }
 
-        if deck.iter().any(|card| card.card_id == CardName::RuinousRain) {
+        if deck
+            .iter()
+            .any(|card| card.card_id == CardName::RuinousRain)
+        {
             let cursed_parts: Vec<BossPartName> = candidates
                 .iter()
                 .copied()
@@ -492,12 +516,8 @@ impl AttackPattern {
                 .map(|part| part.part_name)
                 .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
                 .collect(),
-            AttackPattern::SingleHead => {
-                single_part_candidates(boss, BossPartName::Head)
-            }
-            AttackPattern::SingleTorso => {
-                single_part_candidates(boss, BossPartName::Torso)
-            }
+            AttackPattern::SingleHead => single_part_candidates(boss, BossPartName::Head),
+            AttackPattern::SingleTorso => single_part_candidates(boss, BossPartName::Torso),
             AttackPattern::SingleBody => boss
                 .parts()
                 .iter()
@@ -573,7 +593,9 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
-        if pattern_is_allowed_for_deck(&pattern, deck) && pattern_has_candidates(&pattern, sim_stats) {
+        if pattern_is_allowed_for_deck(&pattern, deck)
+            && pattern_has_candidates(&pattern, sim_stats)
+        {
             patterns.push(pattern);
         }
     }
@@ -608,24 +630,43 @@ fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats) -> bool
 
 fn pattern_is_allowed_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool {
     let has_head_torso_focus = deck.iter().any(|card| {
-        matches!(card.card_id, CardName::CrushingInstinct | CardName::SoulFire)
+        matches!(
+            card.card_id,
+            CardName::CrushingInstinct | CardName::SoulFire
+        )
     });
-    let has_limb_focus = deck.iter().any(|card| card.card_id == CardName::GraspingVines);
-    let has_single_target_focus = deck.iter().any(|card| card.card_id == CardName::TotemOfPower);
-    let has_body_focus = deck.iter().any(|card| card.card_id == CardName::InspiringForce);
-    let has_armor_focus = deck.iter().any(|card| card.card_id == CardName::PrismaticRift);
-    let has_radioactivity = deck.iter().any(|card| card.card_id == CardName::Radioactivity);
-    let has_ruinous_rain = deck.iter().any(|card| card.card_id == CardName::RuinousRain);
-    let has_corrosive_bubbles = deck.iter().any(|card| card.card_id == CardName::CorrosiveBubbles);
-    let has_celestial_static = deck.iter().any(|card| card.card_id == CardName::CelestialStatic);
-    let has_whip_of_lightning = deck.iter().any(|card| card.card_id == CardName::WhipOfLightning);
+    let has_limb_focus = deck
+        .iter()
+        .any(|card| card.card_id == CardName::GraspingVines);
+    let has_single_target_focus = deck
+        .iter()
+        .any(|card| card.card_id == CardName::TotemOfPower);
+    let has_body_focus = deck
+        .iter()
+        .any(|card| card.card_id == CardName::InspiringForce);
+    let has_armor_focus = deck
+        .iter()
+        .any(|card| card.card_id == CardName::PrismaticRift);
+    let has_radioactivity = deck
+        .iter()
+        .any(|card| card.card_id == CardName::Radioactivity);
+    let has_ruinous_rain = deck
+        .iter()
+        .any(|card| card.card_id == CardName::RuinousRain);
+    let has_corrosive_bubbles = deck
+        .iter()
+        .any(|card| card.card_id == CardName::CorrosiveBubbles);
+    let has_celestial_static = deck
+        .iter()
+        .any(|card| card.card_id == CardName::CelestialStatic);
+    let has_whip_of_lightning = deck
+        .iter()
+        .any(|card| card.card_id == CardName::WhipOfLightning);
 
     if has_head_torso_focus {
         return matches!(
             pattern,
-            AttackPattern::SingleHead
-                | AttackPattern::SingleTorso
-                | AttackPattern::CycleHeadTorso
+            AttackPattern::SingleHead | AttackPattern::SingleTorso | AttackPattern::CycleHeadTorso
         );
     }
 

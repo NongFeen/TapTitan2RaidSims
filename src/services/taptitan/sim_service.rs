@@ -1,22 +1,22 @@
+use super::attack_pattern::generate_attack_patterns;
+use crate::models::boss::{Boss, BossPartName, PartState};
+use crate::models::cards::{Card, CardName, CardType};
+use crate::models::damage_source::DamageSource;
+use crate::models::player_raid_data::PlayerRaidData;
+use crate::models::sim_payload::SimPayLoad;
+use crate::models::support_modifier::SupportModifiers;
 use itertools::Itertools;
 use rand::random;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
-use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::damage_source::DamageSource;
-use crate::models::cards::{Card, CardName, CardType};
-use crate::models::player_raid_data::PlayerRaidData;
-use crate::models::sim_payload::SimPayLoad;
-use crate::models::support_modifier::SupportModifiers;
-use super::attack_pattern::generate_attack_patterns;
 // use super::super::sim_payload::SimPayLoad;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SimStats {
-    pub player_stat : PlayerRaidData,
-    pub boss_stat : Boss,
+    pub player_stat: PlayerRaidData,
+    pub boss_stat: Boss,
     pub attackable_part: Vec<BossPartName>,
-    pub usable_card : Vec<CardName>,
+    pub usable_card: Vec<CardName>,
 }
 
 pub struct SimService;
@@ -24,20 +24,20 @@ pub struct SimService;
 impl SimService {
     pub fn run_simulation(payload: SimPayLoad) {
         //set up stats
-        let sim_stats = SimStats{
-            player_stat : payload.player_raid_data,
-            boss_stat : payload.boss_data,
+        let sim_stats = SimStats {
+            player_stat: payload.player_raid_data,
+            boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
-            usable_card : payload.usable_card,
+            usable_card: payload.usable_card,
         };
         let mut index = 0;
         let mut sysdex = 0;
         //debug card
         // let debug_card = CardName::SandsOfTime; // temporary debug filter
-        //generate deck 
+        //generate deck
         let valid_deck = generate_deck(&sim_stats);
         //for each deck
-        for deck in &valid_deck{
+        for deck in &valid_deck {
             //for debug deck
             // if !deck.iter().any(|card| card.card_id == debug_card) {
             //     continue;
@@ -46,7 +46,7 @@ impl SimService {
             let card1 = &deck[0];
             let card2 = &deck[1];
             let card3 = &deck[2];
-            index+=1;
+            index += 1;
             println!(
                 "Deck #{}: [{}, {}, {}]",
                 index, // Add 1 so it starts counting from 1 instead of 0
@@ -60,12 +60,11 @@ impl SimService {
             for pattern in &attack_patterns {
                 // println!("  Pattern: {}", pattern.describe());
                 // sysdex+=1;
-                    //loop 20 try 
-                            //simulate deck to boss
-                    //store total damage of the deck
-                        // calculate average damage of the deck and save
+                //loop 20 try
+                //simulate deck to boss
+                //store total damage of the deck
+                // calculate average damage of the deck and save
             }
-            
         }
         println!(
             "Total synergistic decks created : {} and total pattern {}",
@@ -74,12 +73,12 @@ impl SimService {
             sysdex
         );
     }
-    pub fn run_deck_simulation(payload: SimPayLoad){
-        let sim_stats = SimStats{
-            player_stat : payload.player_raid_data,
-            boss_stat : payload.boss_data,
+    pub fn run_deck_simulation(payload: SimPayLoad) {
+        let sim_stats = SimStats {
+            player_stat: payload.player_raid_data,
+            boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
-            usable_card : payload.usable_card,
+            usable_card: payload.usable_card,
         };
 
         let player_cards = &sim_stats.player_stat.card_list;
@@ -111,14 +110,14 @@ impl SimService {
             select_deck[2].card_id.display_name()
         );
         let mut total_sim_damage: u64 = 0;
-        
+
         let round = 1;
         let tap_count = 1;
         //for debug attack multiple part
         let attack_sequence = [
-            // BossPartName::Head,
+            BossPartName::Head,
             // BossPartName::Torso,
-            BossPartName::LeftShoulder,
+            // BossPartName::LeftShoulder,
             // BossPartName::LeftHand,
             // BossPartName::LeftLeg,
             // BossPartName::RightShoulder,
@@ -127,95 +126,131 @@ impl SimService {
         ];
         //
 
-        for _ in 1..=round{
+        for _ in 1..=round {
             let mut boss = sim_stats.boss_stat.clone();
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
             let mut deck = select_deck.clone();
-            for i in 0..tap_count {
-                let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
-                Self::tap_boss(
-                    &mut boss,
-                    current_target, // 👈 Pass the shifting target down
-                    &mut deck,
-                    &sim_stats.player_stat,
-                    &mut total_burst_proc
-                );
+            for i in 0..600 {
+                if i < tap_count {
+                    let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
+                    Self::tap_boss(
+                        &mut boss,
+                        current_target, // 👈 Pass the shifting target down
+                        &mut deck,
+                        &sim_stats.player_stat,
+                        &mut total_burst_proc,
+                    );
+                }
                 boss.update();
             }
-            
+
             // println!("Boss Head hp {}",boss.torso.current_health);
             println!("{}", boss.getDamageResult());
             total_sim_damage += boss.get_total_damage()
         }
-        let avg = total_sim_damage/round;
+        let avg = total_sim_damage / round;
         println!("Average damage : {}", format_compact(avg));
-
     }
-    
+
     fn tap_boss(
-    boss: &mut Boss,
-    attack_part: BossPartName,
-    deck: &mut [Card],
-    player_raid_data: &PlayerRaidData,
-    total_burst_proc: &mut u32,
-    ) 
-    {
+        boss: &mut Boss,
+        attack_part: BossPartName,
+        deck: &mut [Card],
+        player_raid_data: &PlayerRaidData,
+        total_burst_proc: &mut u32,
+    ) {
         let current_state = boss.get_state_from_part(attack_part);
-        
+
         // flat addition & card research
-        let flat_part_state_add = player_raid_data.get_total_part_state_add(attack_part, current_state);
+        let flat_part_state_add =
+            player_raid_data.get_total_part_state_add(attack_part, current_state);
         let flat_boss_add = player_raid_data.get_total_boss_add(boss.boss_name);
-        
-        let base1_set = if player_raid_data.raid_set.jukk_juggernaut { 100.0 } else { 0.0 };
-        let base2_set = if player_raid_data.raid_set.rose_anniversary { 100.0 } else { 0.0 };
-        
-        let base_add_total = (player_raid_data.raid_card_research.base_damage 
+
+        let base1_set = if player_raid_data.raid_set.jukk_juggernaut {
+            100.0
+        } else {
+            0.0
+        };
+        let base2_set = if player_raid_data.raid_set.rose_anniversary {
+            100.0
+        } else {
+            0.0
+        };
+
+        let base_add_total = (player_raid_data.raid_card_research.base_damage
             + player_raid_data.gem_stone_research.base_damage) as f32;
 
         let true_base_tap = (player_raid_data.player_raid_base_damage as f32)
-        + base_add_total 
-        + flat_part_state_add 
-        + flat_boss_add 
-        + base1_set 
-        + base2_set;
-            
-        let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage 
-        + player_raid_data.gem_stone_research.base_burst_damage) as f32
-        + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
-        + (if player_raid_data.raid_set.airforce_ace { 120.0 } else { 0.0 });
+            + base_add_total
+            + flat_part_state_add
+            + flat_boss_add
+            + base1_set
+            + base2_set;
 
-        let affli_add_total = (player_raid_data.raid_card_research.base_affliction_damage 
-            + player_raid_data.gem_stone_research.base_affliction_damage) as f32
+        let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage
+            + player_raid_data.gem_stone_research.base_burst_damage)
+            as f32
+            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
+            + (if player_raid_data.raid_set.airforce_ace {
+                120.0
+            } else {
+                0.0
+            });
+
+        let affli_add_total = (player_raid_data.raid_card_research.base_affliction_damage
+            + player_raid_data.gem_stone_research.base_affliction_damage)
+            as f32
             + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Affliction)
-            + (if player_raid_data.raid_set.dancer_venom { 120.0 } else { 0.0 });
+            + (if player_raid_data.raid_set.dancer_venom {
+                120.0
+            } else {
+                0.0
+            });
 
         // titansoul mult
-       
-        let tts_boss_mult = 1.0 + player_raid_data.titan_soul_research.get_boss_mult(boss.boss_name);
-        let tts_part_mult = 1.0 + player_raid_data.titan_soul_research.get_part_mult(attack_part);
-        let tts_state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(current_state);
-        
+
+        let tts_boss_mult = 1.0
+            + player_raid_data
+                .titan_soul_research
+                .get_boss_mult(boss.boss_name);
+        let tts_part_mult = 1.0
+            + player_raid_data
+                .titan_soul_research
+                .get_part_mult(attack_part);
+        let tts_state_mult = 1.0
+            + player_raid_data
+                .titan_soul_research
+                .get_state_mult(current_state);
+
         //support card
         let deck_snapshot: Vec<Card> = deck.to_vec();
-        let support_mods: Vec<SupportModifiers> = deck.iter_mut()
-        .filter(|c| c.cardtype == CardType::Support)
-        .map(|c| c.support_modifiers(boss,deck_snapshot.clone()))
-        .collect();
-        
-        let combined_support = SupportModifiers::accumulate(&support_mods);
-        let tap_support_bonus = combined_support.total_damage_bonus(attack_part, current_state, None);
-        println!("Support Card {}", combined_support);
-        
-        let jade_set = if player_raid_data.raid_set.jade_anniversary { 0.04 } else { 0.0 };
-        let raid_all_mult = 1.0 + jade_set + player_raid_data.title ;
+        let support_mods: Vec<SupportModifiers> = deck
+            .iter_mut()
+            .filter(|c| c.cardtype == CardType::Support)
+            .map(|c| c.support_modifiers(boss, deck_snapshot.clone()))
+            .collect();
 
+        let combined_support = SupportModifiers::accumulate(&support_mods);
+        let tap_support_bonus =
+            combined_support.total_damage_bonus(attack_part, current_state, None);
+        println!("Support Card {}", combined_support);
+
+        let jade_set = if player_raid_data.raid_set.jade_anniversary {
+            0.04
+        } else {
+            0.0
+        };
+        let raid_all_mult = 1.0 + jade_set + player_raid_data.title;
 
         // println!("Part mult {}",part_mult);
-        let tap_total_multiplier = raid_all_mult * tts_boss_mult * tts_part_mult * tts_state_mult* (1.0 + tap_support_bonus as f32);
-        
+        let tap_total_multiplier = raid_all_mult
+            * tts_boss_mult
+            * tts_part_mult
+            * tts_state_mult
+            * (1.0 + tap_support_bonus as f32);
+
         // println!(" Mult {}",  tap_total_multiplier);
-            
 
         // card proc
         for card in deck.iter_mut() {
@@ -223,7 +258,12 @@ impl SimService {
                 continue;
             }
 
-            let card_base_damage = (true_base_tap + burst_add_total) as f64 ;
+            let card_type_add_total = match card.cardtype {
+                CardType::Burst => burst_add_total,
+                CardType::Affliction => affli_add_total,
+                CardType::Support => 0.0,
+            };
+            let card_base_damage = (true_base_tap + card_type_add_total) as f64;
             // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
 
             let chance_mult = match card.cardtype {
@@ -231,29 +271,40 @@ impl SimService {
                 CardType::Affliction => 1.0 + combined_support.affliction_chance_mult,
                 _ => 1.0, // unreachable given the matches! filter above, but keeps the match exhaustive
             };
-            let proc_chance = card.get_proc_chance(boss)*chance_mult;
+            let proc_chance = card.get_proc_chance(boss) * chance_mult;
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
-            let card_support_bonus = combined_support.total_damage_bonus(attack_part, current_state, Some(card.cardtype));
-            let proc_damage_mult = raid_all_mult * tts_boss_mult * tts_part_mult * tts_state_mult* (1.0 + card_support_bonus) as f32;
+            let card_support_bonus = combined_support.total_damage_bonus(
+                attack_part,
+                current_state,
+                Some(card.cardtype),
+            );
+            let proc_damage_mult = raid_all_mult
+                * tts_boss_mult
+                * tts_part_mult
+                * tts_state_mult
+                * (1.0 + card_support_bonus) as f32;
 
-            
             if roll <= proc_chance {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
-                card.on_proc(boss, attack_part, card_base_damage*proc_damage_mult as f64, 0, *total_burst_proc);
+                card.on_proc(
+                    boss,
+                    attack_part,
+                    card_base_damage * proc_damage_mult as f64,
+                    0,
+                    *total_burst_proc,
+                );
             }
         }
 
         // tap damage on boss
         let tap_damage = (true_base_tap * tap_total_multiplier) as u64;
-        boss.on_hit_with_source(attack_part, tap_damage,  DamageSource::Tap);
+        boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
     }
 }
 
-
-
-pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
+pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     // 1. Only pick cards that are in the user's explicit usable list
     let filtered_cards: Vec<Card> = sim_stats
         .player_stat
@@ -285,10 +336,19 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>>{
 
 fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
     let deck = [c1, c2, c3];
-    let burst_count = deck.iter().filter(|c| c.cardtype == CardType::Burst).count();
-    let affliction_count = deck.iter().filter(|c| c.cardtype == CardType::Affliction).count();
-    let support_count = deck.iter().filter(|c| c.cardtype == CardType::Support).count();
-    
+    let burst_count = deck
+        .iter()
+        .filter(|c| c.cardtype == CardType::Burst)
+        .count();
+    let affliction_count = deck
+        .iter()
+        .filter(|c| c.cardtype == CardType::Affliction)
+        .count();
+    let support_count = deck
+        .iter()
+        .filter(|c| c.cardtype == CardType::Support)
+        .count();
+
     //total deck without any rule = 42*41*40/3/2 = 11480
     //Policy 1 : card must be synergy by it self
 
@@ -296,59 +356,61 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     let has_support = support_count > 0;
     let has_maelstrom = deck.iter().any(|c| c.card_id == CardName::Maelstrom);
     let has_guard_break = deck.iter().any(|c| c.card_id == CardName::GuardBreak);
-    if !has_support && !has_maelstrom && !has_guard_break{
+    if !has_support && !has_maelstrom && !has_guard_break {
         return false;
     }
     //deck with rule 1 = 8880
-    
+
     // Rule 2 : Purify card require 1 alffication card
     let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
     let has_affliction = affliction_count > 0;
-    if has_purify && !has_affliction{
+    if has_purify && !has_affliction {
         return false;
     }
     //deck with rule 2 = 8595
     // Rule 3 : has Radiant also must have1 burst + 1 affliction
-    let has_radiant_kaleidoscope = deck.iter().any(|c| c.card_id == CardName::RadiantKaleidoscope);
+    let has_radiant_kaleidoscope = deck
+        .iter()
+        .any(|c| c.card_id == CardName::RadiantKaleidoscope);
     if has_radiant_kaleidoscope {
         if burst_count != 1 || affliction_count != 1 {
-        return false;
+            return false;
         }
     }
     //deck with rule 3 = 7997
     //Rule 4 Burst support must use with burst card or other support card
     let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
-    if has_ancestral_favor{
-        if affliction_count >= 1 || support_count ==3{
-            return  false;
+    if has_ancestral_favor {
+        if affliction_count >= 1 || support_count == 3 {
+            return false;
         }
     }
     //deck with rule 4 = 7476
     //Rule 5 Affliction support must use with burst card or other support card
     let has_rancid_gas = deck.iter().any(|c| c.card_id == CardName::RancidGas);
-    if has_rancid_gas{
-        if burst_count >= 1 || support_count ==3{
-            return  false;
+    if has_rancid_gas {
+        if burst_count >= 1 || support_count == 3 {
+            return false;
         }
     }
     // //deck with rule 5 = 6991
     //Rule 6 never 3 support card
-    if support_count == 3{
+    if support_count == 3 {
         return false;
     }
     //deck with rule 6 = 6826
-    // //Rule 7 : Sand of Time card must use with another debuff inflict card 
+    // //Rule 7 : Sand of Time card must use with another debuff inflict card
     let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
-    if has_sands_of_time{
-        if affliction_count <= 1{
-            return  false;
+    if has_sands_of_time {
+        if affliction_count <= 1 {
+            return false;
         }
-        if has_maelstrom && affliction_count == 2{
-            return  false;
+        if has_maelstrom && affliction_count == 2 {
+            return false;
         }
     }
     //deck with rule 7 = 6553
-    true 
+    true
 }
 
 fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
@@ -424,14 +486,11 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
     }
     //Rule 5 :if use Crushing Instinct or Soul Fire, boss must have attakable Head or Torso
     if has_crushing_instinct || has_soul_fire {
-        let boss_has_active_head_or_torso = sim_stats
-            .attackable_part
-            .iter()
-            .copied()
-            .any(|part_name| {
-                    (part_name == BossPartName::Head || part_name == BossPartName::Torso)
+        let boss_has_active_head_or_torso =
+            sim_stats.attackable_part.iter().copied().any(|part_name| {
+                (part_name == BossPartName::Head || part_name == BossPartName::Torso)
                     && boss.part(part_name).part_state != PartState::Skeleton
-                });
+            });
 
         if !boss_has_active_head_or_torso {
             return false;

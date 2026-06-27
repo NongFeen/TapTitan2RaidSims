@@ -1,56 +1,156 @@
+use crate::models::{
+    boss::{Boss, BossPartName},
+    support_modifier::SupportModifiers,
+};
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
-use crate::models::{boss::{Boss, BossPartName}, support_modifier::SupportModifiers};
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, EnumString)]
+#[derive(
+    Debug,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Clone,
+    Copy,
+    EnumIter,
+    EnumString,
+)]
 pub enum CardName {
     // Burst
-    #[serde(rename = "MoonBeam")] #[strum(serialize = "MoonBeam")] MoonBeam,
-    #[serde(rename = "Fragmentize")] #[strum(serialize = "Fragmentize")] Fragmentize,
-    #[serde(rename = "SkullBash")] #[strum(serialize = "SkullBash")] SkullBash,
-    #[serde(rename = "RazorWind")] #[strum(serialize = "RazorWind")] RazorWind,
-    #[serde(rename = "WhipOfLightning")] #[strum(serialize = "WhipOfLightning")] WhipOfLightning,
-    #[serde(rename = "BurstCount")] #[strum(serialize = "BurstCount")] ClanshipBarrage,
-    #[serde(rename = "Purify")] #[strum(serialize = "Purify")] PurifyingBlast,
-    #[serde(rename = "LimbBurst")] #[strum(serialize = "LimbBurst")] PsychicShackles,
-    #[serde(rename = "FlakShot")] #[strum(serialize = "FlakShot")] FlakShot,
-    #[serde(rename = "Haymaker")] #[strum(serialize = "Haymaker")] CosmicHaymaker,
-    #[serde(rename = "ChainLightning")] #[strum(serialize = "ChainLightning")] ChainOfVengeance,
-    #[serde(rename = "MirrorForce")] #[strum(serialize = "MirrorForce")] MirrorForce,
-    #[serde(rename = "CelestialStatic")] #[strum(serialize = "CelestialStatic")] CelestialStatic,
-    #[serde(rename = "Weaken")] #[strum(serialize = "Weaken")] GuardBreak,
-    
+    #[serde(rename = "MoonBeam")]
+    #[strum(serialize = "MoonBeam")]
+    MoonBeam,
+    #[serde(rename = "Fragmentize")]
+    #[strum(serialize = "Fragmentize")]
+    Fragmentize,
+    #[serde(rename = "SkullBash")]
+    #[strum(serialize = "SkullBash")]
+    SkullBash,
+    #[serde(rename = "RazorWind")]
+    #[strum(serialize = "RazorWind")]
+    RazorWind,
+    #[serde(rename = "WhipOfLightning")]
+    #[strum(serialize = "WhipOfLightning")]
+    WhipOfLightning,
+    #[serde(rename = "BurstCount")]
+    #[strum(serialize = "BurstCount")]
+    ClanshipBarrage,
+    #[serde(rename = "Purify")]
+    #[strum(serialize = "Purify")]
+    PurifyingBlast,
+    #[serde(rename = "LimbBurst")]
+    #[strum(serialize = "LimbBurst")]
+    PsychicShackles,
+    #[serde(rename = "FlakShot")]
+    #[strum(serialize = "FlakShot")]
+    FlakShot,
+    #[serde(rename = "Haymaker")]
+    #[strum(serialize = "Haymaker")]
+    CosmicHaymaker,
+    #[serde(rename = "ChainLightning")]
+    #[strum(serialize = "ChainLightning")]
+    ChainOfVengeance,
+    #[serde(rename = "MirrorForce")]
+    #[strum(serialize = "MirrorForce")]
+    MirrorForce,
+    #[serde(rename = "CelestialStatic")]
+    #[strum(serialize = "CelestialStatic")]
+    CelestialStatic,
+    #[serde(rename = "Weaken")]
+    #[strum(serialize = "Weaken")]
+    GuardBreak,
+
     // Affliction
-    #[serde(rename = "BurningAttack")] #[strum(serialize = "BurningAttack")] BlazingInferno,
-    #[serde(rename = "PoisonAttack")] #[strum(serialize = "PoisonAttack")] AcidDrench,
-    #[serde(rename = "DecayingAttack")] #[strum(serialize = "DecayingAttack")] DecayingStrike,
-    #[serde(rename = "Fuse")] #[strum(serialize = "Fuse")] FusionBomb,
-    #[serde(rename = "Shadow")] #[strum(serialize = "Shadow")] GrimShadow,
-    #[serde(rename = "PlagueAttack")] #[strum(serialize = "PlagueAttack")] ThrivingPlague,
-    #[serde(rename = "Disease")] #[strum(serialize = "Disease")] Radioactivity,
-    #[serde(rename = "Swarm")] #[strum(serialize = "Swarm")] RavenousSwarm,
-    #[serde(rename = "RuinousRust")] #[strum(serialize = "RuinousRust")] RuinousRain,
-    #[serde(rename = "PowerBubble")] #[strum(serialize = "PowerBubble")] CorrosiveBubbles,
-    #[serde(rename = "RuneAttack")] #[strum(serialize = "RuneAttack")] Maelstrom,
-    #[serde(rename = "MagicPotion")] #[strum(serialize = "MagicPotion")] Amplify,
-    #[serde(rename = "SandsOfTime")] #[strum(serialize = "SandsOfTime")] SandsOfTime,
-    #[serde(rename = "CosmicBarb")] #[strum(serialize = "CosmicBarb")] ElectroZap,
-    
+    #[serde(rename = "BurningAttack")]
+    #[strum(serialize = "BurningAttack")]
+    BlazingInferno,
+    #[serde(rename = "PoisonAttack")]
+    #[strum(serialize = "PoisonAttack")]
+    AcidDrench,
+    #[serde(rename = "DecayingAttack")]
+    #[strum(serialize = "DecayingAttack")]
+    DecayingStrike,
+    #[serde(rename = "Fuse")]
+    #[strum(serialize = "Fuse")]
+    FusionBomb,
+    #[serde(rename = "Shadow")]
+    #[strum(serialize = "Shadow")]
+    GrimShadow,
+    #[serde(rename = "PlagueAttack")]
+    #[strum(serialize = "PlagueAttack")]
+    ThrivingPlague,
+    #[serde(rename = "Disease")]
+    #[strum(serialize = "Disease")]
+    Radioactivity,
+    #[serde(rename = "Swarm")]
+    #[strum(serialize = "Swarm")]
+    RavenousSwarm,
+    #[serde(rename = "RuinousRust")]
+    #[strum(serialize = "RuinousRust")]
+    RuinousRain,
+    #[serde(rename = "PowerBubble")]
+    #[strum(serialize = "PowerBubble")]
+    CorrosiveBubbles,
+    #[serde(rename = "RuneAttack")]
+    #[strum(serialize = "RuneAttack")]
+    Maelstrom,
+    #[serde(rename = "MagicPotion")]
+    #[strum(serialize = "MagicPotion")]
+    Amplify,
+    #[serde(rename = "SandsOfTime")]
+    #[strum(serialize = "SandsOfTime")]
+    SandsOfTime,
+    #[serde(rename = "CosmicBarb")]
+    #[strum(serialize = "CosmicBarb")]
+    ElectroZap,
+
     // Support
-    #[serde(rename = "ExecutionersAxe")] #[strum(serialize = "ExecutionersAxe")] CrushingInstinct,
-    #[serde(rename = "CrushingVoid")] #[strum(serialize = "CrushingVoid")] InsanityVoid,
-    #[serde(rename = "MentalFocus")] #[strum(serialize = "MentalFocus")] RancidGas,
-    #[serde(rename = "ImpactAttack")] #[strum(serialize = "ImpactAttack")] InspiringForce,
-    #[serde(rename = "InnerTruth")] #[strum(serialize = "InnerTruth")] SoulFire,
-    #[serde(rename = "FinisherAttack")] #[strum(serialize = "FinisherAttack")] VictoryMarch,
-    #[serde(rename = "SuperheatMetal")] #[strum(serialize = "SuperheatMetal")] PrismaticRift,
-    #[serde(rename = "BurstBoost")] #[strum(serialize = "BurstBoost")] AncestralFavor,
-    #[serde(rename = "LimbSupport")] #[strum(serialize = "LimbSupport")] GraspingVines,
-    #[serde(rename = "TotemFairySkill")] #[strum(serialize = "TotemFairySkill")] TotemOfPower,
-    #[serde(rename = "TeamTactics")] #[strum(serialize = "TeamTactics")] TeamTactics,
-    #[serde(rename = "SpinalTap")] #[strum(serialize = "SpinalTap")] SkeletalSmash,
-    #[serde(rename = "AstralEcho")] #[strum(serialize = "AstralEcho")] AstralEcho,
-    #[serde(rename = "TriangleSupport")] #[strum(serialize = "TriangleSupport")] RadiantKaleidoscope,
+    #[serde(rename = "ExecutionersAxe")]
+    #[strum(serialize = "ExecutionersAxe")]
+    CrushingInstinct,
+    #[serde(rename = "CrushingVoid")]
+    #[strum(serialize = "CrushingVoid")]
+    InsanityVoid,
+    #[serde(rename = "MentalFocus")]
+    #[strum(serialize = "MentalFocus")]
+    RancidGas,
+    #[serde(rename = "ImpactAttack")]
+    #[strum(serialize = "ImpactAttack")]
+    InspiringForce,
+    #[serde(rename = "InnerTruth")]
+    #[strum(serialize = "InnerTruth")]
+    SoulFire,
+    #[serde(rename = "FinisherAttack")]
+    #[strum(serialize = "FinisherAttack")]
+    VictoryMarch,
+    #[serde(rename = "SuperheatMetal")]
+    #[strum(serialize = "SuperheatMetal")]
+    PrismaticRift,
+    #[serde(rename = "BurstBoost")]
+    #[strum(serialize = "BurstBoost")]
+    AncestralFavor,
+    #[serde(rename = "LimbSupport")]
+    #[strum(serialize = "LimbSupport")]
+    GraspingVines,
+    #[serde(rename = "TotemFairySkill")]
+    #[strum(serialize = "TotemFairySkill")]
+    TotemOfPower,
+    #[serde(rename = "TeamTactics")]
+    #[strum(serialize = "TeamTactics")]
+    TeamTactics,
+    #[serde(rename = "SpinalTap")]
+    #[strum(serialize = "SpinalTap")]
+    SkeletalSmash,
+    #[serde(rename = "AstralEcho")]
+    #[strum(serialize = "AstralEcho")]
+    AstralEcho,
+    #[serde(rename = "TriangleSupport")]
+    #[strum(serialize = "TriangleSupport")]
+    RadiantKaleidoscope,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy)]
@@ -66,7 +166,7 @@ pub struct Card {
     pub cardtype: CardType,
     pub level: u16,
     #[serde(default)]
-    pub tap_count : u16,
+    pub tap_count: u16,
     #[serde(default)]
     pub chained_parts: Vec<BossPartName>,
     #[serde(default)]
@@ -95,8 +195,8 @@ impl Card {
             burst_trigger_count,
         )
     }
-    pub fn support_modifiers(&mut self,boss :&Boss,deck: Vec<Card>) -> SupportModifiers {
-        crate::services::taptitan::card_function::get_support_modifiers(self,boss,deck)
+    pub fn support_modifiers(&mut self, boss: &Boss, deck: Vec<Card>) -> SupportModifiers {
+        crate::services::taptitan::card_function::get_support_modifiers(self, boss, deck)
     }
 }
 
@@ -197,7 +297,7 @@ impl CardName {
         }
     }
 
-    /// 3. Safely format image URLs using whichever casing your files use. 
+    /// 3. Safely format image URLs using whichever casing your files use.
     /// If your files are snake_case (e.g. flak_shot.webp), you can swap this function to utilize a lowercase helper or write them out.
     pub fn image_url(&self) -> String {
         // Example assumes images are titled matching variant names (e.g., FlakShot.webp)
@@ -207,25 +307,50 @@ impl CardName {
 
     pub fn card_type(&self) -> CardType {
         match self {
-            CardName::MoonBeam | CardName::Fragmentize | CardName::SkullBash | 
-            CardName::RazorWind | CardName::WhipOfLightning | CardName::ClanshipBarrage | 
-            CardName::PurifyingBlast | CardName::PsychicShackles | CardName::FlakShot | 
-            CardName::CosmicHaymaker | CardName::ChainOfVengeance | CardName::MirrorForce | 
-            CardName::CelestialStatic | CardName::GuardBreak => CardType::Burst,
+            CardName::MoonBeam
+            | CardName::Fragmentize
+            | CardName::SkullBash
+            | CardName::RazorWind
+            | CardName::WhipOfLightning
+            | CardName::ClanshipBarrage
+            | CardName::PurifyingBlast
+            | CardName::PsychicShackles
+            | CardName::FlakShot
+            | CardName::CosmicHaymaker
+            | CardName::ChainOfVengeance
+            | CardName::MirrorForce
+            | CardName::CelestialStatic
+            | CardName::GuardBreak => CardType::Burst,
 
-            CardName::BlazingInferno | CardName::AcidDrench | CardName::DecayingStrike | 
-            CardName::FusionBomb | CardName::GrimShadow | CardName::ThrivingPlague | 
-            CardName::Radioactivity | CardName::RavenousSwarm | CardName::RuinousRain | 
-            CardName::CorrosiveBubbles | CardName::Maelstrom | CardName::Amplify | 
-            CardName::SandsOfTime | CardName::ElectroZap => CardType::Affliction,
+            CardName::BlazingInferno
+            | CardName::AcidDrench
+            | CardName::DecayingStrike
+            | CardName::FusionBomb
+            | CardName::GrimShadow
+            | CardName::ThrivingPlague
+            | CardName::Radioactivity
+            | CardName::RavenousSwarm
+            | CardName::RuinousRain
+            | CardName::CorrosiveBubbles
+            | CardName::Maelstrom
+            | CardName::Amplify
+            | CardName::SandsOfTime
+            | CardName::ElectroZap => CardType::Affliction,
 
-            CardName::CrushingInstinct | CardName::InsanityVoid | CardName::RancidGas | 
-            CardName::InspiringForce | CardName::SoulFire | CardName::VictoryMarch | 
-            CardName::PrismaticRift | CardName::AncestralFavor | CardName::GraspingVines | 
-            CardName::TotemOfPower | CardName::TeamTactics | CardName::SkeletalSmash | 
-            CardName::AstralEcho | CardName::RadiantKaleidoscope => CardType::Support,
+            CardName::CrushingInstinct
+            | CardName::InsanityVoid
+            | CardName::RancidGas
+            | CardName::InspiringForce
+            | CardName::SoulFire
+            | CardName::VictoryMarch
+            | CardName::PrismaticRift
+            | CardName::AncestralFavor
+            | CardName::GraspingVines
+            | CardName::TotemOfPower
+            | CardName::TeamTactics
+            | CardName::SkeletalSmash
+            | CardName::AstralEcho
+            | CardName::RadiantKaleidoscope => CardType::Support,
         }
     }
 }
-
-

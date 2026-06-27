@@ -50,7 +50,7 @@ pub fn on_proc(
     damage: f64,
     round_index: u32,
     burst_trigger_count: u32,
-){
+) {
     match card.card_id {
         CardName::ClanshipBarrage => {
             clanship_barrage::on_proc(card, boss, target_part, damage, burst_trigger_count)
@@ -65,7 +65,9 @@ pub fn on_proc(
         CardName::ChainOfVengeance => chain_of_vengeance::on_proc(card, boss, target_part, damage),
         CardName::CosmicHaymaker => cosmic_haymaker::on_proc(card, boss, target_part, damage),
         CardName::FlakShot => flak_shot::on_proc(card, boss, target_part, damage),
-        CardName::MirrorForce => mirror_force::on_proc(card, boss, target_part, damage, round_index),
+        CardName::MirrorForce => {
+            mirror_force::on_proc(card, boss, target_part, damage, round_index)
+        }
         CardName::CelestialStatic => celestial_static::on_proc(card, boss, target_part, damage),
         CardName::GuardBreak => guard_break::on_proc(card, boss, target_part, damage),
         _ => {}

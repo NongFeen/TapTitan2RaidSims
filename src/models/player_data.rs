@@ -31,7 +31,7 @@ pub struct PlayerData {
     pub gem_research: HashMap<String, String>,
     // skill points and other dynamic maps can be added here
     #[serde(rename = "equipmentSets")]
-    pub equip_set: Vec<String>
+    pub equip_set: Vec<String>,
 }
 
 // ── Player Stats ───────────────────────────────────────────────────
@@ -85,7 +85,7 @@ pub struct RaidStats {
     #[serde(rename = "Raid Level")]
     pub raid_level: String,
 
-    #[serde(rename = "Raid Level Base Damage ")]  // note trailing space in JSON
+    #[serde(rename = "Raid Level Base Damage ")] // note trailing space in JSON
     pub raid_level_base_damage: String,
 
     #[serde(rename = "Total Raid Experience")]
@@ -122,7 +122,7 @@ pub struct Card {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Artifact {
-    pub e: u8,    // 0 = not enchanted, 1 = enchanted
+    pub e: u8,      // 0 = not enchanted, 1 = enchanted
     pub lv: String, // scientific notation e.g. "2.864E+106"
 }
 

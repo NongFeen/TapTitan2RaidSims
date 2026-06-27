@@ -1,14 +1,28 @@
 use crate::models::{
-    boss::{Boss, BossPartName}, cards::{Card, CardType}, support_modifier::SupportModifiers,
+    affliction::Affliction,
+    boss::{Boss, BossPartName},
+    cards::{Card, CardType},
+    damage_source::DamageSource,
+    support_modifier::SupportModifiers,
 };
 
+mod affliction;
 mod burst;
 mod support;
-mod affliction;
+
+#[derive(Debug, Clone)]
+pub struct AfflictionDamageEvent {
+    pub part_name: BossPartName,
+    pub damage: u64,
+    pub source: DamageSource,
+}
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
-    debug_assert_eq!(card.cardtype, CardType::Burst);
-    burst::get_proc_chance(card, boss)
+    match card.cardtype {
+        CardType::Burst => burst::get_proc_chance(card, boss),
+        CardType::Affliction => affliction::get_proc_chance(card, boss),
+        CardType::Support => 0.0,
+    }
 }
 
 pub fn on_proc(
@@ -19,18 +33,30 @@ pub fn on_proc(
     round_index: u32,
     burst_trigger_count: u32,
 ) {
-    debug_assert_eq!(card.cardtype, CardType::Burst);
-    burst::on_proc(
-        card,
-        boss,
-        target_part,
-        damage,
-        round_index,
-        burst_trigger_count,
-    )
+    match card.cardtype {
+        CardType::Burst => burst::on_proc(
+            card,
+            boss,
+            target_part,
+            damage,
+            round_index,
+            burst_trigger_count,
+        ),
+        CardType::Affliction => affliction::on_proc(card, boss, target_part, damage),
+        CardType::Support => {}
+    }
 }
 
-pub fn get_support_modifiers(card: &mut Card,boss: &Boss,deck: Vec<Card>) -> SupportModifiers{
+pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: Vec<Card>) -> SupportModifiers {
     debug_assert_eq!(card.cardtype, CardType::Support);
-    support::get_support_modifiers(card,boss,deck)
+    support::get_support_modifiers(card, boss, deck)
+}
+
+pub fn tick_affliction(
+    affliction: &mut Affliction,
+    boss: &Boss,
+    part_name: BossPartName,
+    elapsed_seconds: f64,
+) -> Vec<AfflictionDamageEvent> {
+    affliction::on_tick(affliction, boss, part_name, elapsed_seconds)
 }

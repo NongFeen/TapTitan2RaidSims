@@ -1,25 +1,28 @@
 use std::fmt;
 
-use crate::models::{boss::{BossPartName, PartState}, cards::CardType};
+use crate::models::{
+    boss::{BossPartName, PartState},
+    cards::CardType,
+};
 
-pub struct SupportModifiers{
+pub struct SupportModifiers {
     //additive
-        //part mult
-    pub head_damage_add : f64,
-    pub torso_damage_add : f64,
-    pub limb_damage_add : f64, 
-        //state mult
-    pub body_damage_add : f64,
-    pub armor_damage_add : f64, 
-        //card mult
-    pub burst_damage_add : f64,
-    pub affliction_damage_add : f64,
-        //all dmg
-    pub all_damage_add : f64,
-    
+    //part mult
+    pub head_damage_add: f64,
+    pub torso_damage_add: f64,
+    pub limb_damage_add: f64,
+    //state mult
+    pub body_damage_add: f64,
+    pub armor_damage_add: f64,
+    //card mult
+    pub burst_damage_add: f64,
+    pub affliction_damage_add: f64,
+    //all dmg
+    pub all_damage_add: f64,
+
     //multiplcative
-    pub burst_chance_mult : f64,
-    pub affliction_chance_mult : f64
+    pub burst_chance_mult: f64,
+    pub affliction_chance_mult: f64,
 }
 impl Default for SupportModifiers {
     fn default() -> Self {
@@ -32,9 +35,9 @@ impl Default for SupportModifiers {
             burst_damage_add: 0.0,
             affliction_damage_add: 0.0,
             all_damage_add: 0.0,
-            
-            burst_chance_mult: 1.0,      
-            affliction_chance_mult: 1.0, 
+
+            burst_chance_mult: 1.0,
+            affliction_chance_mult: 1.0,
         }
     }
 }
@@ -51,9 +54,9 @@ impl SupportModifiers {
             acc.all_damage_add += m.all_damage_add;
             acc.burst_chance_mult += m.burst_chance_mult - 1.0;
             acc.affliction_chance_mult += m.affliction_chance_mult - 1.0;
-            return acc
+            return acc;
         })
-    } 
+    }
 
     /// Bonus that stacks into part_mult, based on which part was attacked.
     pub fn part_mult_bonus(&self, attack_part: BossPartName) -> f64 {
@@ -78,7 +81,7 @@ impl SupportModifiers {
     pub fn all_mult_bonus(&self) -> f64 {
         self.all_damage_add
     }
-    
+
     pub fn total_damage_bonus(
         &self,
         attack_part: BossPartName,
@@ -92,10 +95,9 @@ impl SupportModifiers {
             Some(CardType::Affliction) => self.affliction_damage_add,
             _ => 0.0,
         };
-        // part_bonus + state_bonus + type_bonus 
+        // part_bonus + state_bonus + type_bonus
         part_bonus + state_bonus + type_bonus + self.all_damage_add
     }
-
 }
 
 impl fmt::Display for SupportModifiers {

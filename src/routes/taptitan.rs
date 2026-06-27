@@ -1,15 +1,19 @@
+use crate::dtos::cards::CardDefinitionDto;
+use crate::models::responses::{ApiError, ApiResponse};
+use crate::{
+    models::{cards::CardName, player_data::PlayerData, sim_payload::SimPayLoad},
+    services::taptitan::{
+        player_service::clean_data,
+        sim_service::{self, SimService},
+    },
+};
 use axum::{
     extract::Json,
     http::StatusCode,
     response::{IntoResponse, Json as ResponseJson},
 };
-use crate::{models::{cards::CardName, player_data::PlayerData, sim_payload::SimPayLoad}, services::taptitan::{player_service::clean_data, sim_service::{self, SimService}}};
-use crate::models::responses::{ApiResponse,ApiError};
-use crate::dtos::cards::CardDefinitionDto;
-use strum::IntoEnumIterator; 
-pub async fn send_player_data_json(
-    Json(payload): Json<PlayerData>,
-) -> impl IntoResponse {
+use strum::IntoEnumIterator;
+pub async fn send_player_data_json(Json(payload): Json<PlayerData>) -> impl IntoResponse {
     if payload.player_stats.max_prestige_stage == "0" {
         let error_response: ApiResponse<PlayerData> = ApiResponse::Error {
             error: ApiError {
@@ -21,7 +25,7 @@ pub async fn send_player_data_json(
     }
 
     // Happy path
-    
+
     // resolve for clean data
     let cleaned = clean_data(&payload);
     // return clean data
@@ -33,7 +37,7 @@ pub async fn get_all_card_definitions() -> impl IntoResponse {
     // 2. CardName::iter() automatically knows how to traverse all 42 items!
     let list: Vec<CardDefinitionDto> = CardName::iter()
         .map(|v| CardDefinitionDto {
-            id: v.id(), // Will be "moon_beam"
+            id: v.id(),             // Will be "moon_beam"
             name: v.display_name(), // Will be "Moon Beam"
             r#type: v.card_type(),
             image: v.image_url(),
@@ -43,16 +47,14 @@ pub async fn get_all_card_definitions() -> impl IntoResponse {
     Json(list)
 }
 
-pub async fn send_sim_payload(
-    Json(simdata): Json<SimPayLoad>
-) -> impl IntoResponse {
-
+pub async fn send_sim_payload(Json(simdata): Json<SimPayLoad>) -> impl IntoResponse {
     // 1. Verify that at least one attackable part is selected
     if simdata.attackable_part.is_empty() {
         let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
             error: ApiError {
                 code: "ATTACKABLE_PART_EMPTY".to_string(),
-                message: "Attackable part cannot be empty. Must select at least 1 part.".to_string(),
+                message: "Attackable part cannot be empty. Must select at least 1 part."
+                    .to_string(),
             },
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
@@ -64,7 +66,7 @@ pub async fn send_sim_payload(
             error: ApiError {
                 code: "USABLE_CARDS_EXCEEDED".to_string(),
                 message: format!(
-                    "Usable cards list exceeds the maximum game limit of 42 cards (Received: {}).", 
+                    "Usable cards list exceeds the maximum game limit of 42 cards (Received: {}).",
                     simdata.usable_card.len()
                 ),
             },
@@ -72,7 +74,7 @@ pub async fn send_sim_payload(
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
 
-    // 3. Optional Bonus Check: Make sure they aren't passing duplicates of the same card 
+    // 3. Optional Bonus Check: Make sure they aren't passing duplicates of the same card
     // if your simulation engine requires unique choices per request. Otherwise, skip this block!
     let mut unique_cards = simdata.usable_card.clone();
     unique_cards.sort();
@@ -94,15 +96,14 @@ pub async fn send_sim_payload(
     (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
 }
 
-pub async fn send_sim_deck(
-    Json(simdata): Json<SimPayLoad>
-)-> impl IntoResponse{
-        // 1. Verify that at least one attackable part is selected
+pub async fn send_sim_deck(Json(simdata): Json<SimPayLoad>) -> impl IntoResponse {
+    // 1. Verify that at least one attackable part is selected
     if simdata.attackable_part.is_empty() {
         let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
             error: ApiError {
                 code: "ATTACKABLE_PART_EMPTY".to_string(),
-                message: "Attackable part cannot be empty. Must select at least 1 part.".to_string(),
+                message: "Attackable part cannot be empty. Must select at least 1 part."
+                    .to_string(),
             },
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();

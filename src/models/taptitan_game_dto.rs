@@ -1,7 +1,7 @@
 use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 
-//handle gamehive raid seed 
+//handle gamehive raid seed
 pub struct GameRaidPayload {
     pub spawn_sequence: Vec<String>,
     pub tier: u32,

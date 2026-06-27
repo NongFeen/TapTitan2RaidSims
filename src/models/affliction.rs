@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::cards::CardName;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionKind {
     Burning,
@@ -16,78 +18,110 @@ pub enum AfflictionKind {
     Amplify,
     SandsOfTime,
     CosmicBarb,
-    GuardBreak
+    GuardBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionRefreshRule {
     Independent,
     RefreshAll,
+    RefreshOne,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AfflictionDamageRule {
-    Tick,
-    OnExpireByDuration,
-    TickAndOnExpireByDuration,
+pub enum AfflictionOverflow {
+    Ignore,
+    ReplaceOldest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AfflictionStack {
-    pub remaining_duration: u8,
-    pub attached_duration: u8,
+    pub remaining_duration: f64,
+    pub attached_duration: f64,
+    #[serde(default)]
+    pub damage_multiplier: f64,
+    #[serde(default)]
+    pub tick_elapsed: f64,
 }
 
 impl AfflictionStack {
-    pub fn new(duration: u8) -> Self {
+    pub fn new(duration: f64) -> Self {
         Self {
             remaining_duration: duration,
             attached_duration: duration,
+            damage_multiplier: 1.0,
+            tick_elapsed: 0.0,
         }
     }
 
-    pub fn refresh(&mut self, duration: u8) {
+    pub fn refresh(&mut self, duration: f64) {
         self.remaining_duration = duration;
         self.attached_duration = duration;
+        self.tick_elapsed = 0.0;
     }
 
-    pub fn tick(&mut self) {
-        self.remaining_duration = self.remaining_duration.saturating_sub(1);
+    pub fn tick(&mut self, elapsed: f64) {
+        self.remaining_duration = (self.remaining_duration - elapsed).max(0.0);
     }
 
     pub fn is_expired(&self) -> bool {
-        self.remaining_duration == 0
+        self.remaining_duration <= 0.0
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Affliction {
     pub kind: AfflictionKind,
+    pub source_card: CardName,
+    pub source_level: u16,
     #[serde(default)]
     pub stacks: Vec<AfflictionStack>,
-    pub damage_per_tick: u64,
-    pub expire_damage_per_duration: u64,
+    pub damage_per_second: f64,
+    pub remove_damage: f64,
+    pub tick_interval_seconds: f64,
+    pub max_stacks: u32,
+    pub refresh_rule: AfflictionRefreshRule,
+    pub overflow: AfflictionOverflow,
 }
 
 impl AfflictionKind {
+    pub fn from_card(card_id: CardName) -> Option<Self> {
+        match card_id {
+            CardName::BlazingInferno => Some(Self::Burning),
+            CardName::AcidDrench => Some(Self::Poison),
+            CardName::DecayingStrike => Some(Self::Decay),
+            CardName::FusionBomb => Some(Self::Fusion),
+            CardName::GrimShadow => Some(Self::Shadow),
+            CardName::ThrivingPlague => Some(Self::Plague),
+            CardName::Radioactivity => Some(Self::Disease),
+            CardName::RavenousSwarm => Some(Self::Swarm),
+            CardName::RuinousRain => Some(Self::Rust),
+            CardName::CorrosiveBubbles => Some(Self::Bubble),
+            CardName::Maelstrom => Some(Self::Maelstrom),
+            CardName::Amplify => Some(Self::Amplify),
+            CardName::SandsOfTime => Some(Self::SandsOfTime),
+            CardName::ElectroZap => Some(Self::CosmicBarb),
+            CardName::GuardBreak => Some(Self::GuardBreak),
+            _ => None,
+        }
+    }
+
     pub fn refresh_rule(self) -> AfflictionRefreshRule {
         match self {
             AfflictionKind::Poison | AfflictionKind::Fusion => AfflictionRefreshRule::RefreshAll,
+            AfflictionKind::Bubble | AfflictionKind::GuardBreak | AfflictionKind::SandsOfTime => {
+                AfflictionRefreshRule::RefreshOne
+            }
             _ => AfflictionRefreshRule::Independent,
         }
     }
 
-    pub fn damage_rule(self) -> AfflictionDamageRule {
+    pub fn overflow(self) -> AfflictionOverflow {
         match self {
-            AfflictionKind::Fusion => AfflictionDamageRule::OnExpireByDuration,
-            _ => AfflictionDamageRule::Tick,
-        }
-    }
-
-    pub fn max_stacks(self) -> Option<u8> {
-        match self {
-            AfflictionKind::Poison => Some(15),
-            _ => None,
+            AfflictionKind::Bubble | AfflictionKind::Fusion | AfflictionKind::SandsOfTime => {
+                AfflictionOverflow::Ignore
+            }
+            _ => AfflictionOverflow::ReplaceOldest,
         }
     }
 }
@@ -95,19 +129,29 @@ impl AfflictionKind {
 impl Affliction {
     pub fn new(
         kind: AfflictionKind,
-        stack_count: u8,
-        duration: u8,
-        damage_per_tick: u64,
-        expire_damage_per_duration: u64,
+        source_card: CardName,
+        source_level: u16,
+        stack_count: u32,
+        duration: f64,
+        damage_per_second: f64,
+        remove_damage: f64,
+        tick_interval_seconds: f64,
+        max_stacks: u32,
     ) -> Self {
         let stacks = (0..stack_count)
             .map(|_| AfflictionStack::new(duration))
             .collect();
         Self {
             kind,
+            source_card,
+            source_level,
             stacks,
-            damage_per_tick,
-            expire_damage_per_duration,
+            damage_per_second,
+            remove_damage,
+            tick_interval_seconds,
+            max_stacks,
+            refresh_rule: kind.refresh_rule(),
+            overflow: kind.overflow(),
         }
     }
 
@@ -115,55 +159,52 @@ impl Affliction {
         self.stacks.len()
     }
 
-    pub fn apply_stacks(&mut self, stack_count: u8, duration: u8) {
-        match self.kind.refresh_rule() {
+    pub fn apply_stacks(
+        &mut self,
+        stack_count: u32,
+        duration: f64,
+        damage_per_second: f64,
+        remove_damage: f64,
+        tick_interval_seconds: f64,
+    ) {
+        self.damage_per_second = self.damage_per_second.max(damage_per_second);
+        self.remove_damage = self.remove_damage.max(remove_damage);
+        self.tick_interval_seconds = tick_interval_seconds;
+
+        match self.refresh_rule {
             AfflictionRefreshRule::RefreshAll => {
                 for stack in &mut self.stacks {
+                    stack.refresh(duration);
+                }
+            }
+            AfflictionRefreshRule::RefreshOne => {
+                if let Some(stack) = self.stacks.iter_mut().min_by(|left, right| {
+                    left.remaining_duration.total_cmp(&right.remaining_duration)
+                }) {
                     stack.refresh(duration);
                 }
             }
             AfflictionRefreshRule::Independent => {}
         }
 
-        let max_stacks = self.kind.max_stacks().map(|cap| cap as usize);
-        let available_slots = max_stacks
-            .map(|cap| cap.saturating_sub(self.stacks.len()))
-            .unwrap_or(stack_count as usize);
-
+        let max_stacks = self.max_stacks as usize;
+        let available_slots = max_stacks.saturating_sub(self.stacks.len());
         let stacks_to_add = usize::min(stack_count as usize, available_slots);
         self.stacks
             .extend((0..stacks_to_add).map(|_| AfflictionStack::new(duration)));
-    }
 
-    pub fn tick(&mut self) -> u64 {
-        let mut total_damage = 0u64;
-
-        for stack in &mut self.stacks {
-            match self.kind.damage_rule() {
-                AfflictionDamageRule::Tick => {
-                    if stack.remaining_duration > 0 {
-                        total_damage = total_damage
-                            .saturating_add(self.damage_per_tick);
-                    }
+        if stacks_to_add < stack_count as usize
+            && self.overflow == AfflictionOverflow::ReplaceOldest
+        {
+            let overflow_count = stack_count as usize - stacks_to_add;
+            for _ in 0..overflow_count {
+                if let Some(oldest) = self.stacks.iter_mut().min_by(|left, right| {
+                    left.remaining_duration.total_cmp(&right.remaining_duration)
+                }) {
+                    oldest.refresh(duration);
                 }
-                AfflictionDamageRule::OnExpireByDuration => {}
-                AfflictionDamageRule::TickAndOnExpireByDuration => {
-                    if stack.remaining_duration > 0 {
-                        total_damage = total_damage
-                            .saturating_add(self.damage_per_tick);
-                    }
-                }
-            }
-
-            stack.tick();
-
-            if stack.is_expired() {
-                total_damage = total_damage.saturating_add(self.expire_damage_per_duration.saturating_mul(stack.attached_duration as u64));
             }
         }
-
-        self.stacks.retain(|stack| !stack.is_expired());
-        total_damage
     }
 
     pub fn is_expired(&self) -> bool {

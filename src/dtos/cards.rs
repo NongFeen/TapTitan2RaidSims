@@ -1,5 +1,5 @@
-use serde::Serialize;
-use crate::models::cards::CardType; // Reference your core enum type
+use crate::models::cards::CardType;
+use serde::Serialize; // Reference your core enum type
 
 #[derive(Serialize)]
 pub struct CardDefinitionDto {

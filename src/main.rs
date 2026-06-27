@@ -3,12 +3,12 @@ use std::sync::Arc;
 use tower_http::cors::{self, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-mod routes;
-mod router;
-mod state;
-mod models;
-mod services;
 mod dtos;
+mod models;
+mod router;
+mod routes;
+mod services;
+mod state;
 use state::AppState;
 
 #[tokio::main]
@@ -32,7 +32,7 @@ async fn main() {
         .allow_headers(cors::Any);
 
     let app = router::create_router(state)
-        .layer(TraceLayer::new_for_http())  // ← log every request
+        .layer(TraceLayer::new_for_http()) // ← log every request
         .layer(cors);
 
     let addr = format!("localhost:{port}");
