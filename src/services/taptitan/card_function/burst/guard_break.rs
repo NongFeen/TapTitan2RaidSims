@@ -20,5 +20,5 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         DamageSource::Card(card.card_id),
     );
     //apply debuff
-    // boss.apply_affliction(target_part, AfflictionKind::GuardBreak);
+    // boss.apply_affliction(target_part, AfflictionKind::GuardBreakDebuff);
 }

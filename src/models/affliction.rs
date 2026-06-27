@@ -4,33 +4,31 @@ use crate::models::cards::CardName;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionKind {
-    Burning,
-    Poison,
-    Decay,
-    Fusion,
-    Shadow,
-    Plague,
-    Disease,
-    Swarm,
-    Rust,
-    Bubble,
-    Maelstrom,
-    Amplify,
-    SandsOfTime,
-    CosmicBarb,
-    GuardBreak,
+    BlazingInfernoDebuff,
+    AcidDrenchDebuff,
+    DecayingStrikeDebuff,
+    FusionBombDebuff,
+    GrimShadowDebuff,
+    ThrivingPlagueDebuff,
+    RadioactivityDebuff,
+    RavenousSwarmDebuff,
+    RuinousRainDebuff,
+    CorrosiveBubblesDebuff,
+    MaelstromDebuff,
+    AmplifyDebuff,
+    SandsOfTimeDebuff,
+    ElectroZapDebuff,
+    GuardBreakDebuff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionRefreshRule {
-    Independent,
     RefreshAll,
-    RefreshOne,
+    Independent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionOverflow {
-    Ignore,
     ReplaceOldest,
 }
 
@@ -89,42 +87,36 @@ pub struct Affliction {
 impl AfflictionKind {
     pub fn from_card(card_id: CardName) -> Option<Self> {
         match card_id {
-            CardName::BlazingInferno => Some(Self::Burning),
-            CardName::AcidDrench => Some(Self::Poison),
-            CardName::DecayingStrike => Some(Self::Decay),
-            CardName::FusionBomb => Some(Self::Fusion),
-            CardName::GrimShadow => Some(Self::Shadow),
-            CardName::ThrivingPlague => Some(Self::Plague),
-            CardName::Radioactivity => Some(Self::Disease),
-            CardName::RavenousSwarm => Some(Self::Swarm),
-            CardName::RuinousRain => Some(Self::Rust),
-            CardName::CorrosiveBubbles => Some(Self::Bubble),
-            CardName::Maelstrom => Some(Self::Maelstrom),
-            CardName::Amplify => Some(Self::Amplify),
-            CardName::SandsOfTime => Some(Self::SandsOfTime),
-            CardName::ElectroZap => Some(Self::CosmicBarb),
-            CardName::GuardBreak => Some(Self::GuardBreak),
+            CardName::BlazingInferno => Some(Self::BlazingInfernoDebuff),
+            CardName::AcidDrench => Some(Self::AcidDrenchDebuff),
+            CardName::DecayingStrike => Some(Self::DecayingStrikeDebuff),
+            CardName::FusionBomb => Some(Self::FusionBombDebuff),
+            CardName::GrimShadow => Some(Self::GrimShadowDebuff),
+            CardName::ThrivingPlague => Some(Self::ThrivingPlagueDebuff),
+            CardName::Radioactivity => Some(Self::RadioactivityDebuff),
+            CardName::RavenousSwarm => Some(Self::RavenousSwarmDebuff),
+            CardName::RuinousRain => Some(Self::RuinousRainDebuff),
+            CardName::CorrosiveBubbles => Some(Self::CorrosiveBubblesDebuff),
+            CardName::Maelstrom => Some(Self::MaelstromDebuff),
+            CardName::Amplify => Some(Self::AmplifyDebuff),
+            CardName::SandsOfTime => Some(Self::SandsOfTimeDebuff),
+            CardName::ElectroZap => Some(Self::ElectroZapDebuff),
+            CardName::GuardBreak => Some(Self::GuardBreakDebuff),
             _ => None,
         }
     }
 
     pub fn refresh_rule(self) -> AfflictionRefreshRule {
         match self {
-            AfflictionKind::Poison | AfflictionKind::Fusion => AfflictionRefreshRule::RefreshAll,
-            AfflictionKind::Bubble | AfflictionKind::GuardBreak | AfflictionKind::SandsOfTime => {
-                AfflictionRefreshRule::RefreshOne
+            AfflictionKind::AcidDrenchDebuff | AfflictionKind::CorrosiveBubblesDebuff => {
+                AfflictionRefreshRule::RefreshAll
             }
             _ => AfflictionRefreshRule::Independent,
         }
     }
 
     pub fn overflow(self) -> AfflictionOverflow {
-        match self {
-            AfflictionKind::Bubble | AfflictionKind::Fusion | AfflictionKind::SandsOfTime => {
-                AfflictionOverflow::Ignore
-            }
-            _ => AfflictionOverflow::ReplaceOldest,
-        }
+        AfflictionOverflow::ReplaceOldest
     }
 }
 
@@ -177,13 +169,6 @@ impl Affliction {
         match self.refresh_rule {
             AfflictionRefreshRule::RefreshAll => {
                 for stack in &mut self.stacks {
-                    stack.refresh(duration);
-                }
-            }
-            AfflictionRefreshRule::RefreshOne => {
-                if let Some(stack) = self.stacks.iter_mut().min_by(|left, right| {
-                    left.remaining_duration.total_cmp(&right.remaining_duration)
-                }) {
                     stack.refresh(duration);
                 }
             }

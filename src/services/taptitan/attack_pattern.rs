@@ -59,7 +59,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Disease)?;
+                        .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)?;
 
                     Some((
                         part,
@@ -78,7 +78,7 @@ impl AttackPattern {
                 boss.part(part)
                     .afflictions
                     .iter()
-                    .all(|aff| aff.kind != AfflictionKind::Disease)
+                    .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
             });
 
             if disease_parts.len() < *focus_count && has_clean_part {
@@ -86,7 +86,7 @@ impl AttackPattern {
                     boss.part(*part)
                         .afflictions
                         .iter()
-                        .all(|aff| aff.kind != AfflictionKind::Disease)
+                        .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
                 }) {
                     return Some(target);
                 }
@@ -120,7 +120,7 @@ impl AttackPattern {
                     .part(*part)
                     .afflictions
                     .iter()
-                    .any(|aff| aff.kind == AfflictionKind::Fusion)
+                    .any(|aff| aff.kind == AfflictionKind::FusionBombDebuff)
             }) {
                 return Some(open_part);
             }
@@ -143,7 +143,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Poison)?;
+                        .find(|aff| aff.kind == AfflictionKind::AcidDrenchDebuff)?;
 
                     Some((
                         part,
@@ -195,7 +195,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Plague)?;
+                        .find(|aff| aff.kind == AfflictionKind::ThrivingPlagueDebuff)?;
 
                     Some((
                         part,
@@ -217,7 +217,7 @@ impl AttackPattern {
                     boss.part(*part)
                         .afflictions
                         .iter()
-                        .all(|aff| aff.kind != AfflictionKind::Plague)
+                        .all(|aff| aff.kind != AfflictionKind::ThrivingPlagueDebuff)
                 })
                 .collect();
 
@@ -246,7 +246,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Disease)?;
+                        .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)?;
 
                     Some((
                         part,
@@ -269,7 +269,7 @@ impl AttackPattern {
                     boss.part(*part)
                         .afflictions
                         .iter()
-                        .all(|aff| aff.kind != AfflictionKind::Disease)
+                        .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
                 }) {
                     return Some(target);
                 }
@@ -297,7 +297,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Decay)
+                        .find(|aff| aff.kind == AfflictionKind::DecayingStrikeDebuff)
                         .map(|affliction| affliction.stack_count())
                         .unwrap_or(0);
 
@@ -334,7 +334,7 @@ impl AttackPattern {
                         .part(part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Shadow)
+                        .find(|aff| aff.kind == AfflictionKind::GrimShadowDebuff)
                         .map(|affliction| affliction.stack_count())
                         .unwrap_or(0);
 
@@ -367,7 +367,7 @@ impl AttackPattern {
                     boss.part(*part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Burning)
+                        .find(|aff| aff.kind == AfflictionKind::BlazingInfernoDebuff)
                         .map(|affliction| affliction.stack_count())
                         .unwrap_or(0)
                 })
@@ -379,7 +379,7 @@ impl AttackPattern {
                     boss.part(*part)
                         .afflictions
                         .iter()
-                        .find(|aff| aff.kind == AfflictionKind::Burning)
+                        .find(|aff| aff.kind == AfflictionKind::BlazingInfernoDebuff)
                         .map(|affliction| affliction.stack_count())
                         .unwrap_or(0)
                         == best_burning_stack_count
