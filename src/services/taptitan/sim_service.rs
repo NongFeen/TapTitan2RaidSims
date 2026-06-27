@@ -112,7 +112,7 @@ impl SimService {
         let mut total_sim_damage: u64 = 0;
 
         let round = 1;
-        let tap_count = 3;
+        let tap_count = 4;
         //for debug attack multiple part
         let attack_sequence = [
             BossPartName::Head,
@@ -234,7 +234,7 @@ impl SimService {
         let combined_support = SupportModifiers::accumulate(&support_mods);
         let tap_support_bonus =
             combined_support.total_damage_bonus(attack_part, current_state, None);
-        println!("Support Card {}", combined_support);
+        // println!("Support Card {}", combined_support);
 
         let jade_set = if player_raid_data.raid_set.jade_anniversary {
             0.04
