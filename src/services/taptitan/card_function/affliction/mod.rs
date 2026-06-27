@@ -73,44 +73,64 @@ pub fn on_tick(
     let affliction_snapshot = affliction.clone();
     let tick_interval_seconds = affliction.tick_interval_seconds.max(f64::EPSILON);
 
-    for stack in &mut affliction.stacks {
-        if stack.remaining_duration > 0.0 {
-            stack.tick_elapsed += elapsed_seconds;
+    affliction.tick_elapsed += elapsed_seconds;
 
-            while stack.tick_elapsed + f64::EPSILON >= tick_interval_seconds
-                && stack.remaining_duration > 0.0
-            {
-                stack.tick_elapsed -= tick_interval_seconds;
-                let tick_damage = tick_damage_for(
+    while affliction.tick_elapsed + f64::EPSILON >= tick_interval_seconds
+        && affliction
+            .stacks
+            .iter()
+            .any(|stack| stack.remaining_duration > 0.0)
+    {
+        affliction.tick_elapsed -= tick_interval_seconds;
+
+        let tick_damage = affliction
+            .stacks
+            .iter()
+            .filter(|stack| stack.remaining_duration > 0.0)
+            .map(|stack| {
+                tick_damage_for(
                     &affliction_snapshot,
                     boss,
                     part_name,
                     stack.damage_multiplier,
                     tick_interval_seconds,
-                );
-                if tick_damage > 0 {
-                    println!(
-                        "[AFF TICK] card={:?} part={:?} damage={} remaining={:.2}s attached={:.2}s tick_interval={:.3}s elapsed={:.3}s stack_multiplier={:.4} stacks={}",
-                        affliction.source_card,
-                        part_name,
-                        tick_damage,
-                        stack.remaining_duration,
-                        stack.attached_duration,
-                        tick_interval_seconds,
-                        elapsed_seconds,
-                        stack.damage_multiplier,
-                        affliction_snapshot.stack_count(),
-                    );
+                )
+            })
+            .fold(0u64, u64::saturating_add);
 
-                    events.push(AfflictionDamageEvent {
-                        part_name,
-                        damage: tick_damage,
-                        source: DamageSource::Card(affliction.source_card),
-                    });
-                }
-            }
+        if tick_damage > 0 {
+            let lowest_remaining = affliction
+                .stacks
+                .iter()
+                .filter(|stack| stack.remaining_duration > 0.0)
+                .map(|stack| stack.remaining_duration)
+                .min_by(|left, right| left.total_cmp(right))
+                .unwrap_or(0.0);
+
+            println!(
+                "[AFF TICK] card={:?} part={:?} damage={} lowest_remaining={:.2}s tick_interval={:.3}s elapsed={:.3}s active_stacks={}",
+                affliction.source_card,
+                part_name,
+                tick_damage,
+                lowest_remaining,
+                tick_interval_seconds,
+                elapsed_seconds,
+                affliction
+                    .stacks
+                    .iter()
+                    .filter(|stack| stack.remaining_duration > 0.0)
+                    .count(),
+            );
+
+            events.push(AfflictionDamageEvent {
+                part_name,
+                damage: tick_damage,
+                source: DamageSource::Card(affliction.source_card),
+            });
         }
+    }
 
+    for stack in &mut affliction.stacks {
         stack.tick(elapsed_seconds);
 
         if stack.is_expired() {

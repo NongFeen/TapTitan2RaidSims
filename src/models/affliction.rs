@@ -79,6 +79,8 @@ pub struct Affliction {
     pub damage_per_second: f64,
     pub remove_damage: f64,
     pub tick_interval_seconds: f64,
+    #[serde(default)]
+    pub tick_elapsed: f64,
     pub max_stacks: u32,
     pub refresh_rule: AfflictionRefreshRule,
     pub overflow: AfflictionOverflow,
@@ -149,6 +151,7 @@ impl Affliction {
             damage_per_second,
             remove_damage,
             tick_interval_seconds,
+            tick_elapsed: 0.0,
             max_stacks,
             refresh_rule: kind.refresh_rule(),
             overflow: kind.overflow(),
