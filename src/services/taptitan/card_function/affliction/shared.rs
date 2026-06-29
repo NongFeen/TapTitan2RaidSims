@@ -69,6 +69,7 @@ pub(super) fn on_tick(
     stack_multiplier: f64,
     elapsed_seconds: f64,
 ) -> u64 {
+    // println!("[AFF] {} Damage before bossmult ticks {}",affliction.source_card.display_name(),affliction.damage_per_second * stack_multiplier * elapsed_seconds);
     (affliction.damage_per_second * stack_multiplier * elapsed_seconds).max(0.0) as u64
 }
 

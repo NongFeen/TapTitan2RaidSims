@@ -5,6 +5,7 @@ use crate::models::{
     cards::CardType,
 };
 
+#[derive(Debug, Clone)]
 pub struct SupportModifiers {
     //additive
     //part mult

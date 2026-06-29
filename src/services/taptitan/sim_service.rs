@@ -128,6 +128,7 @@ impl SimService {
 
         for _ in 1..=round {
             let mut boss = sim_stats.boss_stat.clone();
+            boss.set_player_raid_data(sim_stats.player_stat.clone());
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
             let mut deck = select_deck.clone();
@@ -136,7 +137,7 @@ impl SimService {
                     let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
                     Self::tap_boss(
                         &mut boss,
-                        current_target, // 👈 Pass the shifting target down
+                        current_target,
                         &mut deck,
                         &sim_stats.player_stat,
                         &mut total_burst_proc,
@@ -156,7 +157,7 @@ impl SimService {
             }
 
             // println!("Boss Head hp {}",boss.torso.current_health);
-            println!("{}", boss.getDamageResult());
+            println!("[Sim Result]\n{}", boss.getDamageResult());
             total_sim_damage += boss.get_total_damage()
         }
         let avg = total_sim_damage / round;
@@ -218,21 +219,6 @@ impl SimService {
                 0.0
             });
 
-        // titansoul mult
-
-        let tts_boss_mult = 1.0
-            + player_raid_data
-                .titan_soul_research
-                .get_boss_mult(boss.boss_name);
-        let tts_part_mult = 1.0
-            + player_raid_data
-                .titan_soul_research
-                .get_part_mult(attack_part);
-        let tts_state_mult = 1.0
-            + player_raid_data
-                .titan_soul_research
-                .get_state_mult(current_state);
-
         //support card
         let deck_snapshot: Vec<Card> = deck.to_vec();
         let support_mods: Vec<SupportModifiers> = deck
@@ -242,25 +228,9 @@ impl SimService {
             .collect();
 
         let combined_support = SupportModifiers::accumulate(&support_mods);
-        let tap_support_bonus =
-            combined_support.total_damage_bonus(attack_part, current_state, None);
         // println!("Support Card {}", combined_support);
 
-        let jade_set = if player_raid_data.raid_set.jade_anniversary {
-            0.04
-        } else {
-            0.0
-        };
-        let raid_all_mult = 1.0 + jade_set + player_raid_data.title;
-
-        // println!("Part mult {}",part_mult);
-        let tap_total_multiplier = raid_all_mult
-            * tts_boss_mult
-            * tts_part_mult
-            * tts_state_mult
-            * (1.0 + tap_support_bonus as f32);
-
-        // println!(" Mult {}",  tap_total_multiplier);
+        boss.set_support_modifiers(combined_support.clone());
 
         // card proc
         for card in deck.iter_mut() {
@@ -281,35 +251,19 @@ impl SimService {
                 CardType::Affliction => 1.0 + combined_support.affliction_chance_mult,
                 _ => 1.0, // unreachable given the matches! filter above, but keeps the match exhaustive
             };
+            println!("card_base_damage : {} true_base_tap {}" ,card_base_damage,true_base_tap);
             let proc_chance = card.get_proc_chance(boss) * chance_mult;
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
-            let card_support_bonus = combined_support.total_damage_bonus(
-                attack_part,
-                current_state,
-                Some(card.cardtype),
-            );
-            let proc_damage_mult = raid_all_mult
-                * tts_boss_mult
-                * tts_part_mult
-                * tts_state_mult
-                * (1.0 + card_support_bonus) as f32;
-
             if roll <= proc_chance {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
-                card.on_proc(
-                    boss,
-                    attack_part,
-                    card_base_damage * proc_damage_mult as f64,
-                    0,
-                    *total_burst_proc,
-                );
+                card.on_proc(boss, attack_part, card_base_damage, 0, *total_burst_proc);
             }
         }
 
         // tap damage on boss
-        let tap_damage = (true_base_tap * tap_total_multiplier) as u64;
+        let tap_damage = true_base_tap as u64;
         boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
     }
 }

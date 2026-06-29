@@ -107,20 +107,20 @@ pub fn on_tick(
                 .min_by(|left, right| left.total_cmp(right))
                 .unwrap_or(0.0);
 
-            println!(
-                "[AFF TICK] card={:?} part={:?} damage={} lowest_remaining={:.2}s tick_interval={:.3}s elapsed={:.3}s active_stacks={}",
-                affliction.source_card,
-                part_name,
-                tick_damage,
-                lowest_remaining,
-                tick_interval_seconds,
-                elapsed_seconds,
-                affliction
-                    .stacks
-                    .iter()
-                    .filter(|stack| stack.remaining_duration > 0.0)
-                    .count(),
-            );
+            // println!(
+            //     "[AFF TICK] card={:?} part={:?} damage={} lowest_remaining={:.2}s tick_interval={:.3}s elapsed={:.3}s active_stacks={}",
+            //     affliction.source_card,
+            //     part_name,
+            //     tick_damage,
+            //     lowest_remaining,
+            //     tick_interval_seconds,
+            //     elapsed_seconds,
+            //     affliction
+            //         .stacks
+            //         .iter()
+            //         .filter(|stack| stack.remaining_duration > 0.0)
+            //         .count(),
+            // );
 
             events.push(AfflictionDamageEvent {
                 part_name,

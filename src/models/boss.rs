@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::Affliction;
+use crate::models::cards::CardName::AcidDrench;
 use crate::models::damage_source::DamageSource;
+use crate::models::player_raid_data::PlayerRaidData;
+use crate::models::support_modifier::SupportModifiers;
 
 #[derive(
     Debug,
@@ -165,9 +168,21 @@ pub struct Boss {
     pub right_leg: BossPart,
     #[serde(default)]
     pub damage_results: Vec<DamageResult>,
+    #[serde(skip, default)]
+    pub player_raid_data: Option<PlayerRaidData>,
+    #[serde(skip, default)]
+    pub support_modifiers: SupportModifiers,
 }
 
 impl Boss {
+    pub fn set_player_raid_data(&mut self, player_raid_data: PlayerRaidData) {
+        self.player_raid_data = Some(player_raid_data);
+    }
+
+    pub fn set_support_modifiers(&mut self, support_modifiers: SupportModifiers) {
+        self.support_modifiers = support_modifiers;
+    }
+
     pub fn part_mut(&mut self, part_name: BossPartName) -> &mut BossPart {
         match part_name {
             BossPartName::Head => &mut self.head,
@@ -295,8 +310,12 @@ impl Boss {
         damage: u64,
         source: DamageSource,
     ) {
-        self.record_damage(source, damage);
-        self.on_hit(part_name, damage);
+        let final_damage = self.final_damage_for(part_name, damage, &source);
+        // if(source.label() == AcidDrench.display_name()){
+            println!("[Damage] {} : {}", source.label(), Self::format_compact(final_damage));
+        // }
+        self.record_damage(source, final_damage);
+        self.on_hit(part_name, final_damage);
     }
     pub fn on_hit(&mut self, part_name: BossPartName, damage: u64) {
         match part_name {
@@ -366,5 +385,49 @@ impl Boss {
         } else {
             damage.to_string()
         }
+    }
+
+    fn final_damage_for(
+        &self,
+        part_name: BossPartName,
+        raw_damage: u64,
+        source: &DamageSource,
+    ) -> u64 {
+        let Some(player_raid_data) = self.player_raid_data.as_ref() else {
+            return raw_damage;
+        };
+
+        let state = self.get_state_from_part(part_name);
+        let jade_set = if player_raid_data.raid_set.jade_anniversary {
+            0.04
+        } else {
+            0.0
+        };
+        let raid_all_mult = 1.0 + jade_set + player_raid_data.title;
+        let tts_boss_mult = 1.0
+            + player_raid_data
+                .titan_soul_research
+                .get_boss_mult(self.boss_name);
+        let tts_part_mult = 1.0
+            + player_raid_data
+                .titan_soul_research
+                .get_part_mult(part_name);
+        let tts_state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(state);
+
+        let card_type = match source {
+            DamageSource::Tap => None,
+            DamageSource::Card(card_name) => Some(card_name.card_type()),
+        };
+        let support_bonus = self
+            .support_modifiers
+            .total_damage_bonus(part_name, state, card_type);
+
+        let total_multiplier = raid_all_mult
+            * tts_boss_mult
+            * tts_part_mult
+            * tts_state_mult
+            * (1.0 + support_bonus) as f32;
+
+        (raw_damage as f64 * total_multiplier as f64).max(0.0) as u64
     }
 }
