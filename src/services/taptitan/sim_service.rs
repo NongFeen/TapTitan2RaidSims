@@ -112,7 +112,7 @@ impl SimService {
         let mut total_sim_damage: u64 = 0;
 
         let round = 1;
-        let tap_count = 10;
+        let tap_count = 1;
         //for debug attack multiple part
         let attack_sequence = [
             BossPartName::Head,
