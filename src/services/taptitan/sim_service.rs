@@ -142,7 +142,7 @@ impl SimService {
                         &mut total_burst_proc,
                     );
                 }
-                if i == 20 {
+                if i == 30 {
                     let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
                     Self::tap_boss(
                         &mut boss,

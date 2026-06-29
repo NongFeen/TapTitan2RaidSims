@@ -37,6 +37,8 @@ pub struct AfflictionStack {
     pub remaining_duration: f64,
     pub attached_duration: f64,
     #[serde(default)]
+    pub elapsed_attached_duration: f64,
+    #[serde(default)]
     pub damage_multiplier: f64,
     #[serde(default)]
     pub tick_elapsed: f64,
@@ -47,6 +49,7 @@ impl AfflictionStack {
         Self {
             remaining_duration: duration,
             attached_duration: duration,
+            elapsed_attached_duration: 0.0,
             damage_multiplier: 1.0,
             tick_elapsed: 0.0,
         }
@@ -59,6 +62,7 @@ impl AfflictionStack {
     }
 
     pub fn tick(&mut self, elapsed: f64) {
+        self.elapsed_attached_duration += elapsed;
         self.remaining_duration = (self.remaining_duration - elapsed).max(0.0);
     }
 

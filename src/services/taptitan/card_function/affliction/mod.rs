@@ -134,14 +134,19 @@ pub fn on_tick(
         stack.tick(elapsed_seconds);
 
         if stack.is_expired() {
-            let remove_damage = remove_damage_for(&affliction_snapshot, stack.attached_duration);
+            let remove_duration = match affliction.source_card {
+                CardName::FusionBomb => stack.elapsed_attached_duration,
+                _ => stack.attached_duration,
+            };
+            let remove_damage = remove_damage_for(&affliction_snapshot, remove_duration);
             if remove_damage > 0 {
                 println!(
-                    "[AFF REMOVE] card={:?} part={:?} damage={} attached={:.2}s elapsed={:.3}s stacks_before_remove={}",
+                    "[AFF REMOVE] card={:?} part={:?} damage={} attached={:.2}s total_attached={:.2}s elapsed={:.3}s stacks_before_remove={}",
                     affliction.source_card,
                     part_name,
                     remove_damage,
                     stack.attached_duration,
+                    stack.elapsed_attached_duration,
                     elapsed_seconds,
                     affliction_snapshot.stack_count(),
                 );

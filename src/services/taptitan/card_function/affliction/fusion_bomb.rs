@@ -9,7 +9,7 @@ use super::shared;
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
-pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
+pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
     // shared::get_proc_chance(card, boss)
     1.0
 }
@@ -23,26 +23,29 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
     };
     let mut affliction = affliction;
     affliction.tick_interval_seconds = TICK_INTERVAL_SECONDS;
-    println!("remove_damage {} damage {}" ,remove_damage, damage);
-    
+    println!("remove_damage {} damage {}", remove_damage, damage);
+
     boss.apply_affliction(target_part, affliction);
 }
 
 pub fn on_tick(
     affliction: &Affliction,
-    boss: &Boss,
-    part_name: BossPartName,
-    stack_multiplier: f64,
-    elapsed_seconds: f64,
+    _boss: &Boss,
+    _part_name: BossPartName,
+    _stack_multiplier: f64,
+    _elapsed_seconds: f64,
 ) -> u64 {
     // 0
-    println!("Current if remove damage :{} ", affliction.remove_damage);
+    // println!("Current if remove damage :{} ", affliction.remove_damage * 0.5 * affliction.stacks[0].elapsed_attached_duration);
     0
 }
 
-pub fn on_remove(affliction: &Affliction, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &Affliction, total_attached_duration: f64) -> u64 {
     let per_second_bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.5);
-    println!("per_second_bonus {} ", per_second_bonus);
+    println!(
+        "per_second_bonus {} total_attached_duration {}",
+        per_second_bonus, total_attached_duration
+    );
 
-    (affliction.remove_damage * (per_second_bonus * attached_duration)).max(0.0) as u64
+    (affliction.remove_damage * (per_second_bonus * total_attached_duration)).max(0.0) as u64
 }
