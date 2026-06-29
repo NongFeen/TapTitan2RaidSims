@@ -142,6 +142,16 @@ impl SimService {
                         &mut total_burst_proc,
                     );
                 }
+                if i == 20 {
+                    let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
+                    Self::tap_boss(
+                        &mut boss,
+                        current_target, // 👈 Pass the shifting target down
+                        &mut deck,
+                        &sim_stats.player_stat,
+                        &mut total_burst_proc,
+                    );
+                }
                 boss.update();
             }
 

@@ -44,6 +44,7 @@ pub(super) fn build_affliction(
     let row = card_skill_row(card.card_id)?;
     let mut duration = row.duration;
 
+
     if card.card_id != CardName::SandsOfTime && part_has_sands_of_time(boss, target_part) {
         duration *= 1.0 + sands_duration_bonus(boss, target_part);
     }
