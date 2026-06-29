@@ -2,8 +2,7 @@ use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
-use crate::models::affliction::Affliction;
-use crate::models::cards::CardName::AcidDrench;
+use crate::models::affliction::{Affliction, AfflictionKind};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::support_modifier::SupportModifiers;
@@ -67,6 +66,8 @@ pub struct BossPart {
     pub current_health: u64,
     #[serde(default)]
     pub afflictions: Vec<Affliction>,
+    #[serde(default)]
+    pub radioactivity_afflicted_seconds: f64,
 }
 impl BossPart {
     pub fn new(
@@ -85,6 +86,7 @@ impl BossPart {
             current_armor: c_armor,
             current_health: c_health,
             afflictions: Vec::new(),
+            radioactivity_afflicted_seconds: 0.0,
         }
     }
     pub fn is_limb(&self) -> bool {
@@ -266,6 +268,8 @@ impl Boss {
     }
 
     pub fn update_with_elapsed(&mut self, elapsed_seconds: f64) {
+        self.update_persistent_affliction_timers(elapsed_seconds);
+
         let snapshot = self.clone();
         let mut damage_events = Vec::new();
 
@@ -287,6 +291,22 @@ impl Boss {
 
         for event in damage_events {
             self.on_hit_with_source(event.part_name, event.damage, event.source);
+        }
+    }
+
+    fn update_persistent_affliction_timers(&mut self, elapsed_seconds: f64) {
+        for part in self.parts_mut() {
+            let has_radioactivity = part.afflictions.iter().any(|affliction| {
+                affliction.kind == AfflictionKind::RadioactivityDebuff
+                    && affliction
+                        .stacks
+                        .iter()
+                        .any(|stack| stack.remaining_duration > 0.0)
+            });
+
+            if has_radioactivity {
+                part.radioactivity_afflicted_seconds += elapsed_seconds;
+            }
         }
     }
     pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
@@ -312,7 +332,11 @@ impl Boss {
     ) {
         let final_damage = self.final_damage_for(part_name, damage, &source);
         // if(source.label() == AcidDrench.display_name()){
-            println!("[Damage] {} : {}", source.label(), Self::format_compact(final_damage));
+        println!(
+            "[Damage] {} : {}",
+            source.label(),
+            Self::format_compact(final_damage)
+        );
         // }
         self.record_damage(source, final_damage);
         self.on_hit(part_name, final_damage);
