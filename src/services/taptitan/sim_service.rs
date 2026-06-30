@@ -115,7 +115,7 @@ impl SimService {
         let mut total_sim_damage: u64 = 0;
 
         let round = 1;
-        let tap_count = 2;
+        let tap_count = 1;
         //for debug attack multiple part
         let attack_sequence = [
             BossPartName::Head,
@@ -146,16 +146,16 @@ impl SimService {
                         &mut total_burst_proc,
                     );
                 }
-                // if i == 300 {
-                //     let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
-                //     Self::tap_boss(
-                //         &mut boss,
-                //         current_target, // 👈 Pass the shifting target down
-                //         &mut deck,
-                //         &sim_stats.player_stat,
-                //         &mut total_burst_proc,
-                //     );
-                // }
+                if i == 40 {
+                    let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
+                    Self::tap_boss(
+                        &mut boss,
+                        current_target, // 👈 Pass the shifting target down
+                        &mut deck,
+                        &sim_stats.player_stat,
+                        &mut total_burst_proc,
+                    );
+                }
                 boss.update();
             }
 
@@ -254,10 +254,10 @@ impl SimService {
                 CardType::Affliction => 1.0 + combined_support.affliction_chance_mult,
                 _ => 1.0, // unreachable given the matches! filter above, but keeps the match exhaustive
             };
-            println!(
-                "card_base_damage : {} true_base_tap {}",
-                card_base_damage, true_base_tap
-            );
+            // println!(
+            //     "card_base_damage : {} true_base_tap {}",
+            //     card_base_damage, true_base_tap
+            // );
             let proc_chance = card.get_proc_chance(boss) * chance_mult;
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
             if roll <= proc_chance {

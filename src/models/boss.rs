@@ -446,8 +446,10 @@ impl Boss {
         let support_bonus = self
             .support_modifiers
             .total_damage_bonus(part_name, state, card_type);
-        let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
 
+        //for guardbreak / maelStrom
+        let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
+        // println!("support mult {}", 1.0 + support_bonus + part_debuff_bonus);
         let total_multiplier = raid_all_mult
             * tts_boss_mult
             * tts_part_mult
@@ -462,7 +464,7 @@ impl Boss {
             .afflictions
             .iter()
             .map(|affliction| match affliction.kind {
-                AfflictionKind::GuardBreakDebuff => {
+                AfflictionKind::GuardBreakDebuff | AfflictionKind::MaelstromDebuff => {
                     let active_stacks = affliction
                         .stacks
                         .iter()
