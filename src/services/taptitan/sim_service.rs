@@ -1,4 +1,4 @@
-use super::attack_pattern::generate_attack_patterns;
+use super::attack_pattern::{AttackPattern, generate_attack_patterns};
 use super::card_function::support::totem_of_power::{self, PendingTotem};
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::card_skill_data::{
@@ -109,100 +109,133 @@ impl SimService {
             return;
         }
 
-        Self::run_deck_sim(&sim_stats, select_deck);
+        let attack_patterns = generate_attack_patterns(&sim_stats, &select_deck);
+        let round = 10;
+
+        Self::run_deck_sim(&sim_stats, select_deck, attack_patterns, round);
     }
 
-    pub fn run_deck_sim(sim_stats: &SimStats, select_deck: Vec<Card>) {
+    pub fn run_deck_sim(
+        sim_stats: &SimStats,
+        select_deck: Vec<Card>,
+        attack_patterns: Vec<AttackPattern>,
+        round: u64,
+    ) {
         println!(
-            "Deck ready: [{}, {}, {}]",
+            "\n================ Deck Simulation ================\nDeck: [{}, {}, {}]",
             select_deck[0].card_id.display_name(),
             select_deck[1].card_id.display_name(),
             select_deck[2].card_id.display_name()
         );
-        let mut total_sim_damage: u64 = 0;
 
-        let round = 1;
+        let sim_rounds = round;
         let tap_count = 600;
-        //for debug attack multiple part
-        let attack_sequence = [
-            BossPartName::Head,
-            // BossPartName::Torso,
-            // BossPartName::LeftShoulder,
-            // BossPartName::LeftHand,
-            // BossPartName::LeftLeg,
-            // BossPartName::RightShoulder,
-            // BossPartName::RightHand,
-            // BossPartName::RightLeg,
-        ];
-        //
 
-        for _ in 1..=round {
-            let mut boss = sim_stats.boss_stat.clone();
-            boss.set_player_raid_data(sim_stats.player_stat.clone());
-            // println!("Boss Head hp {}",boss.head.current_health);
-            let mut total_burst_proc: u32 = 0;
-            let mut deck = select_deck.clone();
-            let totem_card = deck
-                .iter()
-                .find(|card| card.card_id == CardName::TotemOfPower)
-                .cloned();
-            let mut pending_totems: Vec<PendingTotem> = Vec::new();
-            let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
-            for i in 0..600 {
-                if i < tap_count {
-                    let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
-                    //for Totem of Power
-                    if let Some(totem_card) = &totem_card {
-                        totem_of_power::update(
-                            &mut pending_totems,
-                            totem_card,
-                            &deck,
-                            &mut boss,
-                            i,
-                        );
-                    }
-                    Self::tap_boss(
-                        &mut boss,
-                        current_target,
-                        &mut deck,
-                        &sim_stats.player_stat,
-                        &mut total_burst_proc,
-                        1.0,
-                    );
-
-                    if trigger_astral_echo_extra_tap(&mut deck) {
-                        let astral_proc_chance_scale =
-                            card_skill_bonusamountD(CardName::AstralEcho).unwrap_or(0.5);
-                        Self::tap_boss(
-                            &mut boss,
-                            current_target,
-                            &mut deck,
-                            &sim_stats.player_stat,
-                            &mut total_burst_proc,
-                            astral_proc_chance_scale,
-                        );
-                    }
-                    //for Totem of Power
-                    if let Some(totem_card) = &totem_card {
-                        totem_of_power::try_spawn(
-                            &mut pending_totems,
-                            totem_card,
-                            &boss,
-                            current_target,
-                            i,
-                            &mut next_totem_spawn_tick,
-                        );
-                    }
-                }
-                boss.update();
-            }
-
-            // println!("Boss Head hp {}",boss.torso.current_health);
-            println!("[Sim Result]\n{}", boss.getDamageResult());
-            total_sim_damage += boss.get_total_damage()
+        if attack_patterns.is_empty() {
+            println!("No valid attack patterns for selected deck.");
+            return;
         }
-        let avg = total_sim_damage / round;
-        println!("Average damage : {}", format_compact(avg));
+
+        println!("Rounds per pattern: {}", sim_rounds);
+        println!("Attack patterns: {}", attack_patterns.len());
+
+        for pattern in attack_patterns {
+            println!("\n---------------- Attack Pattern ----------------");
+            println!("Pattern: {}", pattern.describe());
+            let mut total_sim_damage: u64 = 0;
+
+            for round_index in 1..=sim_rounds {
+                let mut boss = sim_stats.boss_stat.clone();
+                boss.set_player_raid_data(sim_stats.player_stat.clone());
+                // println!("Boss Head hp {}",boss.head.current_health);
+                let mut total_burst_proc: u32 = 0;
+                let mut deck = select_deck.clone();
+                let totem_card = deck
+                    .iter()
+                    .find(|card| card.card_id == CardName::TotemOfPower)
+                    .cloned();
+                let mut pending_totems: Vec<PendingTotem> = Vec::new();
+                let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
+                let mut last_target: Option<BossPartName> = None;
+
+                for i in 0..600 {
+                    if i < tap_count {
+                        if let Some(current_target) = pattern.next_target(
+                            &boss,
+                            last_target,
+                            &deck,
+                            &sim_stats.attackable_part,
+                        ) {
+                            last_target = Some(current_target);
+
+                            //for Totem of Power
+                            if let Some(totem_card) = &totem_card {
+                                totem_of_power::update(
+                                    &mut pending_totems,
+                                    totem_card,
+                                    &deck,
+                                    &mut boss,
+                                    i,
+                                );
+                            }
+
+                            Self::tap_boss(
+                                &mut boss,
+                                current_target,
+                                &mut deck,
+                                &sim_stats.player_stat,
+                                &mut total_burst_proc,
+                                1.0,
+                            );
+
+                            if trigger_astral_echo_extra_tap(&mut deck) {
+                                let astral_proc_chance_scale =
+                                    card_skill_bonusamountD(CardName::AstralEcho).unwrap_or(0.5);
+                                Self::tap_boss(
+                                    &mut boss,
+                                    current_target,
+                                    &mut deck,
+                                    &sim_stats.player_stat,
+                                    &mut total_burst_proc,
+                                    astral_proc_chance_scale,
+                                );
+                            }
+
+                            //for Totem of Power
+                            if let Some(totem_card) = &totem_card {
+                                totem_of_power::try_spawn(
+                                    &mut pending_totems,
+                                    totem_card,
+                                    &boss,
+                                    current_target,
+                                    i,
+                                    &mut next_totem_spawn_tick,
+                                );
+                            }
+                        }
+                    }
+                    boss.update();
+                }
+
+                // println!("Boss Head hp {}",boss.torso.current_health);
+                println!(
+                    "\n[Round {}/{}]\nTotal damage: {}\n{}",
+                    round_index,
+                    sim_rounds,
+                    format_compact(boss.get_total_damage()),
+                    boss.getDamageResult()
+                );
+                total_sim_damage += boss.get_total_damage()
+            }
+            let avg = total_sim_damage / sim_rounds;
+            println!(
+                "\n[Pattern Average]\nPattern: {}\nAverage damage: {}",
+                pattern.describe(),
+                format_compact(avg)
+            );
+        }
+
+        println!("\n=================================================");
     }
 
     fn tap_boss(
@@ -213,6 +246,10 @@ impl SimService {
         total_burst_proc: &mut u32,
         proc_chance_scale: f64,
     ) {
+        if boss.get_state_from_part(attack_part) == PartState::Skeleton {
+            return;
+        }
+
         let current_state = boss.get_state_from_part(attack_part);
 
         // flat addition & card research

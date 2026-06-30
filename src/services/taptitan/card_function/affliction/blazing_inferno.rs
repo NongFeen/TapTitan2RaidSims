@@ -28,8 +28,8 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     let chance = row.chance + bonus_per_part * affected_parts.min(max_parts);
 
     // chance.min(row.max_chance.max(row.chance))
-    // chance.min(row.max_chance.max(row.chance))
-    1.0
+    chance.min(row.max_chance.max(row.chance))
+    // 1.0
 }
 
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {

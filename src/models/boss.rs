@@ -333,13 +333,13 @@ impl Boss {
     ) {
         let final_damage = self.final_damage_for(part_name, damage, &source);
         // if(source.label() == AcidDrench.display_name()){
-        if (source != DamageSource::Tap) {
-            println!(
-                "[Damage] {} : {}",
-                source.label(),
-                Self::format_compact(final_damage)
-            );
-        }
+        // if (source != DamageSource::Tap) {
+        //     println!(
+        //         "[Damage] {} : {}",
+        //         source.label(),
+        //         Self::format_compact(final_damage)
+        //     );
+        // }
         // }
         self.record_damage(source, final_damage);
         self.on_hit(part_name, final_damage);

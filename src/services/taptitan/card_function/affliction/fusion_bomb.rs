@@ -9,9 +9,9 @@ use super::shared;
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
-pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
-    // shared::get_proc_chance(card, boss)
-    1.0
+pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
+    shared::get_proc_chance(card, boss)
+    // 1.0
 }
 //mult 73.72
 //bomb dmg : 400300 ~~~ 400460

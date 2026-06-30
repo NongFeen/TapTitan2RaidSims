@@ -1,7 +1,6 @@
 use crate::models::affliction::AfflictionKind;
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName};
-use strum::IntoEnumIterator;
 
 use super::sim_service::SimStats;
 
@@ -44,8 +43,9 @@ impl AttackPattern {
         boss: &Boss,
         last_target: Option<BossPartName>,
         deck: &[Card],
+        attackable_parts: &[BossPartName],
     ) -> Option<BossPartName> {
-        let candidates = self.candidate_parts(boss);
+        let candidates = self.candidate_parts(boss, deck, attackable_parts);
         if candidates.is_empty() {
             return None;
         }
@@ -114,6 +114,7 @@ impl AttackPattern {
             return candidates.first().copied();
         }
 
+        //fuse deck
         if deck.iter().any(|card| card.card_id == CardName::FusionBomb) {
             if let Some(open_part) = candidates.iter().copied().find(|part| {
                 !boss
@@ -134,6 +135,7 @@ impl AttackPattern {
             return candidates.first().copied();
         }
 
+        //acid (sword posion)
         if deck.iter().any(|card| card.card_id == CardName::AcidDrench) {
             let poisoned_parts: Vec<(BossPartName, usize, f64)> = candidates
                 .iter()
@@ -183,6 +185,7 @@ impl AttackPattern {
             }
         }
 
+        // plague
         if deck
             .iter()
             .any(|card| card.card_id == CardName::ThrivingPlague)
@@ -234,6 +237,7 @@ impl AttackPattern {
             }
         }
 
+        //radio
         if deck
             .iter()
             .any(|card| card.card_id == CardName::Radioactivity)
@@ -284,6 +288,7 @@ impl AttackPattern {
             }
         }
 
+        //decay
         if deck
             .iter()
             .any(|card| card.card_id == CardName::DecayingStrike)
@@ -324,6 +329,7 @@ impl AttackPattern {
             }
         }
 
+        //shadow (keep 7 stack)
         if deck.iter().any(|card| card.card_id == CardName::GrimShadow) {
             let shadow_limit = 7usize;
             let mut shadow_parts: Vec<(BossPartName, usize)> = candidates
@@ -357,6 +363,7 @@ impl AttackPattern {
             }
         }
 
+        //inferno (keep all part 3 stack)
         if deck
             .iter()
             .any(|card| card.card_id == CardName::BlazingInferno)
@@ -389,6 +396,7 @@ impl AttackPattern {
             }
         }
 
+        //celestial
         if deck
             .iter()
             .any(|card| card.card_id == CardName::CelestialStatic)
@@ -440,6 +448,7 @@ impl AttackPattern {
             }
         }
 
+        //rain try to focus cursed -> if multiple just cycle
         if deck
             .iter()
             .any(|card| card.card_id == CardName::RuinousRain)
@@ -471,6 +480,7 @@ impl AttackPattern {
             }
         }
 
+        //basic attack pattern
         match self {
             AttackPattern::SingleAny
             | AttackPattern::SingleHead
@@ -507,82 +517,91 @@ impl AttackPattern {
         }
     }
 
-    fn candidate_parts(&self, boss: &Boss) -> Vec<BossPartName> {
+    fn candidate_parts(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> Vec<BossPartName> {
+        let source_parts = self.source_parts(boss, deck, attackable_parts);
+
         match self {
-            AttackPattern::SingleAny => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::SingleHead => single_part_candidates(boss, BossPartName::Head),
-            AttackPattern::SingleTorso => single_part_candidates(boss, BossPartName::Torso),
-            AttackPattern::SingleBody => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
+            AttackPattern::SingleAny => source_parts,
+            AttackPattern::SingleHead => single_part_candidates(&source_parts, BossPartName::Head),
+            AttackPattern::SingleTorso => {
+                single_part_candidates(&source_parts, BossPartName::Torso)
+            }
+            AttackPattern::SingleBody => source_parts
+                .into_iter()
                 .filter(|part| boss.part(*part).part_state == PartState::Body)
                 .collect(),
-            AttackPattern::SingleArmor => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
+            AttackPattern::SingleArmor => source_parts
+                .into_iter()
                 .filter(|part| boss.part(*part).part_state == PartState::Armor)
                 .collect(),
-            AttackPattern::SingleLimb => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
-                .filter(BossPartName::is_limb)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::CycleHeadTorso => [BossPartName::Head, BossPartName::Torso]
+            AttackPattern::SingleLimb => source_parts
                 .into_iter()
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::CycleLimb => BossPartName::iter()
                 .filter(BossPartName::is_limb)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
                 .collect(),
-            AttackPattern::CycleAllActive => boss
+            AttackPattern::CycleHeadTorso => source_parts
+                .into_iter()
+                .filter(|part| matches!(part, BossPartName::Head | BossPartName::Torso))
+                .collect(),
+            AttackPattern::CycleLimb => source_parts
+                .into_iter()
+                .filter(BossPartName::is_limb)
+                .collect(),
+            AttackPattern::CycleAllActive
+            | AttackPattern::FocusParts(_)
+            | AttackPattern::CelestialStatic => source_parts,
+            AttackPattern::WhipRuinousFocus => source_parts.into_iter().take(5).collect(),
+        }
+    }
+
+    fn source_parts(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> Vec<BossPartName> {
+        if self.can_target_untargetable_parts(deck) {
+            return boss
                 .parts()
                 .iter()
                 .copied()
                 .map(|part| part.part_name)
                 .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::FocusParts(_) => boss
-                .parts()
+                .collect();
+        }
+
+        attackable_parts
+            .iter()
+            .copied()
+            .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
+            .collect()
+    }
+
+    fn can_target_untargetable_parts(&self, deck: &[Card]) -> bool {
+        match self {
+            AttackPattern::CelestialStatic => deck
                 .iter()
-                .copied()
-                .map(|part| part.part_name)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::CelestialStatic => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .collect(),
-            AttackPattern::WhipRuinousFocus => boss
-                .parts()
-                .iter()
-                .copied()
-                .map(|part| part.part_name)
-                .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
-                .take(5)
-                .collect(),
+                .any(|card| card.card_id == CardName::CelestialStatic),
+            AttackPattern::WhipRuinousFocus => deck.iter().any(|card| {
+                matches!(
+                    card.card_id,
+                    CardName::WhipOfLightning | CardName::RuinousRain
+                )
+            }),
+            _ => false,
         }
     }
 }
 
-fn single_part_candidates(boss: &Boss, target: BossPartName) -> Vec<BossPartName> {
-    if boss.part(target).part_state != PartState::Skeleton {
+fn single_part_candidates(
+    source_parts: &[BossPartName],
+    target: BossPartName,
+) -> Vec<BossPartName> {
+    if source_parts.contains(&target) {
         vec![target]
     } else {
         Vec::new()
@@ -594,7 +613,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
 
     for pattern in base_attack_patterns() {
         if pattern_is_allowed_for_deck(&pattern, deck)
-            && pattern_has_candidates(&pattern, sim_stats)
+            && pattern_has_candidates(&pattern, sim_stats, deck)
         {
             patterns.push(pattern);
         }
@@ -624,8 +643,10 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
     ]
 }
 
-fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats) -> bool {
-    !pattern.candidate_parts(&sim_stats.boss_stat).is_empty()
+fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats, deck: &[Card]) -> bool {
+    !pattern
+        .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+        .is_empty()
 }
 
 fn pattern_is_allowed_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool {

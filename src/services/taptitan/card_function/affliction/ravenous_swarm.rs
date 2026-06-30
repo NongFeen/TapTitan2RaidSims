@@ -11,8 +11,8 @@ use super::shared;
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
-    // shared::get_proc_chance(card, boss)
-    1.0
+    shared::get_proc_chance(card, boss)
+    // 1.0
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     let Some(affliction) = shared::build_affliction(card, boss, target_part, damage, 0.0) else {

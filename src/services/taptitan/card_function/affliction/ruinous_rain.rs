@@ -10,8 +10,8 @@ use super::shared;
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
-    // shared::get_proc_chance(card, boss)
-    1.0
+    shared::get_proc_chance(card, boss)
+    // 1.0
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     shared::on_proc_with_tick_interval(card, boss, target_part, damage, TICK_INTERVAL_SECONDS)
