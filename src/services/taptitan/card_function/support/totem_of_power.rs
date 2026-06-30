@@ -14,8 +14,8 @@ const LIMB_MIN_TRAVEL_TICKS: u32 = 30;
 const LIMB_MAX_TRAVEL_TICKS: u32 = 80;
 const TAP_WINDOW_TICKS: u32 = 10;
 const HAYMAKER_MAX_CHARGES: u16 = 70;
-const HAYMAKER_SAVE_TICKS: u16 = 38;//40
-const HAYMAKER_SAVE_TICKS_WITH_ECHO: u16 = 45;//48
+const HAYMAKER_SAVE_TICKS: u16 = 38; //40
+const HAYMAKER_SAVE_TICKS_WITH_ECHO: u16 = 45; //48
 
 #[derive(Debug, Clone)]
 pub struct PendingTotem {

@@ -109,6 +109,10 @@ impl SimService {
             return;
         }
 
+        Self::run_deck_sim(&sim_stats, select_deck);
+    }
+
+    pub fn run_deck_sim(sim_stats: &SimStats, select_deck: Vec<Card>) {
         println!(
             "Deck ready: [{}, {}, {}]",
             select_deck[0].card_id.display_name(),
