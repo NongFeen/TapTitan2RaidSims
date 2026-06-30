@@ -15,7 +15,7 @@ mod rancid_gas;
 mod skeletal_smash;
 mod soul_fire;
 mod team_tactics;
-mod totem_of_power;
+pub mod totem_of_power;
 mod victory_march;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {

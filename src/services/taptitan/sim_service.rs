@@ -1,4 +1,5 @@
 use super::attack_pattern::generate_attack_patterns;
+use super::card_function::support::totem_of_power::{self, PendingTotem};
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::card_skill_data::{
     card_skill_bonusamountC, card_skill_bonusamountD, card_skill_row,
@@ -137,9 +138,24 @@ impl SimService {
             // println!("Boss Head hp {}",boss.head.current_health);
             let mut total_burst_proc: u32 = 0;
             let mut deck = select_deck.clone();
+            let totem_card = deck
+                .iter()
+                .find(|card| card.card_id == CardName::TotemOfPower)
+                .cloned();
+            let mut pending_totems: Vec<PendingTotem> = Vec::new();
             for i in 0..600 {
                 if i < tap_count {
                     let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
+                    //for Totem of Power
+                    if let Some(totem_card) = &totem_card {
+                        totem_of_power::update(
+                            &mut pending_totems,
+                            totem_card,
+                            &deck,
+                            &mut boss,
+                            i,
+                        );
+                    }
                     Self::tap_boss(
                         &mut boss,
                         current_target,
@@ -159,6 +175,16 @@ impl SimService {
                             &sim_stats.player_stat,
                             &mut total_burst_proc,
                             astral_proc_chance_scale,
+                        );
+                    }
+                    //for Totem of Power
+                    if let Some(totem_card) = &totem_card {
+                        totem_of_power::try_spawn(
+                            &mut pending_totems,
+                            totem_card,
+                            &boss,
+                            current_target,
+                            i,
                         );
                     }
                 }

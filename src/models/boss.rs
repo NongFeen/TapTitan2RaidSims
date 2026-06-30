@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::{Affliction, AfflictionKind};
-use crate::models::card_skill_data::card_skill_value_b;
+use crate::models::card_skill_data::{card_skill_value_a, card_skill_value_b};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::support_modifier::SupportModifiers;
@@ -471,6 +471,16 @@ impl Boss {
                         .filter(|stack| stack.remaining_duration > 0.0)
                         .count() as f64;
                     card_skill_value_b(affliction.source_card, affliction.source_level)
+                        .unwrap_or(0.0)
+                        * active_stacks
+                }
+                AfflictionKind::TotemOfPowerDebuff => {
+                    let active_stacks = affliction
+                        .stacks
+                        .iter()
+                        .filter(|stack| stack.remaining_duration > 0.0)
+                        .count() as f64;
+                    card_skill_value_a(affliction.source_card, affliction.source_level)
                         .unwrap_or(0.0)
                         * active_stacks
                 }

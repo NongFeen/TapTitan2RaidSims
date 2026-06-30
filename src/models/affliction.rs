@@ -19,6 +19,7 @@ pub enum AfflictionKind {
     SandsOfTimeDebuff,
     ElectroZapDebuff,
     GuardBreakDebuff,
+    TotemOfPowerDebuff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -106,6 +107,7 @@ impl AfflictionKind {
             CardName::SandsOfTime => Some(Self::SandsOfTimeDebuff),
             CardName::ElectroZap => Some(Self::ElectroZapDebuff),
             CardName::GuardBreak => Some(Self::GuardBreakDebuff),
+            CardName::TotemOfPower => Some(Self::TotemOfPowerDebuff),
             _ => None,
         }
     }

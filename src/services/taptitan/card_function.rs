@@ -8,7 +8,7 @@ use crate::models::{
 
 mod affliction;
 mod burst;
-mod support;
+pub mod support;
 
 #[derive(Debug, Clone)]
 pub struct AfflictionDamageEvent {
