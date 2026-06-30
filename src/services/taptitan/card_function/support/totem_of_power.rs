@@ -8,9 +8,11 @@ use crate::models::{
 };
 
 const TICKS_PER_SECOND: u32 = 20;
-const MIN_TRAVEL_TICKS: u32 = TICKS_PER_SECOND;
-const MAX_TRAVEL_TICKS: u32 = TICKS_PER_SECOND * 4;
-const TAP_WINDOW_TICKS: u32 = TICKS_PER_SECOND / 2;
+const HEAD_TORSO_MIN_TRAVEL_TICKS: u32 = 40;
+const HEAD_TORSO_MAX_TRAVEL_TICKS: u32 = 70;
+const LIMB_MIN_TRAVEL_TICKS: u32 = 30;
+const LIMB_MAX_TRAVEL_TICKS: u32 = 80;
+const TAP_WINDOW_TICKS: u32 = 10;
 const HAYMAKER_MAX_CHARGES: u16 = 70;
 const HAYMAKER_SAVE_TICKS: u16 = 40;
 const HAYMAKER_SAVE_TICKS_WITH_ECHO: u16 = 48;
@@ -28,24 +30,24 @@ pub fn try_spawn(
     boss: &Boss,
     target_part: BossPartName,
     current_tick: u32,
+    next_spawn_tick: &mut f64,
 ) {
-    if boss.part(target_part).part_state == PartState::Skeleton {
-        return;
-    }
-
     if totem_card.card_id != CardName::TotemOfPower {
         return;
     }
 
-    let spawn_rate_per_second = card_skill_bonusamountD(CardName::TotemOfPower).unwrap_or(0.66);
-    let spawn_chance_per_tick = (spawn_rate_per_second / TICKS_PER_SECOND as f64).clamp(0.0, 1.0);
+    if (current_tick as f64) + f64::EPSILON < *next_spawn_tick {
+        return;
+    }
 
-    if rand::random::<f64>() > spawn_chance_per_tick {
+    *next_spawn_tick += spawn_interval_ticks();
+
+    if boss.part(target_part).part_state == PartState::Skeleton {
         return;
     }
 
     let mut rng = rand::rng();
-    let travel_ticks = rng.random_range(MIN_TRAVEL_TICKS..=MAX_TRAVEL_TICKS);
+    let travel_ticks = travel_ticks_for_part(target_part, &mut rng);
     let land_tick = current_tick.saturating_add(travel_ticks);
 
     pending_totems.push(PendingTotem {
@@ -53,6 +55,10 @@ pub fn try_spawn(
         earliest_tap_tick: land_tick.saturating_sub(TAP_WINDOW_TICKS),
         latest_tap_tick: land_tick.saturating_add(TAP_WINDOW_TICKS),
     });
+}
+
+pub fn first_spawn_tick() -> f64 {
+    spawn_interval_ticks()
 }
 
 pub fn update(
@@ -127,4 +133,19 @@ fn haymaker_stacks_remaining(deck: &[Card]) -> Option<u16> {
         .iter()
         .find(|card| card.card_id == CardName::CosmicHaymaker)?;
     Some(HAYMAKER_MAX_CHARGES.saturating_sub(haymaker.tap_count))
+}
+
+fn spawn_interval_ticks() -> f64 {
+    let spawn_interval_seconds = card_skill_bonusamountD(CardName::TotemOfPower)
+        .unwrap_or(0.66)
+        .max(f64::EPSILON);
+    spawn_interval_seconds * TICKS_PER_SECOND as f64
+}
+
+fn travel_ticks_for_part(target_part: BossPartName, rng: &mut impl Rng) -> u32 {
+    if target_part.is_limb() {
+        rng.random_range(LIMB_MIN_TRAVEL_TICKS..=LIMB_MAX_TRAVEL_TICKS)
+    } else {
+        rng.random_range(HEAD_TORSO_MIN_TRAVEL_TICKS..=HEAD_TORSO_MAX_TRAVEL_TICKS)
+    }
 }

@@ -143,6 +143,7 @@ impl SimService {
                 .find(|card| card.card_id == CardName::TotemOfPower)
                 .cloned();
             let mut pending_totems: Vec<PendingTotem> = Vec::new();
+            let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
             for i in 0..600 {
                 if i < tap_count {
                     let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
@@ -185,6 +186,7 @@ impl SimService {
                             &boss,
                             current_target,
                             i,
+                            &mut next_totem_spawn_tick,
                         );
                     }
                 }
