@@ -1,15 +1,13 @@
-use crate::{
-    models::{
-        affliction::AfflictionKind,
-        boss::{Boss, BossPartName},
-        card_skill_data::card_skill_value_a,
-        cards::Card,
-        damage_source::DamageSource,
-    },
-    services::taptitan::card_function::burst::guard_break,
+use crate::models::{
+    affliction::{Affliction, AfflictionKind},
+    boss::{Boss, BossPartName},
+    card_skill_data::{card_skill_row, card_skill_value_a},
+    cards::Card,
+    damage_source::DamageSource,
 };
 pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
-    0.1
+    // 0.1
+    1.0
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     //apply it's damage first before apply buff
@@ -20,5 +18,21 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         DamageSource::Card(card.card_id),
     );
     //apply debuff
-    // boss.apply_affliction(target_part, AfflictionKind::GuardBreakDebuff);
+    let Some(row) = card_skill_row(card.card_id) else {
+        return;
+    };
+
+    let affliction = Affliction::new(
+        AfflictionKind::GuardBreakDebuff,
+        card.card_id,
+        card.level,
+        1,
+        row.duration,
+        0.0,
+        0.0,
+        1.0,
+        1,
+    );
+
+    boss.apply_affliction(target_part, affliction);
 }

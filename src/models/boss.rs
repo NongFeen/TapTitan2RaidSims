@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::{Affliction, AfflictionKind};
+use crate::models::card_skill_data::card_skill_value_b;
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::support_modifier::SupportModifiers;
@@ -445,13 +446,34 @@ impl Boss {
         let support_bonus = self
             .support_modifiers
             .total_damage_bonus(part_name, state, card_type);
+        let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
 
         let total_multiplier = raid_all_mult
             * tts_boss_mult
             * tts_part_mult
             * tts_state_mult
-            * (1.0 + support_bonus) as f32;
+            * (1.0 + support_bonus + part_debuff_bonus) as f32;
 
         (raw_damage as f64 * total_multiplier as f64).max(0.0) as u64
+    }
+
+    fn part_damage_taken_bonus(&self, part_name: BossPartName) -> f64 {
+        self.part(part_name)
+            .afflictions
+            .iter()
+            .map(|affliction| match affliction.kind {
+                AfflictionKind::GuardBreakDebuff => {
+                    let active_stacks = affliction
+                        .stacks
+                        .iter()
+                        .filter(|stack| stack.remaining_duration > 0.0)
+                        .count() as f64;
+                    card_skill_value_b(affliction.source_card, affliction.source_level)
+                        .unwrap_or(0.0)
+                        * active_stacks
+                }
+                _ => 0.0,
+            })
+            .sum()
     }
 }
