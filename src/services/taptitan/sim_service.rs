@@ -1,6 +1,8 @@
 use super::attack_pattern::generate_attack_patterns;
 use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::card_skill_data::{card_skill_bonusamountC, card_skill_row};
+use crate::models::card_skill_data::{
+    card_skill_bonusamountC, card_skill_bonusamountD, card_skill_row,
+};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
@@ -115,7 +117,7 @@ impl SimService {
         let mut total_sim_damage: u64 = 0;
 
         let round = 1;
-        let tap_count = 1;
+        let tap_count = 600;
         //for debug attack multiple part
         let attack_sequence = [
             BossPartName::Head,
@@ -144,17 +146,21 @@ impl SimService {
                         &mut deck,
                         &sim_stats.player_stat,
                         &mut total_burst_proc,
+                        1.0,
                     );
-                }
-                if i == 40 {
-                    let current_target = attack_sequence[i as usize % attack_sequence.len()]; //get next target
-                    Self::tap_boss(
-                        &mut boss,
-                        current_target, // 👈 Pass the shifting target down
-                        &mut deck,
-                        &sim_stats.player_stat,
-                        &mut total_burst_proc,
-                    );
+
+                    if trigger_astral_echo_extra_tap(&mut deck) {
+                        let astral_proc_chance_scale =
+                            card_skill_bonusamountD(CardName::AstralEcho).unwrap_or(0.5);
+                        Self::tap_boss(
+                            &mut boss,
+                            current_target,
+                            &mut deck,
+                            &sim_stats.player_stat,
+                            &mut total_burst_proc,
+                            astral_proc_chance_scale,
+                        );
+                    }
                 }
                 boss.update();
             }
@@ -173,6 +179,7 @@ impl SimService {
         deck: &mut [Card],
         player_raid_data: &PlayerRaidData,
         total_burst_proc: &mut u32,
+        proc_chance_scale: f64,
     ) {
         let current_state = boss.get_state_from_part(attack_part);
 
@@ -258,7 +265,12 @@ impl SimService {
             //     "card_base_damage : {} true_base_tap {}",
             //     card_base_damage, true_base_tap
             // );
-            let proc_chance = card.get_proc_chance(boss) * chance_mult;
+            let base_proc_chance = card.get_proc_chance(boss);
+            let proc_chance = if proc_chance_scale < 1.0 && base_proc_chance >= 1.0 {
+                1.0
+            } else {
+                base_proc_chance * chance_mult * proc_chance_scale
+            };
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
             if roll <= proc_chance {
                 if card.cardtype == CardType::Burst {
@@ -507,4 +519,25 @@ fn apply_amplify_level_sharing(deck: &mut [Card]) {
             .unwrap_or(u16::MAX);
         card.level = card.level.saturating_add(shared_levels).min(max_level);
     }
+}
+
+fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
+    let Some(astral_echo) = deck
+        .iter_mut()
+        .find(|card| card.card_id == CardName::AstralEcho)
+    else {
+        return false;
+    };
+
+    let max_charges = card_skill_bonusamountC(CardName::AstralEcho)
+        .unwrap_or(5.0)
+        .max(1.0) as u16;
+    astral_echo.tap_count = astral_echo.tap_count.saturating_add(1);
+
+    if astral_echo.tap_count < max_charges {
+        return false;
+    }
+
+    astral_echo.tap_count = 0;
+    true
 }

@@ -40,7 +40,7 @@ pub fn on_proc(
 pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: Vec<Card>) -> SupportModifiers {
     match card.card_id {
         CardName::AncestralFavor => ancestral_favor::get_modifiers(card, boss),
-        // CardName::AstralEcho => astral_echo::get_modifiers(card, boss),
+        CardName::AstralEcho => astral_echo::get_modifiers(card, boss),
         CardName::CrushingInstinct => crushing_instinct::get_modifiers(card, boss),
         CardName::GraspingVines => grasping_vines::get_modifiers(card, boss),
         CardName::InsanityVoid => insanity_void::get_modifiers(card, boss),
