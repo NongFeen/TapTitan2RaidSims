@@ -1,5 +1,6 @@
 use super::attack_pattern::generate_attack_patterns;
 use crate::models::boss::{Boss, BossPartName, PartState};
+use crate::models::card_skill_data::{card_skill_bonusamountC, card_skill_row};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
@@ -85,7 +86,7 @@ impl SimService {
         let usable_cards = &sim_stats.usable_card;
 
         //current deck
-        let select_deck: Vec<Card> = usable_cards
+        let mut select_deck: Vec<Card> = usable_cards
             .iter()
             .filter_map(|card_name| {
                 player_cards
@@ -94,6 +95,8 @@ impl SimService {
                     .cloned()
             })
             .collect();
+
+        apply_amplify_level_sharing(&mut select_deck);
 
         if select_deck.len() != 3 {
             println!(
@@ -294,7 +297,9 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
             && is_deck_boss_suitable(sim_stats, c1, c2, c3)
         {
             // Dereference the pointers to store clean Card values
-            deck_combinations.push(vec![c1.clone(), c2.clone(), c3.clone()]);
+            let mut deck = vec![c1.clone(), c2.clone(), c3.clone()];
+            // apply_amplify_level_sharing(&mut deck);
+            deck_combinations.push(deck);
         }
     }
 
@@ -478,5 +483,28 @@ fn format_compact(damage: u64) -> String {
         format!("{:.3}K", damage_f / 1_000.0)
     } else {
         damage.to_string()
+    }
+}
+
+fn apply_amplify_level_sharing(deck: &mut [Card]) {
+    let Some(amplify_level) = deck
+        .iter()
+        .find(|card| card.card_id == CardName::Amplify)
+        .map(|card| card.level)
+    else {
+        return;
+    };
+
+    let share_rate = card_skill_bonusamountC(CardName::Amplify).unwrap_or(0.1);
+    let shared_levels = (amplify_level as f64 * share_rate).ceil().max(1.0) as u16;
+
+    for card in deck
+        .iter_mut()
+        .filter(|card| card.card_id != CardName::Amplify)
+    {
+        let max_level = card_skill_row(card.card_id)
+            .map(|row| row.max_level)
+            .unwrap_or(u16::MAX);
+        card.level = card.level.saturating_add(shared_levels).min(max_level);
     }
 }
