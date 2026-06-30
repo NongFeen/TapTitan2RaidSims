@@ -214,6 +214,26 @@ impl SimService {
                             }
                         }
                     }
+                    // debug 
+                    // if i == 60{
+                    //     if let Some(current_target) = pattern.next_target(
+                    //         &boss,
+                    //         last_target,
+                    //         &deck,
+                    //         &sim_stats.attackable_part,
+                    //     ) {
+                    //         last_target = Some(current_target);
+                    //     Self::tap_boss(
+                    //             &mut boss,
+                    //             current_target,
+                    //             &mut deck,
+                    //             &sim_stats.player_stat,
+                    //             &mut total_burst_proc,
+                    //             1.0,
+                    //         );
+                    //     }
+                    // }
+                    //debug
                     boss.update();
                 }
 
