@@ -8,12 +8,12 @@ use crate::models::{
 };
 
 pub fn get_modifiers(card: &mut Card, boss: &Boss) -> SupportModifiers {
-    println!(
-        "{} {} {}",
-        card_skill_value_a(card.card_id, card.level).unwrap_or(1.0),
-        card_skill_value_b(card.card_id, card.level).unwrap_or(1.0),
-        card_skill_bonusamountC(card.card_id).unwrap_or(1.0)
-    );
+    // println!(
+    //     "{} {} {}",
+    //     card_skill_value_a(card.card_id, card.level).unwrap_or(1.0),
+    //     card_skill_value_b(card.card_id, card.level).unwrap_or(1.0),
+    //     card_skill_bonusamountC(card.card_id).unwrap_or(1.0)
+    // );
 
     return SupportModifiers {
         head_damage_add: card_skill_value_a(card.card_id, card.level).unwrap_or(1.0),

@@ -53,8 +53,8 @@ impl SupportModifiers {
             acc.burst_damage_add += m.burst_damage_add;
             acc.affliction_damage_add += m.affliction_damage_add;
             acc.all_damage_add += m.all_damage_add;
-            acc.burst_chance_mult += m.burst_chance_mult - 1.0;
-            acc.affliction_chance_mult += m.affliction_chance_mult - 1.0;
+            acc.burst_chance_mult *= m.burst_chance_mult ;
+            acc.affliction_chance_mult *= m.affliction_chance_mult;
             return acc;
         })
     }

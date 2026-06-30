@@ -6,8 +6,8 @@ use crate::models::{
 };
 
 pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
-    // 0.12
-    1.0
+    0.12
+    // 1.0
 }
 
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
