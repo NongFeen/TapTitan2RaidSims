@@ -12,6 +12,7 @@ use crate::models::support_modifier::SupportModifiers;
 use itertools::Itertools;
 use rand::random;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use strum::IntoEnumIterator;
 // use super::super::sim_payload::SimPayLoad;
 
@@ -122,7 +123,7 @@ impl SimService {
         round: u64,
     ) {
         println!(
-            "\n================ Deck Simulation ================\nDeck: [{}, {}, {}]",
+            "\nDeck : [{}, {}, {}]",
             select_deck[0].card_id.display_name(),
             select_deck[1].card_id.display_name(),
             select_deck[2].card_id.display_name()
@@ -136,15 +137,19 @@ impl SimService {
             return;
         }
 
-        println!("Rounds per pattern: {}", sim_rounds);
-        println!("Attack patterns: {}", attack_patterns.len());
+        println!("Total attack pattern : {}", attack_patterns.len());
+        println!("Rounds per pattern : {}", sim_rounds);
+        println!("---- Result ---");
+
+        let mut pattern_results: Vec<(u64, String)> = Vec::new();
 
         for pattern in attack_patterns {
-            println!("\n---------------- Attack Pattern ----------------");
-            println!("Pattern: {}", pattern.describe());
             let mut total_sim_damage: u64 = 0;
+            let mut lowest_round_damage = u64::MAX;
+            let mut highest_round_damage = 0;
+            let mut card_damage_totals: HashMap<CardName, u64> = HashMap::new();
 
-            for round_index in 1..=sim_rounds {
+            for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_player_raid_data(sim_stats.player_stat.clone());
                 // println!("Boss Head hp {}",boss.head.current_health);
@@ -236,26 +241,58 @@ impl SimService {
                     //debug
                     boss.update();
                 }
+                
+                //print dmg
+                let round_damage = boss.get_total_damage();
+                total_sim_damage += round_damage;
+                lowest_round_damage = lowest_round_damage.min(round_damage);
+                highest_round_damage = highest_round_damage.max(round_damage);
 
-                // println!("Boss Head hp {}",boss.torso.current_health);
-                println!(
-                    "\n[Round {}/{}]\nTotal damage: {}\n{}",
-                    round_index,
-                    sim_rounds,
-                    format_compact(boss.get_total_damage()),
-                    boss.getDamageResult()
-                );
-                total_sim_damage += boss.get_total_damage()
+                for result in boss.damage_results.iter() {
+                    if let DamageSource::Card(card_name) = result.source {
+                        *card_damage_totals.entry(card_name).or_insert(0) += result.damage;
+                    }
+                }
             }
             let avg = total_sim_damage / sim_rounds;
-            println!(
-                "\n[Pattern Average]\nPattern: {}\nAverage damage: {}",
-                pattern.describe(),
-                format_compact(avg)
-            );
-        }
+            let low = if lowest_round_damage == u64::MAX {
+                0
+            } else {
+                lowest_round_damage
+            };
 
-        println!("\n=================================================");
+            let card_damage = select_deck
+                .iter()
+                .map(|card| {
+                    let avg_card_damage =
+                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0) / sim_rounds;
+                    format!(
+                        "{} \"{}\"",
+                        card.card_id.display_name(),
+                        format_compact(avg_card_damage)
+                    )
+                })
+                .join(" | ");
+
+            pattern_results.push((
+                avg,
+                format!(
+                    "Pattern | \"{}\" : avg \"{}\" low \"{}\" high \"{}\" | {}",
+                    pattern.describe(),
+                    format_compact(avg),
+                    format_compact(low),
+                    format_compact(highest_round_damage),
+                    card_damage
+                ),
+            ));
+        }
+        pattern_results.sort_by(|a, b| b.0.cmp(&a.0));//sort by avg damage
+        // pattern_results.sort_by(|a, b| );//sort by name
+        
+
+        for (_, result) in pattern_results {
+            println!("{}", result);
+        }
     }
 
     fn tap_boss(
@@ -400,7 +437,6 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         {
             // Dereference the pointers to store clean Card values
             let mut deck = vec![c1.clone(), c2.clone(), c3.clone()];
-            // apply_amplify_level_sharing(&mut deck);
             deck_combinations.push(deck);
         }
     }
