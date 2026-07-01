@@ -23,7 +23,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
     };
     let mut affliction = affliction;
     affliction.tick_interval_seconds = TICK_INTERVAL_SECONDS;
-    println!("remove_damage {} damage {}", remove_damage, damage);
+    // println!("remove_damage {} damage {}", remove_damage, damage);
 
     boss.apply_affliction(target_part, affliction);
 }
@@ -42,10 +42,10 @@ pub fn on_tick(
 
 pub fn on_remove(affliction: &Affliction, total_attached_duration: f64) -> u64 {
     let per_second_bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.5);
-    println!(
-        "per_second_bonus {} total_attached_duration {}",
-        per_second_bonus, total_attached_duration
-    );
+    // println!(
+    //     "per_second_bonus {} total_attached_duration {}",
+    //     per_second_bonus, total_attached_duration
+    // );
 
     (affliction.remove_damage * (per_second_bonus * total_attached_duration)).max(0.0) as u64
 }

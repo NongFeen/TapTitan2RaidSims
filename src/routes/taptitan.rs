@@ -2,10 +2,7 @@ use crate::dtos::cards::CardDefinitionDto;
 use crate::models::responses::{ApiError, ApiResponse};
 use crate::{
     models::{cards::CardName, player_data::PlayerData, sim_payload::SimPayLoad},
-    services::taptitan::{
-        player_service::clean_data,
-        sim_service::{self, SimService},
-    },
+    services::taptitan::{player_service::clean_data, sim_service::SimService},
 };
 use axum::{
     extract::Json,
@@ -89,10 +86,9 @@ pub async fn send_sim_payload(Json(simdata): Json<SimPayLoad>) -> impl IntoRespo
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
 
-    //call sim services
-    SimService::run_simulation(simdata.clone());
+    let result = SimService::run_simulation(simdata.clone());
 
-    let success_response = ApiResponse::Success { data: simdata };
+    let success_response = ApiResponse::Success { data: result };
     (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
 }
 
@@ -117,7 +113,16 @@ pub async fn send_sim_deck(Json(simdata): Json<SimPayLoad>) -> impl IntoResponse
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
-    println!("run deck sim");
-    SimService::run_deck_simulation(simdata.clone());
-    (StatusCode::ACCEPTED, ResponseJson(simdata)).into_response()
+    let Some(result) = SimService::run_deck_simulation(simdata.clone()) else {
+        let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+            error: ApiError {
+                code: "DECK_INVALID".to_string(),
+                message: "Deck simulation requires exactly 3 valid player cards.".to_string(),
+            },
+        };
+        return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
+    };
+
+    let success_response = ApiResponse::Success { data: result };
+    (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
 }

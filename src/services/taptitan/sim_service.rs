@@ -24,61 +24,96 @@ pub struct SimStats {
     pub usable_card: Vec<CardName>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimRunResult {
+    pub total_decks: usize,
+    pub rounds_per_pattern: u64,
+    pub ticks_per_round: u16,
+    pub decks: Vec<SimDeckResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimDeckResult {
+    pub deck: Vec<CardName>,
+    pub deck_names: Vec<String>,
+    pub total_attack_patterns: usize,
+    pub best_pattern: Option<SimPatternResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimPatternResult {
+    pub pattern: String,
+    pub average_damage: u64,
+    pub average_damage_display: String,
+    pub lowest_round_damage: u64,
+    pub lowest_round_damage_display: String,
+    pub highest_round_damage: u64,
+    pub highest_round_damage_display: String,
+    pub card_damage: Vec<SimCardDamageResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimCardDamageResult {
+    pub card: CardName,
+    pub card_name: String,
+    pub average_damage: u64,
+    pub average_damage_display: String,
+}
+
+pub struct SimProgress {
+    current_pattern: usize,
+    total_patterns: usize,
+}
+
 pub struct SimService;
 
 impl SimService {
-    pub fn run_simulation(payload: SimPayLoad) {
-        //set up stats
+    pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
         let sim_stats = SimStats {
             player_stat: payload.player_raid_data,
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
         };
-        let mut index = 0;
-        let mut sysdex = 0;
-        //debug card
-        // let debug_card = CardName::SandsOfTime; // temporary debug filter
-        //generate deck
-        let valid_deck = generate_deck(&sim_stats);
-        //for each deck
-        for deck in &valid_deck {
-            //for debug deck
-            // if !deck.iter().any(|card| card.card_id == debug_card) {
-            //     continue;
-            // }
 
-            let card1 = &deck[0];
-            let card2 = &deck[1];
-            let card3 = &deck[2];
-            index += 1;
-            println!(
-                "Deck #{}: [{}, {}, {}]",
-                index, // Add 1 so it starts counting from 1 instead of 0
-                card1.card_id.display_name(),
-                card2.card_id.display_name(),
-                card3.card_id.display_name()
-            );
-            //generate attack pattern
-            let attack_patterns = generate_attack_patterns(&sim_stats, deck);
-            //loop all pattern
-            for pattern in &attack_patterns {
-                // println!("  Pattern: {}", pattern.describe());
-                // sysdex+=1;
-                //loop 20 try
-                //simulate deck to boss
-                //store total damage of the deck
-                // calculate average damage of the deck and save
-            }
+        let round = 1;
+        let valid_decks = generate_deck(&sim_stats);
+        let deck_patterns = valid_decks
+            .into_iter()
+            .map(|deck| {
+                let attack_patterns = generate_attack_patterns(&sim_stats, &deck);
+                (deck, attack_patterns)
+            })
+            .collect::<Vec<_>>();
+        let mut progress = SimProgress {
+            current_pattern: 0,
+            total_patterns: deck_patterns
+                .iter()
+                .map(|(_, attack_patterns)| attack_patterns.len())
+                .sum(),
+        };
+        let decks = deck_patterns
+            .into_iter()
+            .map(|(deck, attack_patterns)| {
+                Self::run_deck_sim(
+                    &sim_stats,
+                    deck,
+                    attack_patterns,
+                    round,
+                    Some(&mut progress),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        SimRunResult {
+            total_decks: decks.len(),
+            rounds_per_pattern: round,
+            ticks_per_round: 600,
+            decks,
         }
-        println!(
-            "Total synergistic decks created : {} and total pattern {}",
-            // debug_card,
-            index,
-            sysdex
-        );
     }
-    pub fn run_deck_simulation(payload: SimPayLoad) {
+
+    pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
         let sim_stats = SimStats {
             player_stat: payload.player_raid_data,
             boss_stat: payload.boss_data,
@@ -86,14 +121,13 @@ impl SimService {
             usable_card: payload.usable_card,
         };
 
-        let player_cards = &sim_stats.player_stat.card_list;
-        let usable_cards = &sim_stats.usable_card;
-
-        //current deck
-        let mut select_deck: Vec<Card> = usable_cards
+        let mut select_deck: Vec<Card> = sim_stats
+            .usable_card
             .iter()
             .filter_map(|card_name| {
-                player_cards
+                sim_stats
+                    .player_stat
+                    .card_list
                     .iter()
                     .find(|card| card.card_id == *card_name)
                     .cloned()
@@ -103,17 +137,17 @@ impl SimService {
         apply_amplify_level_sharing(&mut select_deck);
 
         if select_deck.len() != 3 {
-            println!(
-                "Selected Deck simulation requires exactly 3 cards, but received {}.",
-                select_deck.len()
-            );
-            return;
+            return None;
         }
 
         let attack_patterns = generate_attack_patterns(&sim_stats, &select_deck);
-        let round = 10;
-
-        Self::run_deck_sim(&sim_stats, select_deck, attack_patterns, round);
+        Some(Self::run_deck_sim(
+            &sim_stats,
+            select_deck,
+            attack_patterns,
+            10,
+            None,
+        ))
     }
 
     pub fn run_deck_sim(
@@ -121,27 +155,30 @@ impl SimService {
         select_deck: Vec<Card>,
         attack_patterns: Vec<AttackPattern>,
         round: u64,
-    ) {
-        println!(
-            "\nDeck : [{}, {}, {}]",
-            select_deck[0].card_id.display_name(),
-            select_deck[1].card_id.display_name(),
-            select_deck[2].card_id.display_name()
-        );
+        mut progress: Option<&mut SimProgress>,
+    ) -> SimDeckResult {
+        let deck = select_deck
+            .iter()
+            .map(|card| card.card_id)
+            .collect::<Vec<_>>();
+        let deck_names = select_deck
+            .iter()
+            .map(|card| card.card_id.display_name().to_string())
+            .collect::<Vec<_>>();
+        let total_attack_patterns = attack_patterns.len();
+
+        if attack_patterns.is_empty() {
+            return SimDeckResult {
+                deck,
+                deck_names,
+                total_attack_patterns,
+                best_pattern: None,
+            };
+        }
 
         let sim_rounds = round;
         let tap_count = 600;
-
-        if attack_patterns.is_empty() {
-            println!("No valid attack patterns for selected deck.");
-            return;
-        }
-
-        println!("Total attack pattern : {}", attack_patterns.len());
-        println!("Rounds per pattern : {}", sim_rounds);
-        println!("---- Result ---");
-
-        let mut pattern_results: Vec<(u64, String)> = Vec::new();
+        let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
         for pattern in attack_patterns {
             let mut total_sim_damage: u64 = 0;
@@ -152,7 +189,6 @@ impl SimService {
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_player_raid_data(sim_stats.player_stat.clone());
-                // println!("Boss Head hp {}",boss.head.current_health);
                 let mut total_burst_proc: u32 = 0;
                 let mut deck = select_deck.clone();
                 let totem_card = deck
@@ -173,7 +209,6 @@ impl SimService {
                         ) {
                             last_target = Some(current_target);
 
-                            //for Totem of Power
                             if let Some(totem_card) = &totem_card {
                                 totem_of_power::update(
                                     &mut pending_totems,
@@ -206,7 +241,6 @@ impl SimService {
                                 );
                             }
 
-                            //for Totem of Power
                             if let Some(totem_card) = &totem_card {
                                 totem_of_power::try_spawn(
                                     &mut pending_totems,
@@ -219,30 +253,10 @@ impl SimService {
                             }
                         }
                     }
-                    // debug 
-                    // if i == 60{
-                    //     if let Some(current_target) = pattern.next_target(
-                    //         &boss,
-                    //         last_target,
-                    //         &deck,
-                    //         &sim_stats.attackable_part,
-                    //     ) {
-                    //         last_target = Some(current_target);
-                    //     Self::tap_boss(
-                    //             &mut boss,
-                    //             current_target,
-                    //             &mut deck,
-                    //             &sim_stats.player_stat,
-                    //             &mut total_burst_proc,
-                    //             1.0,
-                    //         );
-                    //     }
-                    // }
-                    //debug
+
                     boss.update();
                 }
-                
-                //print dmg
+
                 let round_damage = boss.get_total_damage();
                 total_sim_damage += round_damage;
                 lowest_round_damage = lowest_round_damage.min(round_damage);
@@ -254,8 +268,9 @@ impl SimService {
                     }
                 }
             }
-            let avg = total_sim_damage / sim_rounds;
-            let low = if lowest_round_damage == u64::MAX {
+
+            let average_damage = total_sim_damage / sim_rounds;
+            let lowest_round_damage = if lowest_round_damage == u64::MAX {
                 0
             } else {
                 lowest_round_damage
@@ -264,34 +279,49 @@ impl SimService {
             let card_damage = select_deck
                 .iter()
                 .map(|card| {
-                    let avg_card_damage =
+                    let average_damage =
                         card_damage_totals.get(&card.card_id).copied().unwrap_or(0) / sim_rounds;
-                    format!(
-                        "{} \"{}\"",
-                        card.card_id.display_name(),
-                        format_compact(avg_card_damage)
-                    )
+                    SimCardDamageResult {
+                        card: card.card_id,
+                        card_name: card.card_id.display_name().to_string(),
+                        average_damage,
+                        average_damage_display: format_compact(average_damage),
+                    }
                 })
-                .join(" | ");
+                .collect();
 
-            pattern_results.push((
-                avg,
-                format!(
-                    "Pattern | \"{}\" : avg \"{}\" low \"{}\" high \"{}\" | {}",
-                    pattern.describe(),
-                    format_compact(avg),
-                    format_compact(low),
-                    format_compact(highest_round_damage),
-                    card_damage
-                ),
-            ));
+            pattern_results.push(SimPatternResult {
+                pattern: pattern.describe(),
+                average_damage,
+                average_damage_display: format_compact(average_damage),
+                lowest_round_damage,
+                lowest_round_damage_display: format_compact(lowest_round_damage),
+                highest_round_damage,
+                highest_round_damage_display: format_compact(highest_round_damage),
+                card_damage,
+            });
+
+            if let Some(progress) = progress.as_deref_mut() {
+                progress.current_pattern += 1;
+                let percent = if progress.total_patterns == 0 {
+                    100.0
+                } else {
+                    (progress.current_pattern as f64 / progress.total_patterns as f64) * 100.0
+                };
+                println!(
+                    "[SIM PROGRESS] pattern {}/{} ({:.2}%)",
+                    progress.current_pattern, progress.total_patterns, percent
+                );
+            }
         }
-        // pattern_results.sort_by(|a, b| b.0.cmp(&a.0));//sort by avg damage
-        // pattern_results.sort_by(|a, b| );//sort by name
-        
 
-        for (_, result) in pattern_results {
-            println!("{}", result);
+        pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
+
+        SimDeckResult {
+            deck,
+            deck_names,
+            total_attack_patterns,
+            best_pattern: pattern_results.into_iter().next(),
         }
     }
 
@@ -437,6 +467,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         {
             // Dereference the pointers to store clean Card values
             let mut deck = vec![c1.clone(), c2.clone(), c3.clone()];
+            // apply_amplify_level_sharing(&mut deck);
             deck_combinations.push(deck);
         }
     }

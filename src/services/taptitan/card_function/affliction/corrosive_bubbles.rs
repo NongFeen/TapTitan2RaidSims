@@ -37,16 +37,16 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
             .map(|affliction| affliction.damage_per_second * TICK_INTERVAL_SECONDS)
             .unwrap_or(0.0);
         let pop_damage = (affliction_tick_damage * pop_multiplier * max_stacks as f64) as u64;
-        println!(
-            "[AFF POP] card={:?} part={:?} damage={} affliction_tick_damage={:.2} proc_base_damage={:.2} pop_multiplier={:.4} max_stacks={}",
-            card.card_id,
-            target_part,
-            pop_damage,
-            affliction_tick_damage,
-            damage,
-            pop_multiplier,
-            max_stacks,
-        );
+        // println!(
+        //     "[AFF POP] card={:?} part={:?} damage={} affliction_tick_damage={:.2} proc_base_damage={:.2} pop_multiplier={:.4} max_stacks={}",
+        //     card.card_id,
+        //     target_part,
+        //     pop_damage,
+        //     affliction_tick_damage,
+        //     damage,
+        //     pop_multiplier,
+        //     max_stacks,
+        // );
 
         boss.part_mut(target_part)
             .afflictions
