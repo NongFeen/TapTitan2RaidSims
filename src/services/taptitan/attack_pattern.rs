@@ -1,6 +1,6 @@
 use crate::models::affliction::AfflictionKind;
 use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::cards::Card;
+use crate::models::cards::{Card, CardName};
 
 use super::sim_service::SimStats;
 
@@ -15,7 +15,7 @@ pub enum AttackPattern {
     CycleHeadTorso,
     CycleLimb,
     CycleAllActive,
-    FocusParts(usize),
+    CycleParts(usize),
     FusionBombSpread,
     AcidDrenchStack,
     ThrivingPlagueSpread,
@@ -40,7 +40,7 @@ impl AttackPattern {
             AttackPattern::CycleHeadTorso => "CycleHeadTorso".to_string(),
             AttackPattern::CycleLimb => "CycleLimb".to_string(),
             AttackPattern::CycleAllActive => "CycleAllActive".to_string(),
-            AttackPattern::FocusParts(count) => format!("FocusParts({})", count),
+            AttackPattern::CycleParts(count) => format!("CycleParts({})", count),
             AttackPattern::FusionBombSpread => "FusionBombSpread".to_string(),
             AttackPattern::AcidDrenchStack => "AcidDrenchStack".to_string(),
             AttackPattern::ThrivingPlagueSpread => "ThrivingPlagueSpread".to_string(),
@@ -64,57 +64,6 @@ impl AttackPattern {
         let candidates = self.candidate_parts(boss, deck, attackable_parts);
         if candidates.is_empty() {
             return None;
-        }
-
-        if let AttackPattern::FocusParts(focus_count) = self {
-            let disease_parts: Vec<(BossPartName, usize, f64)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let affliction = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)?;
-
-                    Some((
-                        part,
-                        affliction.stack_count(),
-                        affliction
-                            .stacks
-                            .iter()
-                            .map(|stack| stack.remaining_duration)
-                            .min_by(|left, right| left.total_cmp(right))
-                            .unwrap_or(0.0),
-                    ))
-                })
-                .collect();
-
-            let has_clean_part = candidates.iter().copied().any(|part| {
-                boss.part(part)
-                    .afflictions
-                    .iter()
-                    .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
-            });
-
-            if disease_parts.len() < *focus_count && has_clean_part {
-                if let Some(target) = candidates.iter().copied().find(|part| {
-                    boss.part(*part)
-                        .afflictions
-                        .iter()
-                        .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
-                }) {
-                    return Some(target);
-                }
-            }
-
-            if let Some((target, _, _)) = disease_parts.into_iter().min_by(|left, right| {
-                left.2
-                    .total_cmp(&right.2)
-                    .then_with(|| left.1.cmp(&right.1))
-            }) {
-                return Some(target);
-            }
         }
 
         if let AttackPattern::WhipRuinousFocus = self {
@@ -394,27 +343,17 @@ impl AttackPattern {
         }
 
         if let AttackPattern::CelestialStatic = self {
+            let celestial_stacks = deck
+                .iter()
+                .find(|card| card.card_id == CardName::CelestialStatic)
+                .map(|card| card.celestial_stacks)
+                .unwrap_or(0);
+
             let limb_candidates: Vec<BossPartName> = candidates
                 .iter()
                 .copied()
                 .filter(BossPartName::is_limb)
                 .collect();
-
-            if !limb_candidates.is_empty() {
-                return match last_target {
-                    Some(last) => {
-                        if let Some(index) = limb_candidates.iter().position(|part| *part == last) {
-                            limb_candidates
-                                .get((index + 1) % limb_candidates.len())
-                                .copied()
-                                .or_else(|| limb_candidates.first().copied())
-                        } else {
-                            limb_candidates.first().copied()
-                        }
-                    }
-                    None => limb_candidates.first().copied(),
-                };
-            }
 
             let head_torso_candidates: Vec<BossPartName> = candidates
                 .iter()
@@ -422,23 +361,19 @@ impl AttackPattern {
                 .filter(|part| matches!(part, BossPartName::Head | BossPartName::Torso))
                 .collect();
 
-            if !head_torso_candidates.is_empty() {
-                return match last_target {
-                    Some(last) => {
-                        if let Some(index) =
-                            head_torso_candidates.iter().position(|part| *part == last)
-                        {
-                            head_torso_candidates
-                                .get((index + 1) % head_torso_candidates.len())
-                                .copied()
-                                .or_else(|| head_torso_candidates.first().copied())
-                        } else {
-                            head_torso_candidates.first().copied()
-                        }
-                    }
-                    None => head_torso_candidates.first().copied(),
-                };
+            if celestial_stacks >= 8 {
+                if let Some(target) = cycle_candidates(&head_torso_candidates, last_target) {
+                    return Some(target);
+                }
+
+                return cycle_candidates(&limb_candidates, last_target);
             }
+
+            if let Some(target) = cycle_candidates(&limb_candidates, last_target) {
+                return Some(target);
+            }
+
+            return cycle_candidates(&head_torso_candidates, last_target);
         }
 
         if let AttackPattern::RuinousRainFocus = self {
@@ -488,7 +423,7 @@ impl AttackPattern {
             AttackPattern::CycleHeadTorso
             | AttackPattern::CycleLimb
             | AttackPattern::CycleAllActive
-            | AttackPattern::FocusParts(_)
+            | AttackPattern::CycleParts(_)
             | AttackPattern::FusionBombSpread
             | AttackPattern::AcidDrenchStack
             | AttackPattern::ThrivingPlagueSpread
@@ -549,7 +484,6 @@ impl AttackPattern {
                 .filter(BossPartName::is_limb)
                 .collect(),
             AttackPattern::CycleAllActive
-            | AttackPattern::FocusParts(_)
             | AttackPattern::FusionBombSpread
             | AttackPattern::AcidDrenchStack
             | AttackPattern::ThrivingPlagueSpread
@@ -558,6 +492,7 @@ impl AttackPattern {
             | AttackPattern::GrimShadowStack
             | AttackPattern::BlazingInfernoStack
             | AttackPattern::CelestialStatic => source_parts,
+            AttackPattern::CycleParts(count) => source_parts.into_iter().take(*count).collect(),
             AttackPattern::RuinousRainFocus => source_parts,
             AttackPattern::WhipRuinousFocus => source_parts.into_iter().take(5).collect(),
         }
@@ -605,11 +540,31 @@ fn single_part_candidates(
     }
 }
 
+fn cycle_candidates(
+    candidates: &[BossPartName],
+    last_target: Option<BossPartName>,
+) -> Option<BossPartName> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    match last_target {
+        Some(last) => candidates
+            .iter()
+            .position(|part| *part == last)
+            .and_then(|index| candidates.get((index + 1) % candidates.len()).copied())
+            .or_else(|| candidates.first().copied()),
+        None => candidates.first().copied(),
+    }
+}
+
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
-        if pattern_has_candidates(&pattern, sim_stats, deck) {
+        if pattern_is_available_for_deck(&pattern, deck)
+            && pattern_has_candidates(&pattern, sim_stats, deck)
+        {
             patterns.push(pattern);
         }
     }
@@ -628,11 +583,12 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
         AttackPattern::CycleHeadTorso,
         AttackPattern::CycleLimb,
         AttackPattern::CycleAllActive,
-        AttackPattern::FocusParts(2),
-        AttackPattern::FocusParts(3),
-        AttackPattern::FocusParts(4),
-        AttackPattern::FocusParts(5),
-        AttackPattern::FocusParts(6),
+        AttackPattern::CycleParts(2),
+        AttackPattern::CycleParts(3),
+        AttackPattern::CycleParts(4),
+        AttackPattern::CycleParts(5),
+        AttackPattern::CycleParts(6),
+        // card specific patterns
         AttackPattern::FusionBombSpread,
         AttackPattern::AcidDrenchStack,
         AttackPattern::ThrivingPlagueSpread,
@@ -650,4 +606,27 @@ fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats, deck: &
     !pattern
         .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
         .is_empty()
+}
+
+fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool {
+    match pattern {
+        AttackPattern::FusionBombSpread => deck_has_card(deck, CardName::FusionBomb),
+        AttackPattern::AcidDrenchStack => deck_has_card(deck, CardName::AcidDrench),
+        AttackPattern::ThrivingPlagueSpread => deck_has_card(deck, CardName::ThrivingPlague),
+        AttackPattern::RadioactivitySpread => deck_has_card(deck, CardName::Radioactivity),
+        AttackPattern::DecayingStrikeFocus => deck_has_card(deck, CardName::DecayingStrike),
+        AttackPattern::GrimShadowStack => deck_has_card(deck, CardName::GrimShadow),
+        AttackPattern::BlazingInfernoStack => deck_has_card(deck, CardName::BlazingInferno),
+        AttackPattern::CelestialStatic => deck_has_card(deck, CardName::CelestialStatic),
+        AttackPattern::RuinousRainFocus => deck_has_card(deck, CardName::RuinousRain),
+        AttackPattern::WhipRuinousFocus => {
+            deck_has_card(deck, CardName::WhipOfLightning)
+                && deck_has_card(deck, CardName::RuinousRain)
+        }
+        _ => true,
+    }
+}
+
+fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
+    deck.iter().any(|card| card.card_id == card_name)
 }

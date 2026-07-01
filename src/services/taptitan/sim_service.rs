@@ -286,7 +286,7 @@ impl SimService {
                 ),
             ));
         }
-        pattern_results.sort_by(|a, b| b.0.cmp(&a.0));//sort by avg damage
+        // pattern_results.sort_by(|a, b| b.0.cmp(&a.0));//sort by avg damage
         // pattern_results.sort_by(|a, b| );//sort by name
         
 
