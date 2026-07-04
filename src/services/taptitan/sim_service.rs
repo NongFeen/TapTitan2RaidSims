@@ -180,11 +180,13 @@ impl SimService {
         let tap_count = 600;
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
-        for pattern in attack_patterns {
+        for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
+            let pattern_name = pattern.describe();
             let mut total_sim_damage: u64 = 0;
             let mut lowest_round_damage = u64::MAX;
             let mut highest_round_damage = 0;
             let mut card_damage_totals: HashMap<CardName, u64> = HashMap::new();
+            let mut card_proc_totals: HashMap<CardName, u64> = HashMap::new();
 
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
@@ -226,6 +228,7 @@ impl SimService {
                                 &sim_stats.player_stat,
                                 &mut total_burst_proc,
                                 1.0,
+                                &mut card_proc_totals,
                             );
 
                             if trigger_astral_echo_extra_tap(&mut deck) {
@@ -238,6 +241,7 @@ impl SimService {
                                     &sim_stats.player_stat,
                                     &mut total_burst_proc,
                                     astral_proc_chance_scale,
+                                    &mut card_proc_totals,
                                 );
                             }
 
@@ -291,7 +295,7 @@ impl SimService {
                 .collect();
 
             pattern_results.push(SimPatternResult {
-                pattern: pattern.describe(),
+                pattern: pattern_name.clone(),
                 average_damage,
                 average_damage_display: format_compact(average_damage),
                 lowest_round_damage,
@@ -301,18 +305,51 @@ impl SimService {
                 card_damage,
             });
 
-            if let Some(progress) = progress.as_deref_mut() {
+            let card_summary = select_deck
+                .iter()
+                .map(|card| {
+                    let average_damage =
+                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0) / sim_rounds;
+                    let average_proc_count = format_average_count(
+                        card_proc_totals.get(&card.card_id).copied().unwrap_or(0),
+                        sim_rounds,
+                    );
+
+                    format!(
+                        "{} dmg {} proc {}",
+                        card.card_id.display_name(),
+                        format_compact(average_damage),
+                        average_proc_count
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ");
+
+            let progress_summary = if let Some(progress) = progress.as_deref_mut() {
                 progress.current_pattern += 1;
                 let percent = if progress.total_patterns == 0 {
                     100.0
                 } else {
                     (progress.current_pattern as f64 / progress.total_patterns as f64) * 100.0
                 };
-                println!(
-                    "[SIM PROGRESS] pattern {}/{} ({:.2}%)",
+
+                format!(
+                    "pattern {}/{} ({:.2}%)",
                     progress.current_pattern, progress.total_patterns, percent
-                );
-            }
+                )
+            } else {
+                format!("pattern {}/{}", pattern_index + 1, total_attack_patterns)
+            };
+
+            println!(
+                "[SIM PROGRESS] {} | Pattern | {} : avg {} low {} high {} | {}",
+                progress_summary,
+                pattern_name,
+                format_compact(average_damage),
+                format_compact(lowest_round_damage),
+                format_compact(highest_round_damage),
+                card_summary
+            );
         }
 
         pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
@@ -332,6 +369,7 @@ impl SimService {
         player_raid_data: &PlayerRaidData,
         total_burst_proc: &mut u32,
         proc_chance_scale: f64,
+        card_proc_totals: &mut HashMap<CardName, u64>,
     ) {
         if boss.get_state_from_part(attack_part) == PartState::Skeleton {
             return;
@@ -433,6 +471,7 @@ impl SimService {
                 if card.cardtype == CardType::Burst {
                     *total_burst_proc += 1;
                 }
+                *card_proc_totals.entry(card.card_id).or_insert(0) += 1;
                 card.on_proc(boss, attack_part, card_base_damage, 0, *total_burst_proc);
             }
         }
@@ -652,6 +691,19 @@ fn format_compact(damage: u64) -> String {
         format!("{:.3}K", damage_f / 1_000.0)
     } else {
         damage.to_string()
+    }
+}
+
+fn format_average_count(total_count: u64, rounds: u64) -> String {
+    if rounds == 0 {
+        return "0".to_string();
+    }
+
+    let average = total_count as f64 / rounds as f64;
+    if (average.fract()).abs() < f64::EPSILON {
+        format!("{:.0}", average)
+    } else {
+        format!("{:.2}", average)
     }
 }
 
