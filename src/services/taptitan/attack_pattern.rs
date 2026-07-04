@@ -1,6 +1,6 @@
 use crate::models::affliction::AfflictionKind;
 use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::cards::{Card, CardName};
+use crate::models::cards::{Card, CardName, CardType};
 
 use super::sim_service::SimStats;
 
@@ -563,6 +563,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
 
     for pattern in base_attack_patterns() {
         if pattern_is_available_for_deck(&pattern, deck)
+            && pattern_is_allowed_for_deck(&pattern, sim_stats, deck)
             && pattern_has_candidates(&pattern, sim_stats, deck)
         {
             patterns.push(pattern);
@@ -625,6 +626,46 @@ fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool
         }
         _ => true,
     }
+}
+
+fn pattern_is_allowed_for_deck(
+    pattern: &AttackPattern,
+    _sim_stats: &SimStats,
+    deck: &[Card],
+) -> bool {
+    let has_celestial_static = deck_has_card(deck, CardName::CelestialStatic);
+
+    if has_celestial_static && deck_has_only_celestial_static_and_supports(deck) {
+        return matches!(pattern, AttackPattern::CelestialStatic);
+    }
+
+    if has_celestial_static && pattern_is_single_target(pattern) {
+        return false;
+    }
+
+    true
+}
+
+fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
+    matches!(
+        pattern,
+        AttackPattern::SingleAny
+            | AttackPattern::SingleHead
+            | AttackPattern::SingleTorso
+            | AttackPattern::SingleBody
+            | AttackPattern::SingleArmor
+            | AttackPattern::SingleLimb
+    )
+}
+
+fn deck_has_only_celestial_static_and_supports(deck: &[Card]) -> bool {
+    deck.len() == 3
+        && deck_has_card(deck, CardName::CelestialStatic)
+        && deck
+            .iter()
+            .filter(|card| card.cardtype == CardType::Support)
+            .count()
+            == 2
 }
 
 fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
