@@ -65,7 +65,7 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
-const SIMS_ROUNDS: u64 = 10;
+const SIMS_ROUNDS: u64 = 100;
 const TICKS_PER_ROUND: u32 = 600;
 
 pub struct SimService;
@@ -112,7 +112,7 @@ impl SimService {
             rounds_per_pattern: SIMS_ROUNDS,
             ticks_per_round: TICKS_PER_ROUND,
             decks,
-        }
+        };
     }
 
     pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
