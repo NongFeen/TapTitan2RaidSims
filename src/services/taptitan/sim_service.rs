@@ -28,7 +28,7 @@ pub struct SimStats {
 pub struct SimRunResult {
     pub total_decks: usize,
     pub rounds_per_pattern: u64,
-    pub ticks_per_round: u16,
+    pub ticks_per_round: u32,
     pub decks: Vec<SimDeckResult>,
 }
 
@@ -65,6 +65,9 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
+const SIMS_ROUNDS: u64 = 10;
+const TICKS_PER_ROUND: u32 = 600;
+
 pub struct SimService;
 
 impl SimService {
@@ -76,7 +79,6 @@ impl SimService {
             usable_card: payload.usable_card,
         };
 
-        let round = 1;
         let valid_decks = generate_deck(&sim_stats);
         let deck_patterns = valid_decks
             .into_iter()
@@ -99,16 +101,16 @@ impl SimService {
                     &sim_stats,
                     deck,
                     attack_patterns,
-                    round,
+                    SIMS_ROUNDS,
                     Some(&mut progress),
                 )
             })
             .collect::<Vec<_>>();
 
-        SimRunResult {
+        return SimRunResult {
             total_decks: decks.len(),
-            rounds_per_pattern: round,
-            ticks_per_round: 600,
+            rounds_per_pattern: SIMS_ROUNDS,
+            ticks_per_round: TICKS_PER_ROUND,
             decks,
         }
     }
@@ -177,7 +179,7 @@ impl SimService {
         }
 
         let sim_rounds = round;
-        let tap_count = 600;
+        let tap_count = TICKS_PER_ROUND;
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
@@ -201,7 +203,7 @@ impl SimService {
                 let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
                 let mut last_target: Option<BossPartName> = None;
 
-                for i in 0..600 {
+                for i in 0..TICKS_PER_ROUND {
                     if i < tap_count {
                         if let Some(current_target) = pattern.next_target(
                             &boss,
