@@ -65,7 +65,7 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
-const SIMS_ROUNDS: u64 = 1;
+const SIMS_ROUNDS: u64 = 5;
 const TICKS_PER_ROUND: u32 = 600;
 
 pub struct SimService;

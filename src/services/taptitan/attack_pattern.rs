@@ -587,6 +587,15 @@ fn cycle_candidates(
 }
 
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
+    if active_attackable_part_count(sim_stats) == 1 {
+        let pattern = AttackPattern::SingleAny;
+        return if pattern_has_candidates(&pattern, sim_stats, deck) {
+            vec![pattern]
+        } else {
+            Vec::new()
+        };
+    }
+
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
@@ -601,6 +610,15 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     patterns
 }
 
+fn active_attackable_part_count(sim_stats: &SimStats) -> usize {
+    sim_stats
+        .attackable_part
+        .iter()
+        .copied()
+        .filter(|part| sim_stats.boss_stat.part(*part).part_state != PartState::Skeleton)
+        .count()
+}
+
 fn base_attack_patterns() -> Vec<AttackPattern> {
     vec![
         AttackPattern::SingleAny,
@@ -613,12 +631,14 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
         AttackPattern::CycleLimb,
         AttackPattern::CycleBody,
         AttackPattern::CycleArmor,
-        AttackPattern::CycleAllActive,
         AttackPattern::CycleParts(2),
         AttackPattern::CycleParts(3),
         AttackPattern::CycleParts(4),
         AttackPattern::CycleParts(5),
         AttackPattern::CycleParts(6),
+        AttackPattern::CycleParts(7),
+        AttackPattern::CycleAllActive,
+
 
         //new
         AttackPattern::SingleCursed,
@@ -639,6 +659,14 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
 }
 
 fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats, deck: &[Card]) -> bool {
+    if let AttackPattern::CycleParts(count) = pattern {
+        let active_part_count = pattern
+            .source_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+            .len();
+
+        return *count > 1 && *count < active_part_count;
+    }
+
     !pattern
         .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
         .is_empty()
@@ -665,7 +693,7 @@ fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool
 
 fn pattern_is_allowed_for_deck(
     pattern: &AttackPattern,
-    _sim_stats: &SimStats,
+    sim_stats: &SimStats,
     deck: &[Card],
 ) -> bool {
     let burst_count = deck.iter().filter(|card| card.cardtype == CardType::Burst).count();
@@ -752,13 +780,44 @@ fn pattern_is_allowed_for_deck(
             is_allow = false;
         }
     }
-    
     if deck_has_card(deck, CardName::PurifyingBlast) && deck_has_card(deck, CardName::ElectroZap) {
         if pattern_is_cycle_target(pattern) {
             is_allow = false;
         }
     }
+
+    //affliction
+    if deck_has_card(deck, CardName::BlazingInferno){
+        if pattern_is_single_target(pattern) {
+            is_allow = false;
+        }
+
+        if !multipart_affliction_pattern(pattern, deck) {
+            let active_part_count = active_attackable_part_count(sim_stats);
+            let covered_part_count = pattern_covered_part_count(pattern, sim_stats, deck);
+
+            if covered_part_count != active_part_count {
+                is_allow = false;
+            }
+        }
+    }
+
     return  is_allow;
+}
+
+fn multipart_affliction_pattern(pattern: &AttackPattern, deck: &[Card]) -> bool {
+    (deck_has_card(deck, CardName::PrismaticRift) && matches!(pattern, AttackPattern::CycleArmor))
+        || (deck_has_card(deck, CardName::InspiringForce)&& matches!(pattern, AttackPattern::CycleBody))
+}
+
+fn pattern_covered_part_count(
+    pattern: &AttackPattern,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> usize {
+    pattern
+        .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+        .len()
 }
 
 fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
