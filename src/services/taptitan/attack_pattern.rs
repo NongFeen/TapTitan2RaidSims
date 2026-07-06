@@ -679,6 +679,7 @@ fn pattern_is_allowed_for_deck(
     //card
     let has_celestial_static = deck_has_card(deck, CardName::CelestialStatic);
     let has_electro_zap = deck_has_card(deck, CardName::ElectroZap) ;
+    
     let mut is_allow = true;
     //support
     if deck_has_card(deck, CardName::GraspingVines){
@@ -732,7 +733,7 @@ fn pattern_is_allowed_for_deck(
     //burst
         //have burst but no afflcition will ignore cycle pattern.
         //include electro zap as burst card
-    if (burst_count > 0  && affliction_count == 0) || (affliction_count == 1 && has_electro_zap)  {
+    if (burst_count > 0  && affliction_count == 0) || (affliction_count == 1 && has_electro_zap) { 
         //ignore purify, whip, chain, celestial, burst guard
         if deck_has_card(deck, CardName::PurifyingBlast) 
         || deck_has_card(deck, CardName::WhipOfLightning) 
@@ -746,7 +747,17 @@ fn pattern_is_allowed_for_deck(
             }
         }
     }
-
+    if affliction_count== 0 && deck_has_card(deck, CardName::GuardBreak) || affliction_count == 1 && deck_has_card(deck, CardName::Maelstrom) {
+        if pattern_is_cycle_target(pattern) {
+            is_allow = false;
+        }
+    }
+    
+    if deck_has_card(deck, CardName::PurifyingBlast) && deck_has_card(deck, CardName::ElectroZap) {
+        if pattern_is_cycle_target(pattern) {
+            is_allow = false;
+        }
+    }
     return  is_allow;
 }
 
@@ -759,6 +770,7 @@ fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
             | AttackPattern::SingleBody
             | AttackPattern::SingleArmor
             | AttackPattern::SingleLimb
+            | AttackPattern::SingleCursed
     )
 }
 fn pattern_is_cycle_target(pattern: &AttackPattern) -> bool {
@@ -769,6 +781,7 @@ fn pattern_is_cycle_target(pattern: &AttackPattern) -> bool {
             | AttackPattern::CycleBody
             | AttackPattern::CycleArmor
             | AttackPattern::CycleAllActive
+            | AttackPattern::CycleCursed
             | AttackPattern::CycleParts(_)
     )
 }

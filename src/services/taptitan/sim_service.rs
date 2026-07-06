@@ -549,10 +549,13 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     }
     //deck with rule 1 = 8880
 
-    // Rule 2 : Purify card require 1 alffication card
+    // Rule 2 : Purify card require 1 alffication. but cannot be maelstrom
     let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
     let has_affliction = affliction_count > 0;
-    if has_purify && !has_affliction {
+    if has_purify && !has_affliction  {
+        return false;
+    }
+    if has_purify && has_maelstrom {
         return false;
     }
     //deck with rule 2 = 8595
@@ -611,6 +614,7 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if support_count == 3 || (support_count == 2 && has_maelstrom) || (support_count == 2 && has_guard_break) || (support_count == 1 && has_maelstrom && has_guard_break) {
         return false;
     }
+
     true
 }
 
