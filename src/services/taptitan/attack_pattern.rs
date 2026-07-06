@@ -24,7 +24,6 @@ pub enum AttackPattern {
     ThrivingPlagueSpread,
     RadioactivitySpread,
     DecayingStrikeFocus,
-    GrimShadowStack,
     BlazingInfernoStack,
     CelestialStatic,
     RuinousRainFocus,
@@ -52,7 +51,6 @@ impl AttackPattern {
             AttackPattern::ThrivingPlagueSpread => "ThrivingPlagueSpread".to_string(),
             AttackPattern::RadioactivitySpread => "RadioactivitySpread".to_string(),
             AttackPattern::DecayingStrikeFocus => "DecayingStrikeFocus".to_string(),
-            AttackPattern::GrimShadowStack => "GrimShadowStack".to_string(),
             AttackPattern::BlazingInfernoStack => "BlazingInfernoStack".to_string(),
             AttackPattern::CelestialStatic => "CelestialStatic".to_string(),
             AttackPattern::RuinousRainFocus => "RuinousRainFocus".to_string(),
@@ -237,39 +235,6 @@ impl AttackPattern {
             }
         }
 
-        if let AttackPattern::GrimShadowStack = self {
-            let shadow_limit = 7usize;
-            let mut shadow_parts: Vec<(BossPartName, usize)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let shadow_stack_count = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::GrimShadowDebuff)
-                        .map(|affliction| affliction.stack_count())
-                        .unwrap_or(0);
-
-                    if shadow_stack_count >= shadow_limit {
-                        return None;
-                    }
-
-                    Some((part, shadow_stack_count))
-                })
-                .collect();
-
-            shadow_parts.sort_by_key(|(_, stack_count)| *stack_count);
-            shadow_parts.truncate(3);
-
-            if let Some((target, _)) = shadow_parts
-                .into_iter()
-                .min_by_key(|(_, stack_count)| *stack_count)
-            {
-                return Some(target);
-            }
-        }
-
         if let AttackPattern::BlazingInfernoStack = self {
             let best_burning_stack_count = candidates
                 .iter()
@@ -389,7 +354,6 @@ impl AttackPattern {
             | AttackPattern::ThrivingPlagueSpread
             | AttackPattern::RadioactivitySpread
             | AttackPattern::DecayingStrikeFocus
-            | AttackPattern::GrimShadowStack
             | AttackPattern::BlazingInfernoStack
             | AttackPattern::CelestialStatic
             | AttackPattern::RuinousRainFocus
@@ -460,7 +424,6 @@ impl AttackPattern {
             | AttackPattern::ThrivingPlagueSpread
             | AttackPattern::RadioactivitySpread
             | AttackPattern::DecayingStrikeFocus
-            | AttackPattern::GrimShadowStack
             | AttackPattern::BlazingInfernoStack
             | AttackPattern::CelestialStatic => source_parts,
             AttackPattern::CycleParts(count) => source_parts.into_iter().take(*count).collect(),
@@ -596,7 +559,6 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
         AttackPattern::ThrivingPlagueSpread,
         AttackPattern::RadioactivitySpread,
         AttackPattern::DecayingStrikeFocus,
-        AttackPattern::GrimShadowStack,
         AttackPattern::BlazingInfernoStack,
         AttackPattern::CelestialStatic,
         AttackPattern::RuinousRainFocus,
@@ -624,7 +586,6 @@ fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool
         AttackPattern::ThrivingPlagueSpread => deck_has_card(deck, CardName::ThrivingPlague),
         AttackPattern::RadioactivitySpread => deck_has_card(deck, CardName::Radioactivity),
         AttackPattern::DecayingStrikeFocus => deck_has_card(deck, CardName::DecayingStrike),
-        AttackPattern::GrimShadowStack => deck_has_card(deck, CardName::GrimShadow),
         AttackPattern::BlazingInfernoStack => deck_has_card(deck, CardName::BlazingInferno),
         AttackPattern::CelestialStatic => deck_has_card(deck, CardName::CelestialStatic),
         AttackPattern::RuinousRainFocus => deck_has_card(deck, CardName::RuinousRain),
@@ -648,6 +609,11 @@ fn pattern_is_allowed_for_deck(
     .filter(|card| card.card_id == CardName::GuardBreak || card.card_id == CardName::Maelstrom)
     .count();
     let support_count = true_support_count + pseudo_support_count;
+
+    let sot_count = deck.iter()
+    .filter(|card|  card.card_id == CardName::SandsOfTime)
+    .count();
+    let support_count_w_sot = true_support_count + pseudo_support_count + sot_count;
 
     //card
     let has_celestial_static = deck_has_card(deck, CardName::CelestialStatic);
@@ -732,7 +698,7 @@ fn pattern_is_allowed_for_deck(
     }
 
     //affliction alone 
-    if support_count ==2 {
+    if support_count_w_sot ==2 {
         if deck_has_card(deck, CardName::BlazingInferno){
             if pattern_is_single_target(pattern) {
                 is_allow = false;
@@ -748,6 +714,21 @@ fn pattern_is_allowed_for_deck(
             }
         }
         if deck_has_card(deck, CardName::AcidDrench){
+            if pattern_is_single_target(pattern) {
+                is_allow = false;
+            }
+        }
+        if deck_has_card(deck, CardName::DecayingStrike){
+            if pattern != &AttackPattern::DecayingStrikeFocus {
+                is_allow = false;
+            }
+        }
+        if deck_has_card(deck, CardName::FusionBomb){
+            if pattern != &AttackPattern::FusionBombSpread {
+                is_allow = false;
+            }
+        }
+        if deck_has_card(deck, CardName::GrimShadow){
             if pattern_is_single_target(pattern) {
                 is_allow = false;
             }
