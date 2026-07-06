@@ -12,8 +12,12 @@ pub enum AttackPattern {
     SingleBody,
     SingleArmor,
     SingleLimb,
+    SingleCursed,
+    CycleCursed,
     CycleHeadTorso,
     CycleLimb,
+    CycleBody,
+    CycleArmor,
     CycleAllActive,
     CycleParts(usize),
     FusionBombSpread,
@@ -37,8 +41,12 @@ impl AttackPattern {
             AttackPattern::SingleBody => "SingleBody".to_string(),
             AttackPattern::SingleArmor => "SingleArmor".to_string(),
             AttackPattern::SingleLimb => "SingleLimb".to_string(),
+            AttackPattern::SingleCursed => "SingleCursed".to_string(),
             AttackPattern::CycleHeadTorso => "CycleHeadTorso".to_string(),
+            AttackPattern::CycleCursed => "CycleCursed".to_string(),
             AttackPattern::CycleLimb => "CycleLimb".to_string(),
+            AttackPattern::CycleArmor => "CycleArmor".to_string(),
+            AttackPattern::CycleBody => "CycleBody".to_string(),
             AttackPattern::CycleAllActive => "CycleAllActive".to_string(),
             AttackPattern::CycleParts(count) => format!("CycleParts({})", count),
             AttackPattern::FusionBombSpread => "FusionBombSpread".to_string(),
@@ -411,6 +419,7 @@ impl AttackPattern {
             | AttackPattern::SingleTorso
             | AttackPattern::SingleBody
             | AttackPattern::SingleArmor
+            | AttackPattern::SingleCursed
             | AttackPattern::SingleLimb => {
                 if let Some(last) = last_target {
                     if candidates.contains(&last) {
@@ -422,6 +431,9 @@ impl AttackPattern {
             }
             AttackPattern::CycleHeadTorso
             | AttackPattern::CycleLimb
+            | AttackPattern::CycleCursed
+            | AttackPattern::CycleBody
+            | AttackPattern::CycleArmor
             | AttackPattern::CycleAllActive
             | AttackPattern::CycleParts(_)
             | AttackPattern::FusionBombSpread
@@ -475,6 +487,10 @@ impl AttackPattern {
                 .into_iter()
                 .filter(BossPartName::is_limb)
                 .collect(),
+            AttackPattern::SingleCursed => source_parts
+                .into_iter()
+                .filter(|part| boss.part(*part).part_state == PartState::Cursed)
+                .collect(),
             AttackPattern::CycleHeadTorso => source_parts
                 .into_iter()
                 .filter(|part| matches!(part, BossPartName::Head | BossPartName::Torso))
@@ -482,6 +498,14 @@ impl AttackPattern {
             AttackPattern::CycleLimb => source_parts
                 .into_iter()
                 .filter(BossPartName::is_limb)
+                .collect(),
+            AttackPattern::CycleBody => source_parts
+                .into_iter()
+                .filter(|part| boss.part(*part).part_state == PartState::Body)
+                .collect(),
+            AttackPattern::CycleArmor => source_parts
+                .into_iter()
+                .filter(|part| boss.part(*part).part_state == PartState::Armor)
                 .collect(),
             AttackPattern::CycleAllActive
             | AttackPattern::FusionBombSpread
@@ -495,6 +519,10 @@ impl AttackPattern {
             AttackPattern::CycleParts(count) => source_parts.into_iter().take(*count).collect(),
             AttackPattern::RuinousRainFocus => source_parts,
             AttackPattern::WhipRuinousFocus => source_parts.into_iter().take(5).collect(),
+            AttackPattern::CycleCursed => source_parts
+                .into_iter()
+                .filter(|part| boss.part(*part).part_state == PartState::Cursed)
+                .collect(),
         }
     }
 
@@ -583,12 +611,19 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
         AttackPattern::SingleLimb,
         AttackPattern::CycleHeadTorso,
         AttackPattern::CycleLimb,
+        AttackPattern::CycleBody,
+        AttackPattern::CycleArmor,
         AttackPattern::CycleAllActive,
         AttackPattern::CycleParts(2),
         AttackPattern::CycleParts(3),
         AttackPattern::CycleParts(4),
         AttackPattern::CycleParts(5),
         AttackPattern::CycleParts(6),
+
+        //new
+        AttackPattern::SingleCursed,
+        AttackPattern::CycleCursed,
+
         // card specific patterns
         AttackPattern::FusionBombSpread,
         AttackPattern::AcidDrenchStack,
@@ -633,17 +668,86 @@ fn pattern_is_allowed_for_deck(
     _sim_stats: &SimStats,
     deck: &[Card],
 ) -> bool {
+    let burst_count = deck.iter().filter(|card| card.cardtype == CardType::Burst).count();
+    let affliction_count = deck.iter().filter(|card| card.cardtype == CardType::Affliction).count();
+    let true_support_count = deck.iter().filter(|card| card.cardtype == CardType::Support).count();
+    let pseudo_support_count = deck.iter()
+    .filter(|card| card.card_id == CardName::GuardBreak || card.card_id == CardName::Maelstrom)
+    .count();
+    let support_count = true_support_count + pseudo_support_count;
+
+    //card
     let has_celestial_static = deck_has_card(deck, CardName::CelestialStatic);
-
+    let has_electro_zap = deck_has_card(deck, CardName::ElectroZap) ;
+    let mut is_allow = true;
+    //support
+    if deck_has_card(deck, CardName::GraspingVines){
+        //not allow cycle torso
+        if matches!(pattern, AttackPattern::CycleHeadTorso) 
+        || matches!(pattern, AttackPattern::SingleTorso) 
+        || matches!(pattern, AttackPattern::SingleHead) {
+            is_allow = false;
+        }
+    }
+    if deck_has_card(deck, CardName::SoulFire) || deck_has_card(deck, CardName::CrushingInstinct) {
+        //not allow to attack limb
+        if matches!(pattern, AttackPattern::SingleLimb) 
+        || matches!(pattern, AttackPattern::CycleLimb) 
+        {
+            is_allow = false;
+        }
+    }
+    if deck_has_card(deck, CardName::PrismaticRift) || deck_has_card(deck, CardName::SkeletalSmash) {
+        //not allow cycle body
+        if matches!(pattern, AttackPattern::CycleBody) || matches!(pattern, AttackPattern::SingleBody) {
+            is_allow = false;
+        }
+    }
+    if deck_has_card(deck, CardName::InspiringForce){
+        //not allow cycle armor
+        if matches!(pattern, AttackPattern::CycleArmor) || matches!(pattern, AttackPattern::SingleArmor) {
+            is_allow = false;
+        }
+    }
+    //totem of power disallow cycle pattern
+    if deck_has_card(deck, CardName::TotemOfPower){
+        if pattern_is_cycle_target(pattern)  {
+            is_allow = false;
+        }
+    }
+    //celestial
     if has_celestial_static && deck_has_only_celestial_static_and_supports(deck) {
-        return matches!(pattern, AttackPattern::CelestialStatic);
+        is_allow = matches!(pattern, AttackPattern::CelestialStatic);
+        return  is_allow;
     }
-
     if has_celestial_static && pattern_is_single_target(pattern) {
-        return false;
+        is_allow = false;
+        return  is_allow;
+    }
+    if has_celestial_static && has_electro_zap{
+        is_allow = false;
+        return  is_allow;
+    }
+    
+    //burst
+        //have burst but no afflcition will ignore cycle pattern.
+        //include electro zap as burst card
+    if (burst_count > 0  && affliction_count == 0) || (affliction_count == 1 && has_electro_zap)  {
+        //ignore purify, whip, chain, celestial, burst guard
+        if deck_has_card(deck, CardName::PurifyingBlast) 
+        || deck_has_card(deck, CardName::WhipOfLightning) 
+        || deck_has_card(deck, CardName::ChainOfVengeance) 
+        || deck_has_card(deck, CardName::CelestialStatic) 
+        || deck_has_card(deck, CardName::GuardBreak){
+            // is_allow = false;
+        }else {
+            if pattern_is_cycle_target(pattern) {
+                is_allow = false;
+            }
+        }
     }
 
-    true
+    return  is_allow;
 }
 
 fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
@@ -657,15 +761,25 @@ fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
             | AttackPattern::SingleLimb
     )
 }
+fn pattern_is_cycle_target(pattern: &AttackPattern) -> bool {
+    matches!(
+        pattern,
+        AttackPattern::CycleHeadTorso
+            | AttackPattern::CycleLimb
+            | AttackPattern::CycleBody
+            | AttackPattern::CycleArmor
+            | AttackPattern::CycleAllActive
+            | AttackPattern::CycleParts(_)
+    )
+}
 
 fn deck_has_only_celestial_static_and_supports(deck: &[Card]) -> bool {
     deck.len() == 3
         && deck_has_card(deck, CardName::CelestialStatic)
         && deck
             .iter()
-            .filter(|card| card.cardtype == CardType::Support)
-            .count()
-            == 2
+            .filter(|card| card.cardtype == CardType::Support || card.card_id == CardName::GuardBreak || card.card_id == CardName::Maelstrom)
+            .count() == 2 
 }
 
 fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {

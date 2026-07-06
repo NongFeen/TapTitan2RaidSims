@@ -65,7 +65,7 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
-const SIMS_ROUNDS: u64 = 100;
+const SIMS_ROUNDS: u64 = 1;
 const TICKS_PER_ROUND: u32 = 600;
 
 pub struct SimService;
@@ -336,15 +336,15 @@ impl SimService {
                 };
 
                 format!(
-                    "pattern {}/{} ({:.2}%)",
+                    " {}/{} ({:.2}%)",
                     progress.current_pattern, progress.total_patterns, percent
                 )
             } else {
-                format!("pattern {}/{}", pattern_index + 1, total_attack_patterns)
+                format!("{}/{}", pattern_index + 1, total_attack_patterns)
             };
 
             println!(
-                "[SIM PROGRESS] {} | Pattern | {} : avg {} low {} high {} | {}",
+                "[SIMs] {} | {} : avg {} l {} h {} | {}",
                 progress_summary,
                 pattern_name,
                 format_compact(average_damage),
@@ -501,7 +501,12 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         let c1 = combo[0];
         let c2 = combo[1];
         let c3 = combo[2];
-
+        // println!(
+        //     "Checking deck combination: {}, {}, {}",
+        //     c1.card_id.display_name(),
+        //     c2.card_id.display_name(),
+        //     c3.card_id.display_name()
+        // );
         // 3. Keep the deck only if it is synergistic and boss-compatible!
         if is_deck_synergistic(sim_stats, c1, c2, c3)
             && is_deck_boss_suitable(sim_stats, c1, c2, c3)
@@ -517,6 +522,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
 }
 
 fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
+    
     let deck = [c1, c2, c3];
     let burst_count = deck
         .iter()
@@ -592,6 +598,19 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
         }
     }
     //deck with rule 7 = 6553
+
+    //rule 8 : celestial card not suit with limb support card
+    let has_celestial_static = deck.iter().any(|c| c.card_id == CardName::CelestialStatic);
+    let has_grasping_vines = deck.iter().any(|c| c.card_id == CardName::GraspingVines);
+    if has_celestial_static && has_grasping_vines {
+        return false;
+    }
+
+    //rule 9
+    // have no damage card.
+    if support_count == 3 || (support_count == 2 && has_maelstrom) || (support_count == 2 && has_guard_break) || (support_count == 1 && has_maelstrom && has_guard_break) {
+        return false;
+    }
     true
 }
 
