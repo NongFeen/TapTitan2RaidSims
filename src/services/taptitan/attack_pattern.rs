@@ -21,7 +21,6 @@ pub enum AttackPattern {
     CycleAllActive,
     CycleParts(usize),
     FusionBombSpread,
-    AcidDrenchStack,
     ThrivingPlagueSpread,
     RadioactivitySpread,
     DecayingStrikeFocus,
@@ -50,7 +49,6 @@ impl AttackPattern {
             AttackPattern::CycleAllActive => "CycleAllActive".to_string(),
             AttackPattern::CycleParts(count) => format!("CycleParts({})", count),
             AttackPattern::FusionBombSpread => "FusionBombSpread".to_string(),
-            AttackPattern::AcidDrenchStack => "AcidDrenchStack".to_string(),
             AttackPattern::ThrivingPlagueSpread => "ThrivingPlagueSpread".to_string(),
             AttackPattern::RadioactivitySpread => "RadioactivitySpread".to_string(),
             AttackPattern::DecayingStrikeFocus => "DecayingStrikeFocus".to_string(),
@@ -105,55 +103,6 @@ impl AttackPattern {
             }
 
             return candidates.first().copied();
-        }
-
-        if let AttackPattern::AcidDrenchStack = self {
-            let poisoned_parts: Vec<(BossPartName, usize, f64)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let affliction = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::AcidDrenchDebuff)?;
-
-                    Some((
-                        part,
-                        affliction.stack_count(),
-                        affliction
-                            .stacks
-                            .iter()
-                            .map(|stack| stack.remaining_duration)
-                            .min_by(|left, right| left.total_cmp(right))
-                            .unwrap_or(0.0),
-                    ))
-                })
-                .collect();
-
-            let mut focus_parts: Vec<(BossPartName, usize, f64)> = poisoned_parts
-                .iter()
-                .copied()
-                .filter(|(_, stack_count, remaining_duration)| {
-                    *stack_count < 15 && *remaining_duration <= 2.0
-                })
-                .collect();
-
-            if focus_parts.is_empty() {
-                focus_parts = poisoned_parts
-                    .iter()
-                    .copied()
-                    .filter(|(_, stack_count, _)| *stack_count < 15)
-                    .collect();
-            }
-
-            if let Some((target, _, _)) = focus_parts.into_iter().min_by(|left, right| {
-                left.2
-                    .total_cmp(&right.2)
-                    .then_with(|| left.1.cmp(&right.1))
-            }) {
-                return Some(target);
-            }
         }
 
         if let AttackPattern::ThrivingPlagueSpread = self {
@@ -437,7 +386,6 @@ impl AttackPattern {
             | AttackPattern::CycleAllActive
             | AttackPattern::CycleParts(_)
             | AttackPattern::FusionBombSpread
-            | AttackPattern::AcidDrenchStack
             | AttackPattern::ThrivingPlagueSpread
             | AttackPattern::RadioactivitySpread
             | AttackPattern::DecayingStrikeFocus
@@ -509,7 +457,6 @@ impl AttackPattern {
                 .collect(),
             AttackPattern::CycleAllActive
             | AttackPattern::FusionBombSpread
-            | AttackPattern::AcidDrenchStack
             | AttackPattern::ThrivingPlagueSpread
             | AttackPattern::RadioactivitySpread
             | AttackPattern::DecayingStrikeFocus
@@ -646,7 +593,6 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
 
         // card specific patterns
         AttackPattern::FusionBombSpread,
-        AttackPattern::AcidDrenchStack,
         AttackPattern::ThrivingPlagueSpread,
         AttackPattern::RadioactivitySpread,
         AttackPattern::DecayingStrikeFocus,
@@ -675,7 +621,6 @@ fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats, deck: &
 fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool {
     match pattern {
         AttackPattern::FusionBombSpread => deck_has_card(deck, CardName::FusionBomb),
-        AttackPattern::AcidDrenchStack => deck_has_card(deck, CardName::AcidDrench),
         AttackPattern::ThrivingPlagueSpread => deck_has_card(deck, CardName::ThrivingPlague),
         AttackPattern::RadioactivitySpread => deck_has_card(deck, CardName::Radioactivity),
         AttackPattern::DecayingStrikeFocus => deck_has_card(deck, CardName::DecayingStrike),
@@ -786,21 +731,29 @@ fn pattern_is_allowed_for_deck(
         }
     }
 
-    //affliction
-    if deck_has_card(deck, CardName::BlazingInferno){
-        if pattern_is_single_target(pattern) {
-            is_allow = false;
+    //affliction alone 
+    if support_count ==2 {
+        if deck_has_card(deck, CardName::BlazingInferno){
+            if pattern_is_single_target(pattern) {
+                is_allow = false;
+            }
+
+            if !multipart_affliction_pattern(pattern, deck) {
+                let active_part_count = active_attackable_part_count(sim_stats);
+                let covered_part_count = pattern_covered_part_count(pattern, sim_stats, deck);
+
+                if covered_part_count != active_part_count {
+                    is_allow = false;
+                }
+            }
         }
-
-        if !multipart_affliction_pattern(pattern, deck) {
-            let active_part_count = active_attackable_part_count(sim_stats);
-            let covered_part_count = pattern_covered_part_count(pattern, sim_stats, deck);
-
-            if covered_part_count != active_part_count {
+        if deck_has_card(deck, CardName::AcidDrench){
+            if pattern_is_single_target(pattern) {
                 is_allow = false;
             }
         }
     }
+    
 
     return  is_allow;
 }
