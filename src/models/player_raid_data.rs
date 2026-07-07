@@ -144,9 +144,15 @@ impl RaidCardResearch {
         };
 
         let layered_base = match (part, state) {
-            (BossPartName::Head, PartState::Armor) => self.armor_damage + self.head_armor_damage,
-            (BossPartName::Torso, PartState::Armor) => self.armor_damage + self.torso_armor_damage,
-            (p, PartState::Armor) if p.is_limb() => self.armor_damage + self.limbs_armor_damage,
+            (BossPartName::Head, PartState::Armor | PartState::Cursed) => {
+                self.armor_damage + self.head_armor_damage
+            }
+            (BossPartName::Torso, PartState::Armor | PartState::Cursed) => {
+                self.armor_damage + self.torso_armor_damage
+            }
+            (p, PartState::Armor | PartState::Cursed) if p.is_limb() => {
+                self.armor_damage + self.limbs_armor_damage
+            }
             (BossPartName::Head, _) => self.body_damage + self.head_body_damage,
             (BossPartName::Torso, _) => self.body_damage + self.torso_body_damage,
             _ => self.body_damage + self.limbs_body_damage,
@@ -263,9 +269,15 @@ impl GemstoneResearch {
         };
 
         let layered_base = match (part, state) {
-            (BossPartName::Head, PartState::Armor) => self.armor_damage + self.head_armor_damage,
-            (BossPartName::Torso, PartState::Armor) => self.armor_damage + self.torso_armor_damage,
-            (p, PartState::Armor) if p.is_limb() => self.armor_damage + self.limbs_armor_damage,
+            (BossPartName::Head, PartState::Armor | PartState::Cursed) => {
+                self.armor_damage + self.head_armor_damage
+            }
+            (BossPartName::Torso, PartState::Armor | PartState::Cursed) => {
+                self.armor_damage + self.torso_armor_damage
+            }
+            (p, PartState::Armor | PartState::Cursed) if p.is_limb() => {
+                self.armor_damage + self.limbs_armor_damage
+            }
             (BossPartName::Head, _) => self.body_damage + self.head_body_damage,
             (BossPartName::Torso, _) => self.body_damage + self.torso_body_damage,
             _ => self.body_damage + self.limbs_body_damage,

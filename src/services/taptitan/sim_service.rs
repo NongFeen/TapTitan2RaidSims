@@ -65,7 +65,7 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
-const SIMS_ROUNDS: u64 = 5;
+const SIMS_ROUNDS: u64 = 10;
 const TICKS_PER_ROUND: u32 = 600;
 
 pub struct SimService;
@@ -615,6 +615,12 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
         return false;
     }
 
+    //rule 10 
+    // have whip must also have other afflcition
+    let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
+    if has_whip && affliction_count <1{
+        return false;
+    }
     true
 }
 
@@ -671,7 +677,12 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
             .attackable_part
             .iter()
             .copied()
-            .any(|part_name| boss.part(part_name).part_state == PartState::Armor);
+            .any(|part_name| {
+                matches!(
+                    boss.part(part_name).part_state,
+                    PartState::Armor | PartState::Cursed
+                )
+            });
 
         if !boss_has_active_armor {
             return false;

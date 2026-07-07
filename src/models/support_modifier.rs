@@ -73,7 +73,7 @@ impl SupportModifiers {
     pub fn state_mult_bonus(&self, state: PartState) -> f64 {
         match state {
             PartState::Body => self.body_damage_add,
-            PartState::Armor => self.armor_damage_add,
+            PartState::Armor | PartState::Cursed => self.armor_damage_add,
             _ => 0.0,
         }
     }
