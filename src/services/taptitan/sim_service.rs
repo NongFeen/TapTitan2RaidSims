@@ -65,6 +65,106 @@ pub struct SimProgress {
     total_patterns: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SimDamageContext {
+    base_tap_without_part_state: f32,
+    burst_add_total: f32,
+    affliction_add_total: f32,
+    head_armor_add: f32,
+    head_body_add: f32,
+    torso_armor_add: f32,
+    torso_body_add: f32,
+    limb_armor_add: f32,
+    limb_body_add: f32,
+}
+
+impl SimDamageContext {
+    fn new(player_raid_data: &PlayerRaidData, boss: &Boss) -> Self {
+        let flat_boss_add = player_raid_data.get_total_boss_add(boss.boss_name);
+        let base_set_add = if player_raid_data.raid_set.jukk_juggernaut {
+            100.0
+        } else {
+            0.0
+        } + if player_raid_data.raid_set.rose_anniversary {
+            100.0
+        } else {
+            0.0
+        };
+        let base_add_total = (player_raid_data.raid_card_research.base_damage
+            + player_raid_data.gem_stone_research.base_damage) as f32;
+        let base_tap_without_part_state = player_raid_data.player_raid_base_damage as f32
+            + base_add_total
+            + flat_boss_add
+            + base_set_add;
+
+        let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage
+            + player_raid_data.gem_stone_research.base_burst_damage)
+            as f32
+            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
+            + if player_raid_data.raid_set.airforce_ace {
+                120.0
+            } else {
+                0.0
+            };
+
+        let affliction_add_total = (player_raid_data.raid_card_research.base_affliction_damage
+            + player_raid_data.gem_stone_research.base_affliction_damage)
+            as f32
+            + player_raid_data.get_total_card_type_boss_add(
+                boss.boss_name,
+                CardType::Affliction,
+            )
+            + if player_raid_data.raid_set.dancer_venom {
+                120.0
+            } else {
+                0.0
+            };
+
+        Self {
+            base_tap_without_part_state,
+            burst_add_total,
+            affliction_add_total,
+            head_armor_add: player_raid_data
+                .get_total_part_state_add(BossPartName::Head, PartState::Armor),
+            head_body_add: player_raid_data
+                .get_total_part_state_add(BossPartName::Head, PartState::Body),
+            torso_armor_add: player_raid_data
+                .get_total_part_state_add(BossPartName::Torso, PartState::Armor),
+            torso_body_add: player_raid_data
+                .get_total_part_state_add(BossPartName::Torso, PartState::Body),
+            limb_armor_add: player_raid_data
+                .get_total_part_state_add(BossPartName::LeftHand, PartState::Armor),
+            limb_body_add: player_raid_data
+                .get_total_part_state_add(BossPartName::LeftHand, PartState::Body),
+        }
+    }
+
+    fn true_base_tap(self, part_name: BossPartName, state: PartState) -> f32 {
+        self.base_tap_without_part_state + self.part_state_add(part_name, state)
+    }
+
+    fn card_type_add(self, card_type: CardType) -> f32 {
+        match card_type {
+            CardType::Burst => self.burst_add_total,
+            CardType::Affliction => self.affliction_add_total,
+            CardType::Support => 0.0,
+        }
+    }
+
+    fn part_state_add(self, part_name: BossPartName, state: PartState) -> f32 {
+        let is_armor = matches!(state, PartState::Armor | PartState::Cursed);
+
+        match part_name {
+            BossPartName::Head if is_armor => self.head_armor_add,
+            BossPartName::Head => self.head_body_add,
+            BossPartName::Torso if is_armor => self.torso_armor_add,
+            BossPartName::Torso => self.torso_body_add,
+            _ if is_armor => self.limb_armor_add,
+            _ => self.limb_body_add,
+        }
+    }
+}
+
 const SIMS_ROUNDS: u64 = 3;
 const TICKS_PER_ROUND: u32 = 600;
 
@@ -194,6 +294,7 @@ impl SimService {
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_player_raid_data(sim_stats.player_stat.clone());
+                let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
                 let mut total_burst_proc: u32 = 0;
                 let mut deck = select_deck.clone();
                 let totem_card = deck
@@ -235,7 +336,7 @@ impl SimService {
                                 &mut boss,
                                 current_target,
                                 &mut deck,
-                                &sim_stats.player_stat,
+                                &damage_context,
                                 &mut total_burst_proc,
                                 1.0,
                                 &mut card_proc_totals,
@@ -249,7 +350,7 @@ impl SimService {
                                     &mut boss,
                                     current_target,
                                     &mut deck,
-                                    &sim_stats.player_stat,
+                                    &damage_context,
                                     &mut total_burst_proc,
                                     astral_proc_chance_scale,
                                     &mut card_proc_totals,
@@ -380,7 +481,7 @@ impl SimService {
         boss: &mut Boss,
         attack_part: BossPartName,
         deck: &mut [Card],
-        player_raid_data: &PlayerRaidData,
+        damage_context: &SimDamageContext,
         total_burst_proc: &mut u32,
         proc_chance_scale: f64,
         card_proc_totals: &mut HashMap<CardName, u64>,
@@ -391,52 +492,7 @@ impl SimService {
         }
 
         let current_state = boss.get_state_from_part(attack_part);
-
-        // flat addition & card research
-        let flat_part_state_add =
-            player_raid_data.get_total_part_state_add(attack_part, current_state);
-        let flat_boss_add = player_raid_data.get_total_boss_add(boss.boss_name);
-
-        let base1_set = if player_raid_data.raid_set.jukk_juggernaut {
-            100.0
-        } else {
-            0.0
-        };
-        let base2_set = if player_raid_data.raid_set.rose_anniversary {
-            100.0
-        } else {
-            0.0
-        };
-
-        let base_add_total = (player_raid_data.raid_card_research.base_damage
-            + player_raid_data.gem_stone_research.base_damage) as f32;
-
-        let true_base_tap = (player_raid_data.player_raid_base_damage as f32)
-            + base_add_total
-            + flat_part_state_add
-            + flat_boss_add
-            + base1_set
-            + base2_set;
-
-        let burst_add_total = (player_raid_data.raid_card_research.base_burst_damage
-            + player_raid_data.gem_stone_research.base_burst_damage)
-            as f32
-            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Burst)
-            + (if player_raid_data.raid_set.airforce_ace {
-                120.0
-            } else {
-                0.0
-            });
-
-        let affli_add_total = (player_raid_data.raid_card_research.base_affliction_damage
-            + player_raid_data.gem_stone_research.base_affliction_damage)
-            as f32
-            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Affliction)
-            + (if player_raid_data.raid_set.dancer_venom {
-                120.0
-            } else {
-                0.0
-            });
+        let true_base_tap = damage_context.true_base_tap(attack_part, current_state);
 
         let owned_support;
         let combined_support = if let Some(support) = cached_support {
@@ -453,11 +509,7 @@ impl SimService {
                 continue;
             }
 
-            let card_type_add_total = match card.cardtype {
-                CardType::Burst => burst_add_total,
-                CardType::Affliction => affli_add_total,
-                CardType::Support => 0.0,
-            };
+            let card_type_add_total = damage_context.card_type_add(card.cardtype);
             let card_base_damage = (true_base_tap + card_type_add_total) as f64;
             // println!("true_base_tap{} , burst_add_total{}, card_base_damage {}, ",true_base_tap,burst_add_total,card_base_damage);
 
