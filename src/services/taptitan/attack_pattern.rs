@@ -1,6 +1,7 @@
-use crate::models::affliction::AfflictionKind;
+use crate::models::affliction::{Affliction, AfflictionKind};
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
+use std::cmp::Ordering;
 
 use super::sim_service::SimStats;
 
@@ -41,6 +42,48 @@ enum PreparedTargetPlan {
         source_parts: Vec<BossPartName>,
         count: usize,
     },
+}
+
+const ALL_BOSS_PARTS: [BossPartName; 8] = [
+    BossPartName::Head,
+    BossPartName::Torso,
+    BossPartName::LeftShoulder,
+    BossPartName::RightShoulder,
+    BossPartName::LeftHand,
+    BossPartName::RightHand,
+    BossPartName::LeftLeg,
+    BossPartName::RightLeg,
+];
+
+struct CandidateParts {
+    parts: [BossPartName; 8],
+    len: usize,
+}
+
+impl CandidateParts {
+    fn new() -> Self {
+        Self {
+            parts: [BossPartName::Head; 8],
+            len: 0,
+        }
+    }
+
+    fn push(&mut self, part: BossPartName) {
+        if self.len >= self.parts.len() {
+            return;
+        }
+
+        self.parts[self.len] = part;
+        self.len += 1;
+    }
+
+    fn as_slice(&self) -> &[BossPartName] {
+        &self.parts[..self.len]
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
 }
 
 impl PreparedAttackPattern {
@@ -101,10 +144,11 @@ impl AttackPattern {
         deck: &[Card],
         attackable_parts: &[BossPartName],
     ) -> Option<BossPartName> {
-        let candidates = self.candidate_parts(boss, deck, attackable_parts);
+        let candidates = self.candidate_parts_buffer(boss, deck, attackable_parts);
         if candidates.is_empty() {
             return None;
         }
+        let candidates = candidates.as_slice();
 
         if let AttackPattern::WhipRuinousFocus = self {
             if let Some(last) = last_target {
@@ -140,135 +184,111 @@ impl AttackPattern {
         }
 
         if let AttackPattern::ThrivingPlagueSpread = self {
-            let plague_parts: Vec<(BossPartName, usize, f64)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let affliction = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::ThrivingPlagueDebuff)?;
+            let mut best_plague_part: Option<(BossPartName, usize, f64)> = None;
 
-                    Some((
-                        part,
-                        affliction.stack_count(),
-                        affliction
-                            .stacks
-                            .iter()
-                            .map(|stack| stack.remaining_duration)
-                            .min_by(|left, right| left.total_cmp(right))
-                            .unwrap_or(0.0),
-                    ))
-                })
-                .collect();
+            for part in candidates.iter().copied() {
+                let Some(affliction) = boss
+                    .part(part)
+                    .afflictions
+                    .iter()
+                    .find(|aff| aff.kind == AfflictionKind::ThrivingPlagueDebuff)
+                else {
+                    return Some(part);
+                };
 
-            let missing_plague_parts: Vec<BossPartName> = candidates
-                .iter()
-                .copied()
-                .filter(|part| {
-                    boss.part(*part)
-                        .afflictions
-                        .iter()
-                        .all(|aff| aff.kind != AfflictionKind::ThrivingPlagueDebuff)
-                })
-                .collect();
+                let stack_count = affliction.stack_count();
+                let lowest_remaining = lowest_stack_duration(affliction);
 
-            if let Some(target) = missing_plague_parts.first().copied() {
-                return Some(target);
+                if is_better_refresh_target(
+                    lowest_remaining,
+                    stack_count,
+                    best_plague_part.map(|(_, best_stack_count, best_remaining)| {
+                        (best_remaining, best_stack_count)
+                    }),
+                ) {
+                    best_plague_part = Some((part, stack_count, lowest_remaining));
+                }
             }
 
-            if let Some((target, _, _)) = plague_parts.into_iter().min_by(|left, right| {
-                left.2
-                    .total_cmp(&right.2)
-                    .then_with(|| left.1.cmp(&right.1))
-            }) {
-                return Some(target);
-            }
+            return best_plague_part.map(|(target, _, _)| target);
         }
 
         if let AttackPattern::RadioactivitySpread = self {
-            let disease_parts: Vec<(BossPartName, usize, f64)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let affliction = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)?;
-
-                    Some((
-                        part,
-                        affliction.stack_count(),
-                        affliction
-                            .stacks
-                            .iter()
-                            .map(|stack| stack.remaining_duration)
-                            .min_by(|left, right| left.total_cmp(right))
-                            .unwrap_or(0.0),
-                    ))
-                })
-                .collect();
-
             let disease_limit = 6usize;
-            let diseased_count = disease_parts.len();
+            let mut diseased_count = 0usize;
+            let mut first_missing_disease = None;
+            let mut best_disease_part: Option<(BossPartName, usize, f64)> = None;
+
+            for part in candidates.iter().copied() {
+                let Some(affliction) = boss
+                    .part(part)
+                    .afflictions
+                    .iter()
+                    .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)
+                else {
+                    if first_missing_disease.is_none() {
+                        first_missing_disease = Some(part);
+                    }
+                    continue;
+                };
+
+                diseased_count += 1;
+                let stack_count = affliction.stack_count();
+                let lowest_remaining = lowest_stack_duration(affliction);
+
+                if is_better_refresh_target(
+                    lowest_remaining,
+                    stack_count,
+                    best_disease_part.map(|(_, best_stack_count, best_remaining)| {
+                        (best_remaining, best_stack_count)
+                    }),
+                ) {
+                    best_disease_part = Some((part, stack_count, lowest_remaining));
+                }
+            }
 
             if diseased_count < disease_limit {
-                if let Some(target) = candidates.iter().copied().find(|part| {
-                    boss.part(*part)
-                        .afflictions
-                        .iter()
-                        .all(|aff| aff.kind != AfflictionKind::RadioactivityDebuff)
-                }) {
+                if let Some(target) = first_missing_disease {
                     return Some(target);
                 }
             }
 
-            if let Some((target, _, _)) = disease_parts.into_iter().min_by(|left, right| {
-                left.2
-                    .total_cmp(&right.2)
-                    .then_with(|| left.1.cmp(&right.1))
-            }) {
-                return Some(target);
-            }
+            return best_disease_part.map(|(target, _, _)| target);
         }
 
         if let AttackPattern::DecayingStrikeFocus = self {
             let decay_limit = 5usize;
-            let eligible_parts: Vec<(BossPartName, u64)> = candidates
-                .iter()
-                .copied()
-                .filter_map(|part| {
-                    let decay_stack_count = boss
-                        .part(part)
-                        .afflictions
-                        .iter()
-                        .find(|aff| aff.kind == AfflictionKind::DecayingStrikeDebuff)
-                        .map(|affliction| affliction.stack_count())
-                        .unwrap_or(0);
+            let mut best_target: Option<(BossPartName, u64)> = None;
 
-                    if decay_stack_count >= decay_limit {
-                        return None;
-                    }
+            for part in candidates.iter().copied() {
+                let decay_stack_count = boss
+                    .part(part)
+                    .afflictions
+                    .iter()
+                    .find(|aff| aff.kind == AfflictionKind::DecayingStrikeDebuff)
+                    .map(|affliction| affliction.stack_count())
+                    .unwrap_or(0);
 
-                    let boss_part = boss.part(part);
-                    let remaining_durability = match boss_part.part_state {
-                        PartState::Armor | PartState::Cursed => boss_part.current_armor,
-                        PartState::Body => boss_part.current_health,
-                        PartState::Skeleton => u64::MAX,
-                    };
+                if decay_stack_count >= decay_limit {
+                    continue;
+                }
 
-                    Some((part, remaining_durability))
-                })
-                .collect();
+                let boss_part = boss.part(part);
+                let remaining_durability = match boss_part.part_state {
+                    PartState::Armor | PartState::Cursed => boss_part.current_armor,
+                    PartState::Body => boss_part.current_health,
+                    PartState::Skeleton => u64::MAX,
+                };
 
-            if let Some((target, _)) = eligible_parts
-                .into_iter()
-                .min_by_key(|(_, remaining_durability)| *remaining_durability)
-            {
-                return Some(target);
+                if best_target
+                    .map(|(_, best_remaining)| remaining_durability < best_remaining)
+                    .unwrap_or(true)
+                {
+                    best_target = Some((part, remaining_durability));
+                }
             }
+
+            return best_target.map(|(target, _)| target);
         }
 
         if let AttackPattern::BlazingInfernoStack = self {
@@ -307,31 +327,25 @@ impl AttackPattern {
                 .map(|card| card.celestial_stacks)
                 .unwrap_or(0);
 
-            let limb_candidates: Vec<BossPartName> = candidates
-                .iter()
-                .copied()
-                .filter(BossPartName::is_limb)
-                .collect();
-
-            let head_torso_candidates: Vec<BossPartName> = candidates
-                .iter()
-                .copied()
-                .filter(|part| matches!(part, BossPartName::Head | BossPartName::Torso))
-                .collect();
-
             if celestial_stacks >= 8 {
-                if let Some(target) = cycle_candidates(&head_torso_candidates, last_target) {
+                if let Some(target) = cycle_filtered_candidates(candidates, last_target, |part| {
+                    matches!(part, BossPartName::Head | BossPartName::Torso)
+                }) {
                     return Some(target);
                 }
 
-                return cycle_candidates(&limb_candidates, last_target);
+                return cycle_filtered_candidates(candidates, last_target, |part| part.is_limb());
             }
 
-            if let Some(target) = cycle_candidates(&limb_candidates, last_target) {
+            if let Some(target) =
+                cycle_filtered_candidates(candidates, last_target, |part| part.is_limb())
+            {
                 return Some(target);
             }
 
-            return cycle_candidates(&head_torso_candidates, last_target);
+            return cycle_filtered_candidates(candidates, last_target, |part| {
+                matches!(part, BossPartName::Head | BossPartName::Torso)
+            });
         }
 
         //basic attack pattern
@@ -500,6 +514,70 @@ impl AttackPattern {
         }
     }
 
+    fn candidate_parts_buffer(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> CandidateParts {
+        let source_parts = self.source_parts_buffer(boss, deck, attackable_parts);
+        let mut candidates = CandidateParts::new();
+        let mut take_limit = match self {
+            AttackPattern::CycleParts(count) => Some(*count),
+            AttackPattern::WhipRuinousFocus => Some(5),
+            _ => None,
+        };
+
+        for part in source_parts.as_slice().iter().copied() {
+            let should_include = match self {
+                AttackPattern::SingleAny
+                | AttackPattern::CycleAllActive
+                | AttackPattern::FusionBombSpread
+                | AttackPattern::ThrivingPlagueSpread
+                | AttackPattern::RadioactivitySpread
+                | AttackPattern::DecayingStrikeFocus
+                | AttackPattern::BlazingInfernoStack
+                | AttackPattern::CelestialStatic
+                | AttackPattern::CycleParts(_)
+                | AttackPattern::WhipRuinousFocus => true,
+                AttackPattern::SingleHead => part == BossPartName::Head,
+                AttackPattern::SingleTorso => part == BossPartName::Torso,
+                AttackPattern::SingleBody => boss.part(part).part_state == PartState::Body,
+                AttackPattern::SingleArmor => matches!(
+                    boss.part(part).part_state,
+                    PartState::Armor | PartState::Cursed
+                ),
+                AttackPattern::SingleLimb => part.is_limb(),
+                AttackPattern::SingleCursed => boss.part(part).part_state == PartState::Cursed,
+                AttackPattern::CycleHeadTorso => {
+                    matches!(part, BossPartName::Head | BossPartName::Torso)
+                }
+                AttackPattern::CycleLimb => part.is_limb(),
+                AttackPattern::CycleBody => boss.part(part).part_state == PartState::Body,
+                AttackPattern::CycleArmor => matches!(
+                    boss.part(part).part_state,
+                    PartState::Armor | PartState::Cursed
+                ),
+                AttackPattern::CycleCursed => boss.part(part).part_state == PartState::Cursed,
+            };
+
+            if !should_include {
+                continue;
+            }
+
+            if let Some(remaining) = take_limit.as_mut() {
+                if *remaining == 0 {
+                    break;
+                }
+                *remaining -= 1;
+            }
+
+            candidates.push(part);
+        }
+
+        candidates
+    }
+
     fn source_parts(
         &self,
         boss: &Boss,
@@ -529,6 +607,33 @@ impl AttackPattern {
             _ => false,
         }
     }
+
+    fn source_parts_buffer(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> CandidateParts {
+        let mut source_parts = CandidateParts::new();
+
+        if self.can_target_untargetable_parts(deck) {
+            for part in ALL_BOSS_PARTS {
+                if part_is_active(boss, part) {
+                    source_parts.push(part);
+                }
+            }
+
+            return source_parts;
+        }
+
+        for part in attackable_parts.iter().copied() {
+            if part_is_active(boss, part) {
+                source_parts.push(part);
+            }
+        }
+
+        source_parts
+    }
 }
 
 fn single_part_candidates(
@@ -542,22 +647,56 @@ fn single_part_candidates(
     }
 }
 
-fn cycle_candidates(
+fn lowest_stack_duration(affliction: &Affliction) -> f64 {
+    affliction
+        .stacks
+        .iter()
+        .map(|stack| stack.remaining_duration)
+        .min_by(|left, right| left.total_cmp(right))
+        .unwrap_or(0.0)
+}
+
+fn is_better_refresh_target(
+    remaining_duration: f64,
+    stack_count: usize,
+    best: Option<(f64, usize)>,
+) -> bool {
+    best.map(|(best_remaining_duration, best_stack_count)| {
+        remaining_duration
+            .total_cmp(&best_remaining_duration)
+            .then_with(|| stack_count.cmp(&best_stack_count))
+            == Ordering::Less
+    })
+    .unwrap_or(true)
+}
+
+fn cycle_filtered_candidates(
     candidates: &[BossPartName],
     last_target: Option<BossPartName>,
+    predicate: impl Fn(BossPartName) -> bool,
 ) -> Option<BossPartName> {
-    if candidates.is_empty() {
-        return None;
+    let mut first = None;
+    let mut return_next = false;
+
+    for part in candidates.iter().copied() {
+        if !predicate(part) {
+            continue;
+        }
+
+        if first.is_none() {
+            first = Some(part);
+        }
+
+        if return_next {
+            return Some(part);
+        }
+
+        if Some(part) == last_target {
+            return_next = true;
+        }
     }
 
-    match last_target {
-        Some(last) => candidates
-            .iter()
-            .position(|part| *part == last)
-            .and_then(|index| candidates.get((index + 1) % candidates.len()).copied())
-            .or_else(|| candidates.first().copied()),
-        None => candidates.first().copied(),
-    }
+    first
 }
 
 fn part_is_active(boss: &Boss, part: BossPartName) -> bool {
