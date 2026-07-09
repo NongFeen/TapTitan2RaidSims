@@ -726,6 +726,11 @@ fn pattern_is_allowed_for_deck(
                 is_allow = false;
             }
         }
+        if deck_has_card(deck, CardName::Amplify){
+            if pattern_is_single_target(pattern){
+                is_allow = false;
+            }
+        }
     }
     
 
