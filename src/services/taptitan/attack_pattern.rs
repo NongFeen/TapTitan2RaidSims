@@ -892,7 +892,7 @@ fn pattern_is_allowed_for_deck(
     .filter(|card|  card.card_id == CardName::SandsOfTime)
     .count();
     let support_count_w_sot = true_support_count + pseudo_support_count + sot_count;
-
+    let has_maelstrom = deck_has_card(deck, CardName::Maelstrom);
     //card
     let has_celestial_static = deck_has_card(deck, CardName::CelestialStatic);
     let has_electro_zap = deck_has_card(deck, CardName::ElectroZap) ;
@@ -950,7 +950,9 @@ fn pattern_is_allowed_for_deck(
     //burst
         //have burst but no afflcition will ignore cycle pattern.
         //include electro zap as burst card
-    if (burst_count > 0  && affliction_count == 0) || (affliction_count == 1 && has_electro_zap) { 
+    if (burst_count > 0  && affliction_count == 0) 
+    || (burst_count > 0  && affliction_count == 1 && has_maelstrom)
+    || (affliction_count == 1 && has_electro_zap) { 
         //ignore purify, whip, chain, celestial, burst guard
         if deck_has_card(deck, CardName::PurifyingBlast) 
         || deck_has_card(deck, CardName::WhipOfLightning) 
@@ -1035,7 +1037,6 @@ fn pattern_is_allowed_for_deck(
         }
     }
     
-
     return  is_allow;
 }
 

@@ -169,6 +169,8 @@ impl SimDamageContext {
 
 const SIMS_ROUNDS: u64 = 3;
 const TICKS_PER_ROUND: u32 = 600;
+const PRINT_SIM_PATTERN_PROGRESS: bool = true;
+const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
 
 pub struct SimService;
 
@@ -423,51 +425,45 @@ impl SimService {
                 card_damage,
             });
 
-            let card_summary = select_deck
-                .iter()
-                .map(|card| {
-                    let average_damage =
-                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0) / sim_rounds;
-                    let average_proc_count = format_average_count(
-                        card_proc_totals.get(&card.card_id).copied().unwrap_or(0),
-                        sim_rounds,
-                    );
-
-                    format!(
-                        "{} dmg {} proc {}",
-                        card.card_id.display_name(),
-                        format_compact(average_damage),
-                        average_proc_count
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(" | ");
-
-            let progress_summary = if let Some(progress) = progress.as_deref_mut() {
+            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut() {
                 progress.current_pattern += 1;
-                let percent = if progress.total_patterns == 0 {
-                    100.0
-                } else {
-                    (progress.current_pattern as f64 / progress.total_patterns as f64) * 100.0
-                };
-
-                format!(
-                    " {}/{} ({:.2}%)",
-                    progress.current_pattern, progress.total_patterns, percent
-                )
+                (progress.current_pattern, progress.total_patterns)
             } else {
-                format!("{}/{}", pattern_index + 1, total_attack_patterns)
+                (pattern_index + 1, total_attack_patterns)
             };
 
-            println!(
-                "[SIMs] {} | {} : avg {} l {} h {} | {}",
-                progress_summary,
-                pattern_name,
-                format_compact(average_damage),
-                format_compact(lowest_round_damage),
-                format_compact(highest_round_damage),
-                card_summary
-            );
+            if should_print_sim_pattern_progress(current_progress, total_progress) {
+                let card_summary = select_deck
+                    .iter()
+                    .map(|card| {
+                        let average_damage =
+                            card_damage_totals.get(&card.card_id).copied().unwrap_or(0)
+                                / sim_rounds;
+                        let average_proc_count = format_average_count(
+                            card_proc_totals.get(&card.card_id).copied().unwrap_or(0),
+                            sim_rounds,
+                        );
+
+                        format!(
+                            "{} dmg {} proc {}",
+                            card.card_id.display_name(),
+                            format_compact(average_damage),
+                            average_proc_count
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+
+                println!(
+                    "[SIMs] {} | {} : avg {} l {} h {} | {}",
+                    sim_progress_summary(current_progress, total_progress),
+                    pattern_name,
+                    format_compact(average_damage),
+                    format_compact(lowest_round_damage),
+                    format_compact(highest_round_damage),
+                    card_summary
+                );
+            }
         }
 
         pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
@@ -550,6 +546,7 @@ impl SimService {
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     // 1. Only pick cards that are in the user's explicit usable list
+
     let filtered_cards: Vec<Card> = sim_stats
         .player_stat
         .card_list
@@ -585,8 +582,8 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     deck_combinations
 }
 
+const IS_CHECK_CARD_SYNERGY:bool = true;
 fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
-    
     let deck = [c1, c2, c3];
     let burst_count = deck
         .iter()
@@ -603,13 +600,15 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
 
     //total deck without any rule = 42*41*40/3/2 = 11480
     //Policy 1 : card must be synergy by it self
-
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     let has_support = support_count > 0;
     let has_maelstrom = deck.iter().any(|c| c.card_id == CardName::Maelstrom);
     let has_guard_break = deck.iter().any(|c| c.card_id == CardName::GuardBreak);
     if !has_support && !has_maelstrom && !has_guard_break {
         return false;
+    }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 1 PASS")
     }
     //deck with rule 1 = 8880
 
@@ -622,6 +621,9 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if has_purify && has_maelstrom {
         return false;
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 2 PASS")
+    }
     //deck with rule 2 = 8595
     // Rule 3 : has Radiant also must have1 burst + 1 affliction
     let has_radiant_kaleidoscope = deck
@@ -632,13 +634,19 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
             return false;
         }
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 3 PASS")
+    }
     //deck with rule 3 = 7997
     //Rule 4 Burst support must use with burst card or other support card
     let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
     if has_ancestral_favor {
-        if affliction_count >= 1 || support_count == 3 {
+        if affliction_count >= 1 && !has_maelstrom || support_count == 3 {
             return false;
         }
+    }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 4 PASS")
     }
     //deck with rule 4 = 7476
     //Rule 5 Affliction support must use with burst card or other support card
@@ -648,10 +656,16 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
             return false;
         }
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 5 PASS")
+    }
     // //deck with rule 5 = 6991
     //Rule 6 never 3 support card
     if support_count == 3 {
         return false;
+    }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 6 PASS")
     }
     //deck with rule 6 = 6826
     // //Rule 7 : Sand of Time card must use with another debuff inflict card
@@ -664,6 +678,9 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
             return false;
         }
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 7 PASS")
+    }
     //deck with rule 7 = 6553
 
     //rule 8 : celestial card not suit with limb support card
@@ -672,19 +689,28 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if has_celestial_static && has_grasping_vines {
         return false;
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 8 PASS")
+    }
 
     //rule 9
     // have no damage card.
     if support_count == 3 || (support_count == 2 && has_maelstrom) || (support_count == 2 && has_guard_break) || (support_count == 1 && has_maelstrom && has_guard_break) {
         return false;
     }
-
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 9 PASS")
+    }
     //rule 10 
     // have whip must also have other afflcition
     let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
     if has_whip && affliction_count <1{
         return false;
     }
+    if IS_CHECK_CARD_SYNERGY {
+        println!("Rule 10 PASS")
+    }
+    
     true
 }
 
@@ -805,6 +831,30 @@ fn format_average_count(total_count: u64, rounds: u64) -> String {
     } else {
         format!("{:.2}", average)
     }
+}
+
+fn should_print_sim_pattern_progress(current_pattern: usize, total_patterns: usize) -> bool {
+    if !PRINT_SIM_PATTERN_PROGRESS || total_patterns == 0 || SIM_PATTERN_PROGRESS_STEP_PERCENT == 0
+    {
+        return false;
+    }
+
+    let previous_bucket =
+        (current_pattern.saturating_sub(1) * 100) / total_patterns / SIM_PATTERN_PROGRESS_STEP_PERCENT;
+    let current_bucket =
+        (current_pattern * 100) / total_patterns / SIM_PATTERN_PROGRESS_STEP_PERCENT;
+
+    current_pattern == total_patterns || current_bucket > previous_bucket
+}
+
+fn sim_progress_summary(current_pattern: usize, total_patterns: usize) -> String {
+    let percent = if total_patterns == 0 {
+        100.0
+    } else {
+        (current_pattern as f64 / total_patterns as f64) * 100.0
+    };
+
+    format!("{}/{} ({:.2}%)", current_pattern, total_patterns, percent)
 }
 
 fn apply_amplify_level_sharing(deck: &mut [Card]) {
