@@ -74,6 +74,8 @@ impl BossService {
             ),
             damage_results: Vec::new(),
             total_damage: 0,
+            tap_damage_total: 0,
+            card_damage_totals: Default::default(),
             player_raid_data: None,
             support_modifiers: Default::default(),
         }

@@ -1,9 +1,11 @@
 use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::{Affliction, AfflictionKind};
 use crate::models::card_skill_data::{card_skill_value_a, card_skill_value_b};
+use crate::models::cards::CardName;
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::support_modifier::SupportModifiers;
@@ -271,6 +273,10 @@ pub struct Boss {
     #[serde(skip, default)]
     pub total_damage: u64,
     #[serde(skip, default)]
+    pub tap_damage_total: u64,
+    #[serde(skip, default)]
+    pub card_damage_totals: HashMap<CardName, u64>,
+    #[serde(skip, default)]
     pub player_raid_data: Option<PlayerRaidData>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
@@ -407,18 +413,15 @@ impl Boss {
     pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
         self.total_damage = self.total_damage.saturating_add(damage);
 
-        let source_label = source.label();
-
-        if let Some(existing) = self
-            .damage_results
-            .iter_mut()
-            .find(|entry| entry.source.label() == source_label)
-        {
-            existing.damage = existing.damage.saturating_add(damage);
-            return;
+        match source {
+            DamageSource::Tap => {
+                self.tap_damage_total = self.tap_damage_total.saturating_add(damage);
+            }
+            DamageSource::Card(card_name) => {
+                let total = self.card_damage_totals.entry(card_name).or_insert(0);
+                *total = total.saturating_add(damage);
+            }
         }
-
-        self.damage_results.push(DamageResult { source, damage });
     }
 
     pub fn on_hit_with_source(
@@ -465,15 +468,42 @@ impl Boss {
     }
 
     pub fn get_damage_result(&self) -> String {
-        self.damage_results
-            .iter()
-            .map(|entry| {
-                format!(
-                    "{} : {}",
-                    entry.source.label(),
-                    Self::format_compact(entry.damage)
-                )
-            })
+        if self.total_damage == 0 && !self.damage_results.is_empty() {
+            return self
+                .damage_results
+                .iter()
+                .map(|entry| {
+                    format!(
+                        "{} : {}",
+                        entry.source.label(),
+                        Self::format_compact(entry.damage)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+
+        let mut entries = Vec::new();
+
+        if self.tap_damage_total > 0 {
+            entries.push((
+                DamageSource::Tap.label(),
+                Self::format_compact(self.tap_damage_total),
+            ));
+        }
+
+        for (card_name, damage) in &self.card_damage_totals {
+            entries.push((
+                DamageSource::Card(*card_name).label(),
+                Self::format_compact(*damage),
+            ));
+        }
+
+        entries.sort_by(|left, right| left.0.cmp(right.0));
+
+        entries
+            .into_iter()
+            .map(|(label, damage)| format!("{} : {}", label, damage))
             .collect::<Vec<_>>()
             .join("\n")
     }

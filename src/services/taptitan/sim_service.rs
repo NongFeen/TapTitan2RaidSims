@@ -385,10 +385,8 @@ impl SimService {
                 lowest_round_damage = lowest_round_damage.min(round_damage);
                 highest_round_damage = highest_round_damage.max(round_damage);
 
-                for result in boss.damage_results.iter() {
-                    if let DamageSource::Card(card_name) = result.source {
-                        *card_damage_totals.entry(card_name).or_insert(0) += result.damage;
-                    }
+                for (card_name, damage) in boss.card_damage_totals.iter() {
+                    *card_damage_totals.entry(*card_name).or_insert(0) += *damage;
                 }
             }
 
