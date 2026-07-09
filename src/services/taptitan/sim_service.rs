@@ -200,6 +200,13 @@ impl SimService {
                     .iter()
                     .find(|card| card.card_id == CardName::TotemOfPower)
                     .cloned();
+                let cached_support = if deck_has_dynamic_support_modifier(&deck) {
+                    None
+                } else {
+                    let support = combined_support_modifiers(&mut deck, &boss);
+                    boss.set_support_modifiers(support.clone());
+                    Some(support)
+                };
                 let mut pending_totems: Vec<PendingTotem> = Vec::new();
                 let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
                 let mut last_target: Option<BossPartName> = None;
@@ -232,6 +239,7 @@ impl SimService {
                                 &mut total_burst_proc,
                                 1.0,
                                 &mut card_proc_totals,
+                                cached_support.as_ref(),
                             );
 
                             if trigger_astral_echo_extra_tap(&mut deck) {
@@ -245,6 +253,7 @@ impl SimService {
                                     &mut total_burst_proc,
                                     astral_proc_chance_scale,
                                     &mut card_proc_totals,
+                                    cached_support.as_ref(),
                                 );
                             }
 
@@ -375,6 +384,7 @@ impl SimService {
         total_burst_proc: &mut u32,
         proc_chance_scale: f64,
         card_proc_totals: &mut HashMap<CardName, u64>,
+        cached_support: Option<&SupportModifiers>,
     ) {
         if boss.get_state_from_part(attack_part) == PartState::Skeleton {
             return;
@@ -428,18 +438,14 @@ impl SimService {
                 0.0
             });
 
-        //support card
-        let deck_snapshot: Vec<Card> = deck.to_vec();
-        let support_mods: Vec<SupportModifiers> = deck
-            .iter_mut()
-            .filter(|c| c.cardtype == CardType::Support)
-            .map(|c| c.support_modifiers(boss, deck_snapshot.clone()))
-            .collect();
-
-        let combined_support = SupportModifiers::accumulate(&support_mods);
-        // println!("Support Card {}", combined_support);
-
-        boss.set_support_modifiers(combined_support.clone());
+        let owned_support;
+        let combined_support = if let Some(support) = cached_support {
+            support
+        } else {
+            owned_support = combined_support_modifiers(deck, boss);
+            boss.set_support_modifiers(owned_support.clone());
+            &owned_support
+        };
 
         // card proc
         for card in deck.iter_mut() {
@@ -788,6 +794,26 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
 
     astral_echo.tap_count = 0;
     true
+}
+
+fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {
+    let deck_snapshot = deck.to_vec();
+    let support_mods: Vec<SupportModifiers> = deck
+        .iter_mut()
+        .filter(|card| card.cardtype == CardType::Support)
+        .map(|card| card.support_modifiers(boss, deck_snapshot.clone()))
+        .collect();
+
+    SupportModifiers::accumulate(&support_mods)
+}
+
+fn deck_has_dynamic_support_modifier(deck: &[Card]) -> bool {
+    deck.iter().any(|card| {
+        matches!(
+            card.card_id,
+            CardName::InsanityVoid | CardName::SkeletalSmash | CardName::VictoryMarch
+        )
+    })
 }
 
 fn deck_creates_timed_boss_effect(deck: &[Card]) -> bool {
