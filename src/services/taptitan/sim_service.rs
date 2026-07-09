@@ -313,10 +313,12 @@ impl SimService {
                 let mut pending_totems: Vec<PendingTotem> = Vec::new();
                 let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
                 let mut last_target: Option<BossPartName> = None;
+                let prepared_pattern =
+                    pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
 
                 for i in 0..TICKS_PER_ROUND {
                     if i < tap_count {
-                        if let Some(current_target) = pattern.next_target(
+                        if let Some(current_target) = prepared_pattern.next_target(
                             &boss,
                             last_target,
                             &deck,

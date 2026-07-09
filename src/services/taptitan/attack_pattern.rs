@@ -29,6 +29,44 @@ pub enum AttackPattern {
     WhipRuinousFocus,
 }
 
+pub struct PreparedAttackPattern {
+    pattern: AttackPattern,
+    target_plan: PreparedTargetPlan,
+}
+
+enum PreparedTargetPlan {
+    Dynamic,
+    Ordered(Vec<BossPartName>),
+    FirstActiveParts {
+        source_parts: Vec<BossPartName>,
+        count: usize,
+    },
+}
+
+impl PreparedAttackPattern {
+    pub fn next_target(
+        &self,
+        boss: &Boss,
+        last_target: Option<BossPartName>,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> Option<BossPartName> {
+        match &self.target_plan {
+            PreparedTargetPlan::Dynamic => {
+                self.pattern
+                    .next_target(boss, last_target, deck, attackable_parts)
+            }
+            PreparedTargetPlan::Ordered(targets) => {
+                self.pattern.next_prepared_target(boss, targets, last_target)
+            }
+            PreparedTargetPlan::FirstActiveParts {
+                source_parts,
+                count,
+            } => cycle_first_active_parts(boss, source_parts, *count, last_target),
+        }
+    }
+}
+
 impl AttackPattern {
     pub fn describe(&self) -> String {
         match self {
@@ -342,6 +380,54 @@ impl AttackPattern {
         }
     }
 
+    pub fn prepare(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> PreparedAttackPattern {
+        let target_plan = match self {
+            AttackPattern::SingleAny
+            | AttackPattern::SingleHead
+            | AttackPattern::SingleTorso
+            | AttackPattern::SingleLimb
+            | AttackPattern::CycleHeadTorso
+            | AttackPattern::CycleLimb
+            | AttackPattern::CycleAllActive => {
+                PreparedTargetPlan::Ordered(self.candidate_parts(boss, deck, attackable_parts))
+            }
+            AttackPattern::CycleParts(count) => PreparedTargetPlan::FirstActiveParts {
+                source_parts: self.source_parts(boss, deck, attackable_parts),
+                count: *count,
+            },
+            _ => PreparedTargetPlan::Dynamic,
+        };
+
+        PreparedAttackPattern {
+            pattern: self.clone(),
+            target_plan,
+        }
+    }
+
+    fn next_prepared_target(
+        &self,
+        boss: &Boss,
+        targets: &[BossPartName],
+        last_target: Option<BossPartName>,
+    ) -> Option<BossPartName> {
+        if pattern_is_single_target(self) {
+            if let Some(last) = last_target {
+                if targets.contains(&last) && part_is_active(boss, last) {
+                    return Some(last);
+                }
+            }
+
+            return first_active_part(boss, targets);
+        }
+
+        cycle_active_parts(boss, targets, last_target)
+    }
+
     fn candidate_parts(
         &self,
         boss: &Boss,
@@ -472,6 +558,83 @@ fn cycle_candidates(
             .or_else(|| candidates.first().copied()),
         None => candidates.first().copied(),
     }
+}
+
+fn part_is_active(boss: &Boss, part: BossPartName) -> bool {
+    boss.part(part).part_state != PartState::Skeleton
+}
+
+fn first_active_part(boss: &Boss, parts: &[BossPartName]) -> Option<BossPartName> {
+    parts
+        .iter()
+        .copied()
+        .find(|part| part_is_active(boss, *part))
+}
+
+fn cycle_active_parts(
+    boss: &Boss,
+    parts: &[BossPartName],
+    last_target: Option<BossPartName>,
+) -> Option<BossPartName> {
+    let first = first_active_part(boss, parts)?;
+    let Some(last) = last_target else {
+        return Some(first);
+    };
+
+    let mut return_next = false;
+
+    for part in parts.iter().copied() {
+        if !part_is_active(boss, part) {
+            continue;
+        }
+
+        if return_next {
+            return Some(part);
+        }
+
+        if part == last {
+            return_next = true;
+        }
+    }
+
+    Some(first)
+}
+
+fn cycle_first_active_parts(
+    boss: &Boss,
+    source_parts: &[BossPartName],
+    count: usize,
+    last_target: Option<BossPartName>,
+) -> Option<BossPartName> {
+    let mut first = None;
+    let mut return_next = false;
+    let mut active_count = 0usize;
+
+    for part in source_parts.iter().copied() {
+        if !part_is_active(boss, part) {
+            continue;
+        }
+
+        if active_count >= count {
+            break;
+        }
+
+        if first.is_none() {
+            first = Some(part);
+        }
+
+        if return_next {
+            return Some(part);
+        }
+
+        if Some(part) == last_target {
+            return_next = true;
+        }
+
+        active_count += 1;
+    }
+
+    first
 }
 
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
