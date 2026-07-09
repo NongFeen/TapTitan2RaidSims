@@ -71,6 +71,59 @@ pub struct BossPart {
     #[serde(default)]
     pub radioactivity_afflicted_seconds: f64,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct BossPartTickView {
+    pub part_name: BossPartName,
+    pub part_state: PartState,
+    pub max_armor: u64,
+    pub max_health: u64,
+    pub current_armor: u64,
+    pub current_health: u64,
+    pub radioactivity_afflicted_seconds: f64,
+    pub has_thriving_plague: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BossTickView {
+    pub head: BossPartTickView,
+    pub torso: BossPartTickView,
+    pub left_shoulder: BossPartTickView,
+    pub right_shoulder: BossPartTickView,
+    pub left_hand: BossPartTickView,
+    pub right_hand: BossPartTickView,
+    pub left_leg: BossPartTickView,
+    pub right_leg: BossPartTickView,
+}
+
+impl BossTickView {
+    pub fn part(&self, part_name: BossPartName) -> &BossPartTickView {
+        match part_name {
+            BossPartName::Head => &self.head,
+            BossPartName::Torso => &self.torso,
+            BossPartName::LeftShoulder => &self.left_shoulder,
+            BossPartName::RightShoulder => &self.right_shoulder,
+            BossPartName::LeftHand => &self.left_hand,
+            BossPartName::RightHand => &self.right_hand,
+            BossPartName::LeftLeg => &self.left_leg,
+            BossPartName::RightLeg => &self.right_leg,
+        }
+    }
+
+    pub fn parts(&self) -> [&BossPartTickView; 8] {
+        [
+            &self.head,
+            &self.torso,
+            &self.left_shoulder,
+            &self.right_shoulder,
+            &self.left_hand,
+            &self.right_hand,
+            &self.left_leg,
+            &self.right_leg,
+        ]
+    }
+}
+
 impl BossPart {
     pub fn new(
         part: BossPartName,
@@ -96,7 +149,7 @@ impl BossPart {
     }
     pub fn update(
         &mut self,
-        boss: &Boss,
+        boss: &BossTickView,
         elapsed_seconds: f64,
     ) -> Vec<card_function::AfflictionDamageEvent> {
         self.tick_afflictions(boss, elapsed_seconds)
@@ -131,7 +184,7 @@ impl BossPart {
     }
     fn tick_afflictions(
         &mut self,
-        boss: &Boss,
+        boss: &BossTickView,
         elapsed_seconds: f64,
     ) -> Vec<card_function::AfflictionDamageEvent> {
         let mut damage_events = Vec::new();
@@ -155,6 +208,21 @@ impl BossPart {
         }
 
         self.afflictions.retain(|affliction| !affliction.is_expired());
+    }
+    fn tick_view(&self) -> BossPartTickView {
+        BossPartTickView {
+            part_name: self.part_name,
+            part_state: self.part_state,
+            max_armor: self.max_armor,
+            max_health: self.max_health,
+            current_armor: self.current_armor,
+            current_health: self.current_health,
+            radioactivity_afflicted_seconds: self.radioactivity_afflicted_seconds,
+            has_thriving_plague: self
+                .afflictions
+                .iter()
+                .any(|affliction| affliction.kind == AfflictionKind::ThrivingPlagueDebuff),
+        }
     }
     pub fn on_hit(&mut self, damage: u64) {
         match self.part_state {
@@ -287,7 +355,7 @@ impl Boss {
     pub fn update_with_elapsed(&mut self, elapsed_seconds: f64) {
         self.update_persistent_affliction_timers(elapsed_seconds);
 
-        let snapshot = self.clone();
+        let snapshot = self.tick_view();
         let mut damage_events = Vec::new();
 
         for part in self.parts_mut() {
@@ -299,6 +367,19 @@ impl Boss {
 
         for event in damage_events {
             self.on_hit_with_source(event.part_name, event.damage, event.source);
+        }
+    }
+
+    fn tick_view(&self) -> BossTickView {
+        BossTickView {
+            head: self.head.tick_view(),
+            torso: self.torso.tick_view(),
+            left_shoulder: self.left_shoulder.tick_view(),
+            right_shoulder: self.right_shoulder.tick_view(),
+            left_hand: self.left_hand.tick_view(),
+            right_hand: self.right_hand.tick_view(),
+            left_leg: self.left_leg.tick_view(),
+            right_leg: self.right_leg.tick_view(),
         }
     }
 

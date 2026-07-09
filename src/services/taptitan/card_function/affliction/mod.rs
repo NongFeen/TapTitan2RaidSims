@@ -1,6 +1,6 @@
 use crate::models::{
     affliction::Affliction,
-    boss::{Boss, BossPartName},
+    boss::{Boss, BossPartName, BossTickView},
     cards::{Card, CardName},
     damage_source::DamageSource,
 };
@@ -65,7 +65,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
 
 pub fn on_tick(
     affliction: &mut Affliction,
-    boss: &Boss,
+    boss: &BossTickView,
     part_name: BossPartName,
     elapsed_seconds: f64,
 ) -> Vec<AfflictionDamageEvent> {
@@ -165,7 +165,7 @@ pub fn on_tick(
 
 fn tick_damage_for(
     affliction: &Affliction,
-    boss: &Boss,
+    boss: &BossTickView,
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,

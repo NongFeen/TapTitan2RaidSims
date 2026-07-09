@@ -1,6 +1,6 @@
 use crate::models::{
     affliction::Affliction,
-    boss::{Boss, BossPartName},
+    boss::{Boss, BossPartName, BossTickView},
     card_skill_data::{card_skill_row, card_skill_value_a, card_skill_value_b},
     cards::{Card, CardName},
 };
@@ -64,7 +64,7 @@ pub(super) fn build_affliction(
 
 pub(super) fn on_tick(
     affliction: &Affliction,
-    _boss: &Boss,
+    _boss: &BossTickView,
     _part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,

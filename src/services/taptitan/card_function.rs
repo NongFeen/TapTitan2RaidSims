@@ -1,6 +1,6 @@
 use crate::models::{
     affliction::Affliction,
-    boss::{Boss, BossPartName},
+    boss::{Boss, BossPartName, BossTickView},
     cards::{Card, CardType},
     damage_source::DamageSource,
     support_modifier::SupportModifiers,
@@ -54,7 +54,7 @@ pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: Vec<Card>) -> S
 
 pub fn tick_affliction(
     affliction: &mut Affliction,
-    boss: &Boss,
+    boss: &BossTickView,
     part_name: BossPartName,
     elapsed_seconds: f64,
 ) -> Vec<AfflictionDamageEvent> {

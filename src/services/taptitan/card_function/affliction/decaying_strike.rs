@@ -1,6 +1,6 @@
 use crate::models::{
     affliction::Affliction,
-    boss::{Boss, BossPartName, PartState},
+    boss::{Boss, BossPartName, BossTickView, PartState},
     cards::Card,
 };
 
@@ -21,7 +21,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
 
 pub fn on_tick(
     affliction: &Affliction,
-    boss: &Boss,
+    boss: &BossTickView,
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,

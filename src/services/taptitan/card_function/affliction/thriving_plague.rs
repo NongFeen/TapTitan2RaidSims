@@ -1,8 +1,8 @@
 use crate::models::{
     affliction::Affliction,
-    boss::{Boss, BossPartName},
+    boss::{Boss, BossPartName, BossTickView},
     card_skill_data::{card_skill_bonusamountC, card_skill_row},
-    cards::{Card, CardName},
+    cards::Card,
 };
 
 use super::shared;
@@ -19,7 +19,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
 
 pub fn on_tick(
     affliction: &Affliction,
-    boss: &Boss,
+    boss: &BossTickView,
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
@@ -27,11 +27,7 @@ pub fn on_tick(
     let afflicted_parts = boss
         .parts()
         .iter()
-        .filter(|part| {
-            part.afflictions
-                .iter()
-                .any(|existing| existing.source_card == CardName::ThrivingPlague)
-        })
+        .filter(|part| part.has_thriving_plague)
         .count() as f64;
     let bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.0);
     let max_parts = card_skill_row(affliction.source_card)
