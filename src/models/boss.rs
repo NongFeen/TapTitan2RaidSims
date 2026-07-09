@@ -269,6 +269,8 @@ pub struct Boss {
     #[serde(default)]
     pub damage_results: Vec<DamageResult>,
     #[serde(skip, default)]
+    pub total_damage: u64,
+    #[serde(skip, default)]
     pub player_raid_data: Option<PlayerRaidData>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
@@ -403,6 +405,8 @@ impl Boss {
         }
     }
     pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
+        self.total_damage = self.total_damage.saturating_add(damage);
+
         let source_label = source.label();
 
         if let Some(existing) = self
@@ -453,7 +457,11 @@ impl Boss {
     }
 
     pub fn get_total_damage(&self) -> u64 {
-        self.damage_results.iter().map(|entry| entry.damage).sum()
+        if self.total_damage == 0 && !self.damage_results.is_empty() {
+            return self.damage_results.iter().map(|entry| entry.damage).sum();
+        }
+
+        self.total_damage
     }
 
     pub fn get_damage_result(&self) -> String {

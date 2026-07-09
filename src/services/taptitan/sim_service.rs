@@ -27,6 +27,7 @@ pub struct SimStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimRunResult {
     pub total_decks: usize,
+    pub total_attack_patterns: usize,
     pub rounds_per_pattern: u64,
     pub ticks_per_round: u32,
     pub decks: Vec<SimDeckResult>,
@@ -209,6 +210,7 @@ impl SimService {
 
         return SimRunResult {
             total_decks: decks.len(),
+            total_attack_patterns: progress.total_patterns,
             rounds_per_pattern: SIMS_ROUNDS,
             ticks_per_round: TICKS_PER_ROUND,
             decks,

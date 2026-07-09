@@ -73,6 +73,7 @@ impl BossService {
                 default_health,
             ),
             damage_results: Vec::new(),
+            total_damage: 0,
             player_raid_data: None,
             support_modifiers: Default::default(),
         }
