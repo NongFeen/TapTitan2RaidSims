@@ -160,7 +160,6 @@ pub fn on_tick(
         }
     }
 
-    affliction.stacks.retain(|stack| !stack.is_expired());
     events
 }
 

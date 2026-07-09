@@ -204,4 +204,12 @@ impl Affliction {
     pub fn is_expired(&self) -> bool {
         self.stacks.is_empty()
     }
+
+    pub fn remove_expired_stacks(&mut self) {
+        self.stacks.retain(|stack| !stack.is_expired());
+    }
+
+    pub fn tick(&mut self, elapsed: f64) {
+        self.tick_elapsed += elapsed;
+    }
 }

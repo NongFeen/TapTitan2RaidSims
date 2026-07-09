@@ -7,6 +7,7 @@ use crate::models::card_skill_data::{card_skill_value_a, card_skill_value_b};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::support_modifier::SupportModifiers;
+use crate::services::taptitan::card_function;
 
 #[derive(
     Debug,
@@ -93,8 +94,12 @@ impl BossPart {
     pub fn is_limb(&self) -> bool {
         self.part_name.is_limb()
     }
-    pub fn update(&mut self) {
-        self.tick_afflictions();
+    pub fn update(
+        &mut self,
+        boss: &Boss,
+        elapsed_seconds: f64,
+    ) -> Vec<card_function::AfflictionDamageEvent> {
+        self.tick_afflictions(boss, elapsed_seconds)
     }
     pub fn apply_affliction(&mut self, affliction: Affliction) {
         let incoming_stack_count = affliction.stack_count() as u32;
@@ -124,8 +129,32 @@ impl BossPart {
 
         self.afflictions.push(affliction);
     }
-    fn tick_afflictions(&mut self) {
-        // Boss owns affliction ticking so damage can be attributed to each card.
+    fn tick_afflictions(
+        &mut self,
+        boss: &Boss,
+        elapsed_seconds: f64,
+    ) -> Vec<card_function::AfflictionDamageEvent> {
+        let mut damage_events = Vec::new();
+        let part_name = self.part_name;
+
+        for affliction in &mut self.afflictions {
+            damage_events.extend(card_function::tick_affliction(
+                affliction,
+                boss,
+                part_name,
+                elapsed_seconds,
+            ));
+        }
+
+        // self.remove_expired_afflictions();
+        damage_events
+    }
+    pub fn remove_expired_afflictions(&mut self) {
+        for affliction in &mut self.afflictions {
+            affliction.remove_expired_stacks();
+        }
+
+        self.afflictions.retain(|affliction| !affliction.is_expired());
     }
     pub fn on_hit(&mut self, damage: u64) {
         match self.part_state {
@@ -238,19 +267,6 @@ impl Boss {
         }
     }
 
-    fn part_names() -> [BossPartName; 8] {
-        [
-            BossPartName::Head,
-            BossPartName::Torso,
-            BossPartName::LeftShoulder,
-            BossPartName::RightShoulder,
-            BossPartName::LeftHand,
-            BossPartName::RightHand,
-            BossPartName::LeftLeg,
-            BossPartName::RightLeg,
-        ]
-    }
-
     fn parts_mut(&mut self) -> [&mut BossPart; 8] {
         [
             &mut self.head,
@@ -274,20 +290,11 @@ impl Boss {
         let snapshot = self.clone();
         let mut damage_events = Vec::new();
 
-        for part_name in Self::part_names() {
-            let mut afflictions = std::mem::take(&mut self.part_mut(part_name).afflictions);
-
-            for affliction in &mut afflictions {
-                damage_events.extend(crate::services::taptitan::card_function::tick_affliction(
-                    affliction,
-                    &snapshot,
-                    part_name,
-                    elapsed_seconds,
-                ));
-            }
-
-            afflictions.retain(|affliction| !affliction.is_expired());
-            self.part_mut(part_name).afflictions = afflictions;
+        for part in self.parts_mut() {
+            damage_events.extend(part.update(&snapshot, elapsed_seconds));
+        }
+        for part in self.parts_mut() {
+            part.remove_expired_afflictions();
         }
 
         for event in damage_events {
