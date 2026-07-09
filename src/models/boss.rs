@@ -353,6 +353,10 @@ impl Boss {
     }
 
     pub fn update_with_elapsed(&mut self, elapsed_seconds: f64) {
+        if self.parts().iter().all(|part| part.afflictions.is_empty()) {
+            return;
+        }
+
         self.update_persistent_affliction_timers(elapsed_seconds);
 
         let snapshot = self.tick_view();

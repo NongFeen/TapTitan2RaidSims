@@ -180,6 +180,7 @@ impl SimService {
 
         let sim_rounds = round;
         let tap_count = TICKS_PER_ROUND;
+        let should_update_boss = deck_creates_timed_boss_effect(&select_deck);
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
@@ -260,7 +261,9 @@ impl SimService {
                         }
                     }
 
-                    boss.update();
+                    if should_update_boss {
+                        boss.update();
+                    }
                 }
 
                 let round_damage = boss.get_total_damage();
@@ -785,4 +788,14 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
 
     astral_echo.tap_count = 0;
     true
+}
+
+fn deck_creates_timed_boss_effect(deck: &[Card]) -> bool {
+    deck.iter().any(|card| {
+        matches!(card.cardtype, CardType::Affliction)
+            || matches!(
+                card.card_id,
+                CardName::GuardBreak | CardName::TotemOfPower
+            )
+    })
 }
