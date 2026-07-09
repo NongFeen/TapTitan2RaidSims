@@ -1,6 +1,6 @@
 use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::{Affliction, AfflictionKind};
@@ -277,13 +277,13 @@ pub struct Boss {
     #[serde(skip, default)]
     pub card_damage_totals: HashMap<CardName, u64>,
     #[serde(skip, default)]
-    pub player_raid_data: Option<PlayerRaidData>,
+    pub player_raid_data: Option<Arc<PlayerRaidData>>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
 }
 
 impl Boss {
-    pub fn set_player_raid_data(&mut self, player_raid_data: PlayerRaidData) {
+    pub fn set_player_raid_data(&mut self, player_raid_data: Arc<PlayerRaidData>) {
         self.player_raid_data = Some(player_raid_data);
     }
 

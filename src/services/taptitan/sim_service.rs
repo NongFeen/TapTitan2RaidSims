@@ -13,12 +13,13 @@ use itertools::Itertools;
 use rand::random;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use strum::IntoEnumIterator;
 // use super::super::sim_payload::SimPayLoad;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SimStats {
-    pub player_stat: PlayerRaidData,
+    pub player_stat: Arc<PlayerRaidData>,
     pub boss_stat: Boss,
     pub attackable_part: Vec<BossPartName>,
     pub usable_card: Vec<CardName>,
@@ -174,7 +175,7 @@ pub struct SimService;
 impl SimService {
     pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
         let sim_stats = SimStats {
-            player_stat: payload.player_raid_data,
+            player_stat: Arc::new(payload.player_raid_data),
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
@@ -219,7 +220,7 @@ impl SimService {
 
     pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
         let sim_stats = SimStats {
-            player_stat: payload.player_raid_data,
+            player_stat: Arc::new(payload.player_raid_data),
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
@@ -295,7 +296,7 @@ impl SimService {
 
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
-                boss.set_player_raid_data(sim_stats.player_stat.clone());
+                boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
                 let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
                 let mut total_burst_proc: u32 = 0;
                 let mut deck = select_deck.clone();
