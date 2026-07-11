@@ -89,8 +89,15 @@ fn refresh_bubble_stacks(boss: &mut Boss, target_part: BossPartName) {
         .iter()
         .map(|stack| stack.attached_duration)
         .fold(0.0, f64::max);
+    let sands_of_time_boosted = affliction
+        .stacks
+        .iter()
+        .any(|stack| stack.sands_of_time_boosted);
 
     for stack in &mut affliction.stacks {
-        stack.refresh(duration);
+        stack.refresh_with_sands_of_time_boost(
+            duration,
+            stack.sands_of_time_boosted || sands_of_time_boosted,
+        );
     }
 }

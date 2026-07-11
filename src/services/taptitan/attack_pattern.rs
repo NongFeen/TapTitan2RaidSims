@@ -60,6 +60,14 @@ struct CandidateParts {
     len: usize,
 }
 
+#[derive(Clone, Copy)]
+enum TargetPreference {
+    HeadTorso,
+    Limb,
+    Armor,
+    Body,
+}
+
 impl CandidateParts {
     fn new() -> Self {
         Self {
@@ -797,7 +805,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
         }
     }
 
-    patterns
+    prune_generated_patterns(patterns, sim_stats, deck)
 }
 
 fn active_attackable_part_count(sim_stats: &SimStats) -> usize {
@@ -898,6 +906,13 @@ fn pattern_is_allowed_for_deck(
     let has_electro_zap = deck_has_card(deck, CardName::ElectroZap) ;
     
     let mut is_allow = true;
+
+    if pattern_is_generic_target(pattern)
+        && !generic_pattern_matches_support_preference(pattern, sim_stats, deck)
+    {
+        is_allow = false;
+    }
+
     //support
     if deck_has_card(deck, CardName::GraspingVines){
         //not allow cycle torso
@@ -942,6 +957,18 @@ fn pattern_is_allowed_for_deck(
         is_allow = false;
         return  is_allow;
     }
+
+    if deck_has_card(deck, CardName::DecayingStrike) && pattern_is_generic_target(pattern) {
+        is_allow = false;
+    }
+
+    if deck_has_card(deck, CardName::FusionBomb)
+        && !deck_has_max_spread_affliction(deck)
+        && !deck_has_focus_affliction(deck)
+        && pattern_is_generic_target(pattern)
+    {
+        is_allow = false;
+    }
     
     //burst
         //have burst but no afflcition will ignore cycle pattern.
@@ -972,6 +999,29 @@ fn pattern_is_allowed_for_deck(
             is_allow = false;
         }
     }
+
+    if deck_has_max_spread_affliction(deck) && pattern_is_generic_target(pattern) {
+        if pattern_is_single_target(pattern) {
+            is_allow = false;
+        }
+
+        if !multipart_affliction_pattern(pattern, deck) {
+            let active_part_count = active_attackable_part_count(sim_stats);
+            let covered_part_count = pattern_covered_part_count(pattern, sim_stats, deck);
+
+            if covered_part_count != active_part_count {
+                is_allow = false;
+            }
+        }
+    }
+
+    if deck_has_focus_affliction(deck)
+        && !deck_has_max_spread_affliction(deck)
+        && pattern_is_cycle_target(pattern)
+    {
+        is_allow = false;
+    }
+
     //affliction alone 
     if support_count_w_sot ==2 {
         if deck_has_card(deck, CardName::BlazingInferno){
@@ -1036,6 +1086,20 @@ fn pattern_is_allowed_for_deck(
     return  is_allow;
 }
 
+fn prune_generated_patterns(
+    patterns: Vec<AttackPattern>,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> Vec<AttackPattern> {
+    let deduped_patterns = dedupe_equivalent_generic_patterns(patterns, sim_stats, deck);
+
+    if deduped_patterns.is_empty() {
+        return deduped_patterns;
+    }
+
+    deduped_patterns
+}
+
 fn multipart_affliction_pattern(pattern: &AttackPattern, deck: &[Card]) -> bool {
     (deck_has_card(deck, CardName::PrismaticRift) && matches!(pattern, AttackPattern::CycleArmor))
         || (deck_has_card(deck, CardName::InspiringForce)&& matches!(pattern, AttackPattern::CycleBody))
@@ -1046,9 +1110,174 @@ fn pattern_covered_part_count(
     sim_stats: &SimStats,
     deck: &[Card],
 ) -> usize {
-    pattern
-        .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
-        .len()
+    pattern_effective_targets(pattern, sim_stats, deck).len()
+}
+
+fn pattern_effective_targets(
+    pattern: &AttackPattern,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> Vec<BossPartName> {
+    let candidates = pattern.candidate_parts(
+        &sim_stats.boss_stat,
+        deck,
+        &sim_stats.attackable_part,
+    );
+
+    if pattern_is_single_target(pattern) {
+        candidates.into_iter().take(1).collect()
+    } else {
+        candidates
+    }
+}
+
+fn generic_pattern_matches_support_preference(
+    pattern: &AttackPattern,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> bool {
+    let Some(target_parts) = preferred_support_target_parts(sim_stats, deck) else {
+        return true;
+    };
+
+    let pattern_targets = pattern_effective_targets(pattern, sim_stats, deck);
+
+    !pattern_targets.is_empty()
+        && pattern_targets
+            .iter()
+            .all(|part| target_parts.contains(part))
+}
+
+fn preferred_support_target_parts(sim_stats: &SimStats, deck: &[Card]) -> Option<Vec<BossPartName>> {
+    let preferences = support_target_preferences(deck);
+    if preferences.is_empty() {
+        return None;
+    }
+
+    let perfect_match = matching_parts_for_preferences(sim_stats, &preferences);
+    if !perfect_match.is_empty() {
+        return Some(perfect_match);
+    }
+
+    for preference in preferences {
+        let fallback_match = matching_parts_for_preferences(sim_stats, &[preference]);
+        if !fallback_match.is_empty() {
+            return Some(fallback_match);
+        }
+    }
+
+    None
+}
+
+fn support_target_preferences(deck: &[Card]) -> Vec<TargetPreference> {
+    let mut preferences = Vec::new();
+
+    if deck_has_card(deck, CardName::SoulFire) || deck_has_card(deck, CardName::CrushingInstinct) {
+        preferences.push(TargetPreference::HeadTorso);
+    }
+
+    if deck_has_card(deck, CardName::GraspingVines) {
+        preferences.push(TargetPreference::Limb);
+    }
+
+    if deck_has_card(deck, CardName::PrismaticRift) || deck_has_card(deck, CardName::SkeletalSmash) {
+        preferences.push(TargetPreference::Armor);
+    }
+
+    if deck_has_card(deck, CardName::InspiringForce) {
+        preferences.push(TargetPreference::Body);
+    }
+
+    preferences
+}
+
+fn matching_parts_for_preferences(
+    sim_stats: &SimStats,
+    preferences: &[TargetPreference],
+) -> Vec<BossPartName> {
+    sim_stats
+        .attackable_part
+        .iter()
+        .copied()
+        .filter(|part| part_is_active(&sim_stats.boss_stat, *part))
+        .filter(|part| {
+            preferences
+                .iter()
+                .all(|preference| {
+                    target_preference_matches(*preference, &sim_stats.boss_stat, *part)
+                })
+        })
+        .collect()
+}
+
+fn target_preference_matches(
+    preference: TargetPreference,
+    boss: &Boss,
+    part: BossPartName,
+) -> bool {
+    match preference {
+        TargetPreference::HeadTorso => matches!(part, BossPartName::Head | BossPartName::Torso),
+        TargetPreference::Limb => part.is_limb(),
+        TargetPreference::Armor => matches!(
+            boss.part(part).part_state,
+            PartState::Armor | PartState::Cursed
+        ),
+        TargetPreference::Body => boss.part(part).part_state == PartState::Body,
+    }
+}
+
+fn deck_has_max_spread_affliction(deck: &[Card]) -> bool {
+    deck_has_card(deck, CardName::BlazingInferno)
+        || deck_has_card(deck, CardName::ThrivingPlague)
+        || deck_has_card(deck, CardName::Radioactivity)
+}
+
+fn deck_has_focus_affliction(deck: &[Card]) -> bool {
+    deck_has_card(deck, CardName::CorrosiveBubbles)
+        || deck_has_card(deck, CardName::RavenousSwarm)
+}
+
+fn dedupe_equivalent_generic_patterns(
+    patterns: Vec<AttackPattern>,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> Vec<AttackPattern> {
+    let mut deduped_patterns = Vec::new();
+    let mut seen_generic_signatures: Vec<(bool, Vec<BossPartName>)> = Vec::new();
+
+    for pattern in patterns {
+        if let Some(signature) = generic_pattern_signature(&pattern, sim_stats, deck) {
+            if seen_generic_signatures
+                .iter()
+                .any(|seen| *seen == signature)
+            {
+                continue;
+            }
+
+            seen_generic_signatures.push(signature);
+        }
+
+        deduped_patterns.push(pattern);
+    }
+
+    deduped_patterns
+}
+
+fn generic_pattern_signature(
+    pattern: &AttackPattern,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> Option<(bool, Vec<BossPartName>)> {
+    if !pattern_is_generic_target(pattern) {
+        return None;
+    }
+
+    let targets = pattern_effective_targets(pattern, sim_stats, deck);
+    if targets.is_empty() {
+        return None;
+    }
+
+    Some((pattern_is_cycle_target(pattern), targets))
 }
 
 fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
@@ -1062,6 +1291,9 @@ fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
             | AttackPattern::SingleLimb
             | AttackPattern::SingleCursed
     )
+}
+fn pattern_is_generic_target(pattern: &AttackPattern) -> bool {
+    pattern_is_single_target(pattern) || pattern_is_cycle_target(pattern)
 }
 fn pattern_is_cycle_target(pattern: &AttackPattern) -> bool {
     matches!(

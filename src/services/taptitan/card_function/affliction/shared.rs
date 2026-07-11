@@ -43,13 +43,17 @@ pub(super) fn build_affliction(
     let kind = crate::models::affliction::AfflictionKind::from_card(card.card_id)?;
     let row = card_skill_row(card.card_id)?;
     let mut duration = row.duration;
+    let mut sands_of_time_boosted = false;
 
-    if card.card_id != CardName::SandsOfTime && part_has_sands_of_time(boss, target_part) {
-        duration *= 1.0 + sands_duration_bonus(boss, target_part);
+    if card.card_id != CardName::SandsOfTime {
+        if let Some(duration_bonus) = sands_duration_bonus(boss, target_part) {
+            duration *= 1.0 + duration_bonus;
+            sands_of_time_boosted = true;
+        }
     }
 
     let damage_rate = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
-    Some(Affliction::new(
+    let mut affliction = Affliction::new(
         kind,
         card.card_id,
         card.level,
@@ -59,7 +63,15 @@ pub(super) fn build_affliction(
         remove_damage,
         1.0,
         row.max_stacks.max(1),
-    ))
+    );
+
+    if sands_of_time_boosted {
+        for stack in &mut affliction.stacks {
+            stack.sands_of_time_boosted = true;
+        }
+    }
+
+    Some(affliction)
 }
 
 pub(super) fn on_tick(
@@ -77,18 +89,18 @@ pub(super) fn on_remove(_affliction: &Affliction, _attached_duration: f64) -> u6
     0
 }
 
-pub(super) fn part_has_sands_of_time(boss: &Boss, target_part: BossPartName) -> bool {
+fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> Option<f64> {
     boss.part(target_part)
         .afflictions
         .iter()
-        .any(|affliction| affliction.source_card == CardName::SandsOfTime)
-}
-
-fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> f64 {
-    boss.part(target_part)
-        .afflictions
-        .iter()
-        .find(|affliction| affliction.source_card == CardName::SandsOfTime)
-        .and_then(|affliction| card_skill_value_b(affliction.source_card, affliction.source_level))
-        .unwrap_or(1.0)
+        .find(|affliction| {
+            affliction.source_card == CardName::SandsOfTime
+                && affliction
+                    .stacks
+                    .iter()
+                    .any(|stack| stack.remaining_duration > 0.0)
+        })
+        .and_then(|affliction| {
+            card_skill_value_b(affliction.source_card, affliction.source_level)
+        })
 }

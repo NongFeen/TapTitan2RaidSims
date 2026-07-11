@@ -11,7 +11,9 @@ const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     shared::get_proc_chance(card, boss)
+    // 1.00
     // 0.50
+    // 0.00
 }
 
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
@@ -29,9 +31,14 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         let boosted_max_duration = base_duration * (1.0 + boost);
 
         for stack in &mut other.stacks {
+            if stack.sands_of_time_boosted {
+                continue;
+            }
+
             stack.remaining_duration =
                 (stack.remaining_duration + duration_bonus).min(boosted_max_duration);
             stack.attached_duration = stack.attached_duration.max(boosted_max_duration);
+            stack.sands_of_time_boosted = true;
         }
     }
 

@@ -166,6 +166,10 @@ impl BossPart {
         let incoming_tick_damage = affliction.damage_per_second;
         let incoming_expire_damage = affliction.remove_damage;
         let incoming_tick_interval = affliction.tick_interval_seconds;
+        let incoming_sands_of_time_boosted = affliction
+            .stacks
+            .iter()
+            .any(|stack| stack.sands_of_time_boosted);
 
         if let Some(existing) = self
             .afflictions
@@ -178,6 +182,7 @@ impl BossPart {
                 incoming_tick_damage,
                 incoming_expire_damage,
                 incoming_tick_interval,
+                incoming_sands_of_time_boosted,
             );
             return;
         }

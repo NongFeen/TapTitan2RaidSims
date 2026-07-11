@@ -11,6 +11,7 @@ const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     shared::get_proc_chance(card, boss)
+    // 0.08
     // 1.0
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
@@ -33,7 +34,8 @@ pub fn on_tick(
     let max_parts = card_skill_row(affliction.source_card)
         .map(|row| row.bonus_amount_d)
         .unwrap_or(6.0);
-    let multiplier = stack_multiplier * (1.0 + bonus * afflicted_parts.min(max_parts));
+    let bonus_parts = afflicted_parts.min(max_parts);
+    let multiplier = stack_multiplier * (1.0 + bonus * bonus_parts);
 
     shared::on_tick(affliction, boss, part_name, multiplier, elapsed_seconds)
 }

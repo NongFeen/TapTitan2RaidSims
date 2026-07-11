@@ -167,10 +167,11 @@ impl SimDamageContext {
     }
 }
 
-const SIMS_ROUNDS: u64 = 3;
+const SIMS_ROUNDS: u64 = 500;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
+const PRINT_EVERY_SIM_PATTERN: bool = true;
 
 pub struct SimService;
 
@@ -349,17 +350,16 @@ impl SimService {
                                     i,
                                 );
                             }
-
-                            Self::tap_boss(
-                                &mut boss,
-                                current_target,
-                                &mut deck,
-                                &damage_context,
-                                &mut total_burst_proc,
-                                1.0,
-                                &mut card_proc_totals,
-                                cached_support.as_ref(),
-                            );
+                                Self::tap_boss(
+                                    &mut boss,
+                                    current_target,
+                                    &mut deck,
+                                    &damage_context,
+                                    &mut total_burst_proc,
+                                    1.0,
+                                    &mut card_proc_totals,
+                                    cached_support.as_ref(),
+                                );
 
                             if trigger_astral_echo_extra_tap(&mut deck) {
                                 let astral_proc_chance_scale =
@@ -845,8 +845,15 @@ fn format_average_count(total_count: u64, rounds: u64) -> String {
 }
 
 fn should_print_sim_pattern_progress(current_pattern: usize, total_patterns: usize) -> bool {
-    if !PRINT_SIM_PATTERN_PROGRESS || total_patterns == 0 || SIM_PATTERN_PROGRESS_STEP_PERCENT == 0
-    {
+    if !PRINT_SIM_PATTERN_PROGRESS || total_patterns == 0 {
+        return false;
+    }
+
+    if PRINT_EVERY_SIM_PATTERN {
+        return true;
+    }
+
+    if SIM_PATTERN_PROGRESS_STEP_PERCENT == 0 {
         return false;
     }
 

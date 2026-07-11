@@ -43,23 +43,39 @@ pub struct AfflictionStack {
     pub damage_multiplier: f64,
     #[serde(default)]
     pub tick_elapsed: f64,
+    #[serde(default)]
+    pub sands_of_time_boosted: bool,
 }
 
 impl AfflictionStack {
     pub fn new(duration: f64) -> Self {
+        Self::new_with_sands_of_time_boost(duration, false)
+    }
+
+    pub fn new_with_sands_of_time_boost(duration: f64, sands_of_time_boosted: bool) -> Self {
         Self {
             remaining_duration: duration,
             attached_duration: duration,
             elapsed_attached_duration: 0.0,
             damage_multiplier: 1.0,
             tick_elapsed: 0.0,
+            sands_of_time_boosted,
         }
     }
 
     pub fn refresh(&mut self, duration: f64) {
+        self.refresh_with_sands_of_time_boost(duration, self.sands_of_time_boosted);
+    }
+
+    pub fn refresh_with_sands_of_time_boost(
+        &mut self,
+        duration: f64,
+        sands_of_time_boosted: bool,
+    ) {
         self.remaining_duration = duration;
         self.attached_duration = duration;
         self.tick_elapsed = 0.0;
+        self.sands_of_time_boosted = sands_of_time_boosted;
     }
 
     pub fn tick(&mut self, elapsed: f64) {
@@ -167,6 +183,7 @@ impl Affliction {
         damage_per_second: f64,
         remove_damage: f64,
         tick_interval_seconds: f64,
+        sands_of_time_boosted: bool,
     ) {
         self.damage_per_second = self.damage_per_second.max(damage_per_second);
         self.remove_damage = self.remove_damage.max(remove_damage);
@@ -175,7 +192,10 @@ impl Affliction {
         match self.refresh_rule {
             AfflictionRefreshRule::RefreshAll => {
                 for stack in &mut self.stacks {
-                    stack.refresh(duration);
+                    stack.refresh_with_sands_of_time_boost(
+                        duration,
+                        stack.sands_of_time_boosted || sands_of_time_boosted,
+                    );
                 }
             }
             AfflictionRefreshRule::Independent => {}
@@ -184,8 +204,13 @@ impl Affliction {
         let max_stacks = self.max_stacks as usize;
         let available_slots = max_stacks.saturating_sub(self.stacks.len());
         let stacks_to_add = usize::min(stack_count as usize, available_slots);
-        self.stacks
-            .extend((0..stacks_to_add).map(|_| AfflictionStack::new(duration)));
+        self.stacks.extend(
+            (0..stacks_to_add)
+                .map(|_| AfflictionStack::new_with_sands_of_time_boost(
+                    duration,
+                    sands_of_time_boosted,
+                )),
+        );
 
         if stacks_to_add < stack_count as usize
             && self.overflow == AfflictionOverflow::ReplaceOldest
@@ -195,7 +220,10 @@ impl Affliction {
                 if let Some(oldest) = self.stacks.iter_mut().min_by(|left, right| {
                     left.remaining_duration.total_cmp(&right.remaining_duration)
                 }) {
-                    oldest.refresh(duration);
+                    oldest.refresh_with_sands_of_time_boost(
+                        duration,
+                        oldest.sands_of_time_boosted || sands_of_time_boosted,
+                    );
                 }
             }
         }
