@@ -189,9 +189,13 @@ impl SimService {
         let valid_decks = generate_deck(&sim_stats);
         let deck_patterns = valid_decks
             .into_iter()
-            .map(|deck| {
+            .filter_map(|deck| {
                 let attack_patterns = generate_attack_patterns(&sim_stats, &deck);
-                (deck, attack_patterns)
+                if attack_patterns.is_empty() {
+                    None
+                } else {
+                    Some((deck, attack_patterns))
+                }
             })
             .collect::<Vec<_>>();
         let mut progress = SimProgress {
@@ -262,6 +266,10 @@ impl SimService {
         }
 
         let attack_patterns = generate_attack_patterns(&sim_stats, &select_deck);
+        if attack_patterns.is_empty() {
+            return None;
+        }
+
         Some(Self::run_deck_sim(
             &sim_stats,
             select_deck,
