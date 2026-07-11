@@ -582,7 +582,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     deck_combinations
 }
 
-const IS_CHECK_CARD_SYNERGY:bool = true;
+const IS_CHECK_CARD_SYNERGY:bool = false;
 fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
     let deck = [c1, c2, c3];
     let burst_count = deck

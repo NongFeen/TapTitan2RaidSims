@@ -214,7 +214,7 @@ impl AttackPattern {
         }
 
         if let AttackPattern::RadioactivitySpread = self {
-            let disease_limit = 6usize;
+            let disease_limit = 8usize;
             let mut diseased_count = 0usize;
             let mut first_missing_disease = None;
             let mut best_disease_part: Option<(BossPartName, usize, f64)> = None;
@@ -939,10 +939,6 @@ fn pattern_is_allowed_for_deck(
         return  is_allow;
     }
     if has_celestial_static && pattern_is_single_target(pattern) {
-        is_allow = false;
-        return  is_allow;
-    }
-    if has_celestial_static && has_electro_zap{
         is_allow = false;
         return  is_allow;
     }
