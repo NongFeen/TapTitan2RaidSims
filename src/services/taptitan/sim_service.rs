@@ -457,7 +457,7 @@ impl SimService {
 
                         format!(
                             "{} dmg {} proc {}",
-                            card.card_id.display_name(),
+                            card_display_with_level(card),
                             format_compact(average_damage),
                             average_proc_count
                         )
@@ -585,7 +585,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         {
             // Dereference the pointers to store clean Card values
             let mut deck = vec![c1.clone(), c2.clone(), c3.clone()];
-            // apply_amplify_level_sharing(&mut deck);
+            apply_amplify_level_sharing(&mut deck);
             deck_combinations.push(deck);
         }
     }
@@ -873,6 +873,10 @@ fn sim_progress_summary(current_pattern: usize, total_patterns: usize) -> String
     };
 
     format!("{}/{} ({:.2}%)", current_pattern, total_patterns, percent)
+}
+
+fn card_display_with_level(card: &Card) -> String {
+    format!("{}({})", card.card_id.display_name(), card.level)
 }
 
 fn apply_amplify_level_sharing(deck: &mut [Card]) {

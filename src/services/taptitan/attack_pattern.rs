@@ -794,6 +794,15 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
         };
     }
 
+    if deck_is_target_insensitive(deck) {
+        let pattern = AttackPattern::SingleAny;
+        return if pattern_has_candidates(&pattern, sim_stats, deck) {
+            vec![pattern]
+        } else {
+            Vec::new()
+        };
+    }
+
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
@@ -1315,6 +1324,27 @@ fn deck_has_only_celestial_static_and_supports(deck: &[Card]) -> bool {
             .iter()
             .filter(|card| card.cardtype == CardType::Support || card.card_id == CardName::GuardBreak || card.card_id == CardName::Maelstrom)
             .count() == 2 
+}
+
+fn deck_is_target_insensitive(deck: &[Card]) -> bool {
+    deck.iter().all(card_is_target_insensitive)
+}
+
+fn card_is_target_insensitive(card: &Card) -> bool {
+    matches!(
+        card.card_id,
+        CardName::ClanshipBarrage
+            | CardName::CosmicHaymaker
+            | CardName::MirrorForce
+            | CardName::PurifyingBlast
+            | CardName::ElectroZap
+            | CardName::SandsOfTime
+            | CardName::AncestralFavor
+            | CardName::AstralEcho
+            | CardName::RancidGas
+            | CardName::RadiantKaleidoscope
+            | CardName::TeamTactics
+    )
 }
 
 fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
