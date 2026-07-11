@@ -167,7 +167,7 @@ impl SimDamageContext {
     }
 }
 
-const SIMS_ROUNDS: u64 = 500;
+const SIMS_ROUNDS: u64 = 5;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
