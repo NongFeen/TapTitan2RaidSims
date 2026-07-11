@@ -198,6 +198,17 @@ impl SimService {
                 .map(|(_, attack_patterns)| attack_patterns.len())
                 .sum(),
         };
+
+        if PRINT_SIM_PATTERN_PROGRESS {
+            println!(
+                "[SIMs] start | decks {} | patterns {} | rounds {} | ticks {}",
+                deck_patterns.len(),
+                progress.total_patterns,
+                SIMS_ROUNDS,
+                TICKS_PER_ROUND
+            );
+        }
+
         let decks = deck_patterns
             .into_iter()
             .map(|(deck, attack_patterns)| {
