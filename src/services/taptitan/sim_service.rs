@@ -172,6 +172,8 @@ const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
 const PRINT_EVERY_SIM_PATTERN: bool = true;
+const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
+const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 
 pub struct SimService;
 
@@ -541,10 +543,15 @@ impl SimService {
             // println!("Proc Chance {} {} {} {} {}",proc_chance,card_proc_chance,chance_mult, proc_chance_scale, combined_support.burst_chance_mult);
             let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
             if roll <= proc_chance {
-                if card.cardtype == CardType::Burst {
-                    *total_burst_proc += 1;
+                let counts_as_card_proc = card_roll_counts_as_proc(card, boss, attack_part);
+
+                if counts_as_card_proc {
+                    if card.cardtype == CardType::Burst {
+                        *total_burst_proc += 1;
+                    }
+                    *card_proc_totals.entry(card.card_id).or_insert(0) += 1;
                 }
-                *card_proc_totals.entry(card.card_id).or_insert(0) += 1;
+
                 card.on_proc(boss, attack_part, card_base_damage, 0, *total_burst_proc);
             }
         }
@@ -877,6 +884,28 @@ fn sim_progress_summary(current_pattern: usize, total_patterns: usize) -> String
 
 fn card_display_with_level(card: &Card) -> String {
     format!("{}({})", card.card_id.display_name(), card.level)
+}
+
+fn card_roll_counts_as_proc(card: &Card, boss: &Boss, attack_part: BossPartName) -> bool {
+    match card.cardtype {
+        CardType::Affliction => true,
+        CardType::Burst => burst_roll_counts_as_proc(card, boss, attack_part),
+        CardType::Support => false,
+    }
+}
+
+fn burst_roll_counts_as_proc(card: &Card, boss: &Boss, attack_part: BossPartName) -> bool {
+    match card.card_id {
+        CardName::CosmicHaymaker => {
+            card.tap_count.saturating_add(1) >= COSMIC_HAYMAKER_TAPS_PER_PROC
+        }
+        CardName::CelestialStatic => {
+            !attack_part.is_limb()
+                && boss.get_state_from_part(attack_part) != PartState::Skeleton
+                && card.celestial_stacks >= CELESTIAL_STATIC_STACKS_PER_PROC
+        }
+        _ => true,
+    }
 }
 
 fn apply_amplify_level_sharing(deck: &mut [Card]) {
