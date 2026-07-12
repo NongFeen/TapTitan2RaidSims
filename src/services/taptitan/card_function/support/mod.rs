@@ -29,7 +29,7 @@ pub fn on_proc(
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,
-    round_index: u32,
+    mirror_force_boost: u32,
     burst_trigger_count: u32,
 ) {
     match card.card_id {

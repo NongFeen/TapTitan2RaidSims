@@ -267,7 +267,7 @@ impl Card {
         boss: &mut Boss,
         target_part: BossPartName,
         damage: f64,
-        round_index: u32,
+        mirror_force_boost: u32,
         burst_trigger_count: u32,
     ) {
         crate::services::taptitan::card_function::on_proc(
@@ -275,7 +275,7 @@ impl Card {
             boss,
             target_part,
             damage,
-            round_index,
+            mirror_force_boost,
             burst_trigger_count,
         )
     }

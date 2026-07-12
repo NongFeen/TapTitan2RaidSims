@@ -30,7 +30,7 @@ pub fn on_proc(
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,
-    round_index: u32,
+    mirror_force_boost: u32,
     burst_trigger_count: u32,
 ) {
     match card.cardtype {
@@ -39,7 +39,7 @@ pub fn on_proc(
             boss,
             target_part,
             damage,
-            round_index,
+            mirror_force_boost,
             burst_trigger_count,
         ),
         CardType::Affliction => affliction::on_proc(card, boss, target_part, damage),
