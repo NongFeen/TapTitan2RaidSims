@@ -13,7 +13,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 // use super::super::sim_payload::SimPayLoad;
+const SIMS_ROUNDS: u64 = 5;
+const TICKS_PER_ROUND: u32 = 600;
+const PRINT_SIM_PATTERN_PROGRESS: bool = true;
+const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
+const PRINT_EVERY_SIM_PATTERN: bool = false;
+// const PRINT_EVERY_SIM_PATTERN: bool = true;
 
+const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
+const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 #[derive(Debug, Clone)]
 pub struct SimStats {
     pub player_stat: Arc<PlayerRaidData>,
@@ -164,13 +172,7 @@ impl SimDamageContext {
     }
 }
 
-const SIMS_ROUNDS: u64 = 20;
-const TICKS_PER_ROUND: u32 = 600;
-const PRINT_SIM_PATTERN_PROGRESS: bool = true;
-const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
-const PRINT_EVERY_SIM_PATTERN: bool = false;
-const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
-const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
+
 
 //release version 20R all cards 2m 1.56 sec
 pub struct SimService;
@@ -614,7 +616,20 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
 }
 
 const IS_CHECK_CARD_SYNERGY:bool = false;
-fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
+const PURIFY_PRIORITY_AFFLICTIONS: [CardName; 6] = [
+    CardName::AcidDrench,
+    CardName::RavenousSwarm,
+    CardName::RuinousRain,
+    CardName::Amplify,
+    CardName::ElectroZap,
+    CardName::BlazingInferno,
+];
+
+fn is_purify_priority_affliction(card_name: CardName) -> bool {
+    PURIFY_PRIORITY_AFFLICTIONS.contains(&card_name)
+}
+
+fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
     let deck = [c1, c2, c3];
     let burst_count = deck
         .iter()
@@ -631,35 +646,66 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
 
     //total deck without any rule = 42*41*40/3/2 = 11480
     //Policy 1 : card must be synergy by it self
-    // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     let has_support = support_count > 0;
     let has_maelstrom = deck.iter().any(|c| c.card_id == CardName::Maelstrom);
     let has_guard_break = deck.iter().any(|c| c.card_id == CardName::GuardBreak);
+
+    let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
+    let has_affliction = affliction_count > 0;
+
+    let has_radiant_kaleidoscope = deck.iter().any(|c| c.card_id == CardName::RadiantKaleidoscope);
+
+    let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
+
+    let has_rancid_gas = deck.iter().any(|c| c.card_id == CardName::RancidGas);
+    
+    let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
+
+    let has_celestial_static = deck.iter().any(|c| c.card_id == CardName::CelestialStatic);
+    let has_grasping_vines = deck.iter().any(|c| c.card_id == CardName::GraspingVines);
+    let has_totem_of_power = deck.iter().any(|c| c.card_id == CardName::TotemOfPower);
+    let has_corrosive_bubble = deck.iter().any(|c| c.card_id == CardName::CorrosiveBubbles);
+    let has_ravenous_swarm = deck.iter().any(|c| c.card_id == CardName::RavenousSwarm);
+    let has_ruinous_rain = deck.iter().any(|c| c.card_id == CardName::RuinousRain);
+
+    let has_fusion_bomb = deck.iter().any(|c| c.card_id == CardName::FusionBomb);
+    let has_soul_fire = deck.iter().any(|c| c.card_id == CardName::SoulFire);
+    let has_crushing_instinct = deck.iter().any(|c| c.card_id == CardName::CrushingInstinct);
+    
+    // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     if !has_support && !has_maelstrom && !has_guard_break {
         return false;
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 1 PASS")
     }
-    //deck with rule 1 = 8880
 
-    // Rule 2 : Purify card require 1 alffication. but cannot be maelstrom
-    let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
-    let has_affliction = affliction_count > 0;
-    if has_purify && !has_affliction  {
-        return false;
-    }
-    if has_purify && has_maelstrom {
-        return false;
+    // Rule 2 : Purify card require 1 alffication. but cannot be maelstrom.
+    // If any high proc chance affliction is usable, Purify should only use that bucket.
+    if has_purify {
+        if !has_affliction || has_maelstrom {
+            return false;
+        }
+
+        let has_priority_affliction_available = sim_stats
+            .usable_card
+            .iter()
+            .any(|card_name| is_purify_priority_affliction(*card_name));
+
+        if has_priority_affliction_available
+            && deck
+                .iter()
+                .filter(|card| card.cardtype == CardType::Affliction)
+                .any(|card| !is_purify_priority_affliction(card.card_id))
+        {
+            return false;
+        }
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 2 PASS")
     }
-    //deck with rule 2 = 8595
+
     // Rule 3 : has Radiant also must have1 burst + 1 affliction
-    let has_radiant_kaleidoscope = deck
-        .iter()
-        .any(|c| c.card_id == CardName::RadiantKaleidoscope);
     if has_radiant_kaleidoscope {
         if burst_count != 1 || affliction_count != 1 {
             return false;
@@ -668,29 +714,33 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 3 PASS")
     }
-    //deck with rule 3 = 7997
+
     //Rule 4 Burst support must use with burst card or other support card
-    let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
     if has_ancestral_favor {
-        if affliction_count >= 1 && !has_maelstrom || support_count == 3 {
+        if burst_count < 1 {
+            return false;
+        }
+        if affliction_count == 1 && !has_maelstrom{
             return false;
         }
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 4 PASS")
     }
-    //deck with rule 4 = 7476
+
     //Rule 5 Affliction support must use with burst card or other support card
-    let has_rancid_gas = deck.iter().any(|c| c.card_id == CardName::RancidGas);
     if has_rancid_gas {
-        if burst_count >= 1 || support_count == 3 {
+        if affliction_count <1 {
+            return false;
+        }
+        if burst_count == 1 && !has_guard_break{
             return false;
         }
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 5 PASS")
     }
-    // //deck with rule 5 = 6991
+
     //Rule 6 never 3 support card
     if support_count == 3 {
         return false;
@@ -698,9 +748,8 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 6 PASS")
     }
-    //deck with rule 6 = 6826
+
     // //Rule 7 : Sand of Time card must use with another debuff inflict card
-    let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
     if has_sands_of_time {
         if affliction_count <= 1 {
             return false;
@@ -712,13 +761,12 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 7 PASS")
     }
-    //deck with rule 7 = 6553
 
     //rule 8 : celestial card not suit with limb support card
-    let has_celestial_static = deck.iter().any(|c| c.card_id == CardName::CelestialStatic);
-    let has_grasping_vines = deck.iter().any(|c| c.card_id == CardName::GraspingVines);
-    if has_celestial_static && has_grasping_vines {
-        return false;
+    if has_celestial_static {
+        if has_grasping_vines || has_totem_of_power{
+            return false;
+        }
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 8 PASS")
@@ -732,6 +780,7 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 9 PASS")
     }
+
     //rule 10 
     // have whip must also have other afflcition
     let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
@@ -742,6 +791,34 @@ fn is_deck_synergistic(_sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -
         println!("Rule 10 PASS")
     }
     
+    //rule 11 
+    //some affliction should not use with sot
+    if has_sands_of_time {
+        if has_corrosive_bubble ||
+        has_ravenous_swarm||
+        has_ruinous_rain ||
+        has_totem_of_power{
+            return false;
+        }
+    }
+
+    //rule 12
+    if has_fusion_bomb{
+        if has_totem_of_power||
+        has_soul_fire||
+        has_crushing_instinct{
+            return  false;
+        }
+    }
+
+    //rule 14 
+    //2 support cards must intersect some boss part 
+    if has_soul_fire || has_crushing_instinct {
+        if has_grasping_vines{
+            return false;
+        }
+    } 
+    //rule 15 
     true
 }
 
