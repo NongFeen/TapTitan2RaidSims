@@ -23,6 +23,12 @@ mod sands_of_time;
 mod shared;
 mod thriving_plague;
 
+#[derive(Clone, Copy)]
+pub struct AfflictionRemoveView {
+    pub source_card: CardName,
+    pub remove_damage: f64,
+}
+
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     match card.card_id {
         CardName::BlazingInferno => blazing_inferno::get_proc_chance(card, boss),
@@ -70,8 +76,12 @@ pub fn on_tick(
     elapsed_seconds: f64,
 ) -> Vec<AfflictionDamageEvent> {
     let mut events = Vec::new();
-    let affliction_snapshot = affliction.clone();
     let tick_interval_seconds = affliction.tick_interval_seconds.max(f64::EPSILON);
+    let source_card = affliction.source_card;
+    let remove_view = AfflictionRemoveView {
+        source_card,
+        remove_damage: affliction.remove_damage,
+    };
 
     affliction.tick_elapsed += elapsed_seconds;
 
@@ -89,7 +99,7 @@ pub fn on_tick(
             .filter(|stack| stack.remaining_duration > 0.0)
             .map(|stack| {
                 tick_damage_for(
-                    &affliction_snapshot,
+                    affliction,
                     boss,
                     part_name,
                     stack.damage_multiplier,
@@ -134,11 +144,11 @@ pub fn on_tick(
         stack.tick(elapsed_seconds);
 
         if stack.is_expired() {
-            let remove_duration = match affliction.source_card {
+            let remove_duration = match source_card {
                 CardName::FusionBomb => stack.elapsed_attached_duration,
                 _ => stack.attached_duration,
             };
-            let remove_damage = remove_damage_for(&affliction_snapshot, remove_duration);
+            let remove_damage = remove_damage_for(&remove_view, remove_duration);
             if remove_damage > 0 {
                 // println!(
                 //     "[AFF REMOVE] card={:?} part={:?} damage={} attached={:.2}s total_attached={:.2}s elapsed={:.3}s stacks_before_remove={}",
@@ -148,13 +158,13 @@ pub fn on_tick(
                 //     stack.attached_duration,
                 //     stack.elapsed_attached_duration,
                 //     elapsed_seconds,
-                //     affliction_snapshot.stack_count(),
+                //     active_stack_count,
                 // );
 
                 events.push(AfflictionDamageEvent {
                     part_name,
                     damage: remove_damage,
-                    source: DamageSource::Card(affliction.source_card),
+                    source: DamageSource::Card(source_card),
                 });
             }
         }
@@ -273,7 +283,7 @@ fn tick_damage_for(
     }
 }
 
-fn remove_damage_for(affliction: &Affliction, attached_duration: f64) -> u64 {
+fn remove_damage_for(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
     match affliction.source_card {
         CardName::BlazingInferno => blazing_inferno::on_remove(affliction, attached_duration),
         CardName::AcidDrench => acid_drench::on_remove(affliction, attached_duration),

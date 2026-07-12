@@ -2,10 +2,10 @@ use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
     card_skill_data::{card_skill_bonusamountC, card_skill_value_a},
-    cards::Card,
+    cards::{Card, CardName},
 };
 
-use super::shared;
+use super::{shared, AfflictionRemoveView};
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
@@ -40,12 +40,24 @@ pub fn on_tick(
     0
 }
 
-pub fn on_remove(affliction: &Affliction, total_attached_duration: f64) -> u64 {
-    let per_second_bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.5);
+pub fn on_remove(affliction: &AfflictionRemoveView, total_attached_duration: f64) -> u64 {
+    remove_damage(
+        affliction.source_card,
+        affliction.remove_damage,
+        total_attached_duration,
+    )
+}
+
+pub fn remove_damage(
+    source_card: CardName,
+    base_remove_damage: f64,
+    total_attached_duration: f64,
+) -> u64 {
+    let per_second_bonus = card_skill_bonusamountC(source_card).unwrap_or(0.5);
     // println!(
     //     "per_second_bonus {} total_attached_duration {}",
     //     per_second_bonus, total_attached_duration
     // );
 
-    (affliction.remove_damage * (per_second_bonus * total_attached_duration)).max(0.0) as u64
+    (base_remove_damage * (per_second_bonus * total_attached_duration)).max(0.0) as u64
 }

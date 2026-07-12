@@ -4,7 +4,7 @@ use crate::models::{
     cards::Card,
 };
 
-use super::shared;
+use super::{shared, AfflictionRemoveView};
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 const MAX_DAMAGE_PERCENT: f64 = 0.70;
@@ -53,6 +53,6 @@ pub fn on_tick(
     tick_damage as u64
 }
 
-pub fn on_remove(affliction: &Affliction, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
     shared::on_remove(affliction, attached_duration)
 }

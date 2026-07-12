@@ -5,6 +5,8 @@ use crate::models::{
     cards::{Card, CardName},
 };
 
+use super::AfflictionRemoveView;
+
 pub(super) fn get_proc_chance(card: &Card, _boss: &Boss) -> f64 {
     let Some(row) = card_skill_row(card.card_id) else {
         return 0.0;
@@ -85,7 +87,7 @@ pub(super) fn on_tick(
     (affliction.damage_per_second * stack_multiplier * elapsed_seconds).max(0.0) as u64
 }
 
-pub(super) fn on_remove(_affliction: &Affliction, _attached_duration: f64) -> u64 {
+pub(super) fn on_remove(_affliction: &AfflictionRemoveView, _attached_duration: f64) -> u64 {
     0
 }
 
