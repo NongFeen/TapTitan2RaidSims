@@ -90,8 +90,7 @@ pub(super) fn on_remove(_affliction: &Affliction, _attached_duration: f64) -> u6
 }
 
 fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> Option<f64> {
-    boss.part(target_part)
-        .afflictions
+    boss.afflictions(target_part)
         .iter()
         .find(|affliction| {
             affliction.source_card == CardName::SandsOfTime

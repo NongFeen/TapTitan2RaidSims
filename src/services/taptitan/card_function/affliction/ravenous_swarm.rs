@@ -55,8 +55,7 @@ pub fn on_remove(affliction: &Affliction, attached_duration: f64) -> u64 {
 }
 
 fn is_ravenous_swarm_at_max_stacks(boss: &Boss, part_name: BossPartName, max_stacks: u32) -> bool {
-    boss.part(part_name)
-        .afflictions
+    boss.afflictions(part_name)
         .iter()
         .find(|affliction| affliction.kind == AfflictionKind::RavenousSwarmDebuff)
         .map(|affliction| affliction.stack_count() >= max_stacks as usize)

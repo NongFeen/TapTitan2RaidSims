@@ -72,6 +72,7 @@ impl BossService {
                 default_armor,
                 default_health,
             ),
+            afflictions: Default::default(),
             damage_results: Vec::new(),
             total_damage: 0,
             tap_damage_total: 0,

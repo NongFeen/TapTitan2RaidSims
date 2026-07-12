@@ -9,7 +9,7 @@ pub fn get_proc_chance(_card: &Card, boss: &Boss) -> f64 {
     let afflicted_parts = boss
         .parts()
         .into_iter()
-        .filter(|part| !part.afflictions.is_empty())
+        .filter(|part| !boss.afflictions(part.part_name).is_empty())
         .count() as f64;
 
     (0.02 + (0.02 * afflicted_parts)).min(0.12)

@@ -18,7 +18,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
 
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     let boost = card_skill_value_b(card.card_id, card.level).unwrap_or(1.0);
-    for other in &mut boss.part_mut(target_part).afflictions {
+    for other in boss.afflictions_mut(target_part) {
         if other.source_card == CardName::SandsOfTime {
             continue;
         }

@@ -174,8 +174,7 @@ impl AttackPattern {
         if let AttackPattern::FusionBombSpread = self {
             if let Some(open_part) = candidates.iter().copied().find(|part| {
                 !boss
-                    .part(*part)
-                    .afflictions
+                    .afflictions(*part)
                     .iter()
                     .any(|aff| aff.kind == AfflictionKind::FusionBombDebuff)
             }) {
@@ -196,8 +195,7 @@ impl AttackPattern {
 
             for part in candidates.iter().copied() {
                 let Some(affliction) = boss
-                    .part(part)
-                    .afflictions
+                    .afflictions(part)
                     .iter()
                     .find(|aff| aff.kind == AfflictionKind::ThrivingPlagueDebuff)
                 else {
@@ -229,8 +227,7 @@ impl AttackPattern {
 
             for part in candidates.iter().copied() {
                 let Some(affliction) = boss
-                    .part(part)
-                    .afflictions
+                    .afflictions(part)
                     .iter()
                     .find(|aff| aff.kind == AfflictionKind::RadioactivityDebuff)
                 else {
@@ -270,8 +267,7 @@ impl AttackPattern {
 
             for part in candidates.iter().copied() {
                 let decay_stack_count = boss
-                    .part(part)
-                    .afflictions
+                    .afflictions(part)
                     .iter()
                     .find(|aff| aff.kind == AfflictionKind::DecayingStrikeDebuff)
                     .map(|affliction| affliction.stack_count())
@@ -303,8 +299,7 @@ impl AttackPattern {
             let best_burning_stack_count = candidates
                 .iter()
                 .map(|part| {
-                    boss.part(*part)
-                        .afflictions
+                    boss.afflictions(*part)
                         .iter()
                         .find(|aff| aff.kind == AfflictionKind::BlazingInfernoDebuff)
                         .map(|affliction| affliction.stack_count())
@@ -315,8 +310,7 @@ impl AttackPattern {
 
             if let Some(best_burning_stack_count) = best_burning_stack_count {
                 if let Some(target) = candidates.iter().copied().find(|part| {
-                    boss.part(*part)
-                        .afflictions
+                    boss.afflictions(*part)
                         .iter()
                         .find(|aff| aff.kind == AfflictionKind::BlazingInfernoDebuff)
                         .map(|affliction| affliction.stack_count())

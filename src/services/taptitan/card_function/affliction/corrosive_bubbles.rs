@@ -23,19 +23,22 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         .map(|row| row.max_stacks as usize)
         .unwrap_or(5);
     let pop_multiplier = card_skill_value_b(card.card_id, card.level).unwrap_or(26.0);
-    let bubble_affliction = boss
-        .part(target_part)
-        .afflictions
-        .iter()
-        .find(|affliction| affliction.source_card == CardName::CorrosiveBubbles);
-    let should_pop = bubble_affliction
-        .map(|affliction| affliction.stack_count() >= max_stacks)
-        .unwrap_or(false);
-
-    if should_pop {
+    let (should_pop, affliction_tick_damage) = {
+        let bubble_affliction = boss
+            .afflictions(target_part)
+            .iter()
+            .find(|affliction| affliction.source_card == CardName::CorrosiveBubbles);
+        let should_pop = bubble_affliction
+            .map(|affliction| affliction.stack_count() >= max_stacks)
+            .unwrap_or(false);
         let affliction_tick_damage = bubble_affliction
             .map(|affliction| affliction.damage_per_second * TICK_INTERVAL_SECONDS)
             .unwrap_or(0.0);
+
+        (should_pop, affliction_tick_damage)
+    };
+
+    if should_pop {
         let pop_damage = (affliction_tick_damage * pop_multiplier * max_stacks as f64) as u64;
         // println!(
         //     "[AFF POP] card={:?} part={:?} damage={} affliction_tick_damage={:.2} proc_base_damage={:.2} pop_multiplier={:.4} max_stacks={}",
@@ -48,8 +51,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         //     max_stacks,
         // );
 
-        boss.part_mut(target_part)
-            .afflictions
+        boss.afflictions_mut(target_part)
             .retain(|affliction| affliction.source_card != CardName::CorrosiveBubbles);
         boss.on_hit_with_source(target_part, pop_damage, DamageSource::Card(card.card_id));
     }
@@ -76,8 +78,7 @@ pub fn on_remove(affliction: &Affliction, attached_duration: f64) -> u64 {
 
 fn refresh_bubble_stacks(boss: &mut Boss, target_part: BossPartName) {
     let Some(affliction) = boss
-        .part_mut(target_part)
-        .afflictions
+        .afflictions_mut(target_part)
         .iter_mut()
         .find(|affliction| affliction.source_card == CardName::CorrosiveBubbles)
     else {

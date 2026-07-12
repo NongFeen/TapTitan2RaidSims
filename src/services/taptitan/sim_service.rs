@@ -167,14 +167,15 @@ impl SimDamageContext {
     }
 }
 
-const SIMS_ROUNDS: u64 = 5;
+const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
-const PRINT_EVERY_SIM_PATTERN: bool = true;
+const PRINT_EVERY_SIM_PATTERN: bool = false;
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 
+//release version 20R all cards 2m 1.56 sec
 pub struct SimService;
 
 impl SimService {

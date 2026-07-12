@@ -69,60 +69,50 @@ pub struct BossPart {
     pub current_armor: u64,
     pub current_health: u64,
     #[serde(default)]
-    pub afflictions: Vec<Affliction>,
-    #[serde(default)]
     pub radioactivity_afflicted_seconds: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BossPartTickView {
-    pub part_name: BossPartName,
-    pub part_state: PartState,
-    pub max_armor: u64,
-    pub max_health: u64,
-    pub current_armor: u64,
-    pub current_health: u64,
-    pub radioactivity_afflicted_seconds: f64,
-    pub has_thriving_plague: bool,
+pub struct BossTickView<'a> {
+    pub head: &'a BossPart,
+    pub torso: &'a BossPart,
+    pub left_shoulder: &'a BossPart,
+    pub right_shoulder: &'a BossPart,
+    pub left_hand: &'a BossPart,
+    pub right_hand: &'a BossPart,
+    pub left_leg: &'a BossPart,
+    pub right_leg: &'a BossPart,
+    thriving_plague_part_count: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BossTickView {
-    pub head: BossPartTickView,
-    pub torso: BossPartTickView,
-    pub left_shoulder: BossPartTickView,
-    pub right_shoulder: BossPartTickView,
-    pub left_hand: BossPartTickView,
-    pub right_hand: BossPartTickView,
-    pub left_leg: BossPartTickView,
-    pub right_leg: BossPartTickView,
-}
-
-impl BossTickView {
-    pub fn part(&self, part_name: BossPartName) -> &BossPartTickView {
+impl BossTickView<'_> {
+    pub fn part(&self, part_name: BossPartName) -> &BossPart {
         match part_name {
-            BossPartName::Head => &self.head,
-            BossPartName::Torso => &self.torso,
-            BossPartName::LeftShoulder => &self.left_shoulder,
-            BossPartName::RightShoulder => &self.right_shoulder,
-            BossPartName::LeftHand => &self.left_hand,
-            BossPartName::RightHand => &self.right_hand,
-            BossPartName::LeftLeg => &self.left_leg,
-            BossPartName::RightLeg => &self.right_leg,
+            BossPartName::Head => self.head,
+            BossPartName::Torso => self.torso,
+            BossPartName::LeftShoulder => self.left_shoulder,
+            BossPartName::RightShoulder => self.right_shoulder,
+            BossPartName::LeftHand => self.left_hand,
+            BossPartName::RightHand => self.right_hand,
+            BossPartName::LeftLeg => self.left_leg,
+            BossPartName::RightLeg => self.right_leg,
         }
     }
 
-    pub fn parts(&self) -> [&BossPartTickView; 8] {
+    pub fn parts(&self) -> [&BossPart; 8] {
         [
-            &self.head,
-            &self.torso,
-            &self.left_shoulder,
-            &self.right_shoulder,
-            &self.left_hand,
-            &self.right_hand,
-            &self.left_leg,
-            &self.right_leg,
+            self.head,
+            self.torso,
+            self.left_shoulder,
+            self.right_shoulder,
+            self.left_hand,
+            self.right_hand,
+            self.left_leg,
+            self.right_leg,
         ]
+    }
+
+    pub fn thriving_plague_part_count(&self) -> usize {
+        self.thriving_plague_part_count
     }
 }
 
@@ -142,94 +132,11 @@ impl BossPart {
             max_health: m_health,
             current_armor: c_armor,
             current_health: c_health,
-            afflictions: Vec::new(),
             radioactivity_afflicted_seconds: 0.0,
         }
     }
     pub fn is_limb(&self) -> bool {
         self.part_name.is_limb()
-    }
-    pub fn update(
-        &mut self,
-        boss: &BossTickView,
-        elapsed_seconds: f64,
-    ) -> Vec<card_function::AfflictionDamageEvent> {
-        self.tick_afflictions(boss, elapsed_seconds)
-    }
-    pub fn apply_affliction(&mut self, affliction: Affliction) {
-        let incoming_stack_count = affliction.stack_count() as u32;
-        let incoming_duration = affliction
-            .stacks
-            .first()
-            .map(|stack| stack.attached_duration)
-            .unwrap_or(0.0);
-        let incoming_tick_damage = affliction.damage_per_second;
-        let incoming_expire_damage = affliction.remove_damage;
-        let incoming_tick_interval = affliction.tick_interval_seconds;
-        let incoming_sands_of_time_boosted = affliction
-            .stacks
-            .iter()
-            .any(|stack| stack.sands_of_time_boosted);
-
-        if let Some(existing) = self
-            .afflictions
-            .iter_mut()
-            .find(|current| current.kind == affliction.kind)
-        {
-            existing.apply_stacks(
-                incoming_stack_count,
-                incoming_duration,
-                incoming_tick_damage,
-                incoming_expire_damage,
-                incoming_tick_interval,
-                incoming_sands_of_time_boosted,
-            );
-            return;
-        }
-
-        self.afflictions.push(affliction);
-    }
-    fn tick_afflictions(
-        &mut self,
-        boss: &BossTickView,
-        elapsed_seconds: f64,
-    ) -> Vec<card_function::AfflictionDamageEvent> {
-        let mut damage_events = Vec::new();
-        let part_name = self.part_name;
-
-        for affliction in &mut self.afflictions {
-            damage_events.extend(card_function::tick_affliction(
-                affliction,
-                boss,
-                part_name,
-                elapsed_seconds,
-            ));
-        }
-
-        // self.remove_expired_afflictions();
-        damage_events
-    }
-    pub fn remove_expired_afflictions(&mut self) {
-        for affliction in &mut self.afflictions {
-            affliction.remove_expired_stacks();
-        }
-
-        self.afflictions.retain(|affliction| !affliction.is_expired());
-    }
-    fn tick_view(&self) -> BossPartTickView {
-        BossPartTickView {
-            part_name: self.part_name,
-            part_state: self.part_state,
-            max_armor: self.max_armor,
-            max_health: self.max_health,
-            current_armor: self.current_armor,
-            current_health: self.current_health,
-            radioactivity_afflicted_seconds: self.radioactivity_afflicted_seconds,
-            has_thriving_plague: self
-                .afflictions
-                .iter()
-                .any(|affliction| affliction.kind == AfflictionKind::ThrivingPlagueDebuff),
-        }
     }
     pub fn on_hit(&mut self, damage: u64) {
         match self.part_state {
@@ -253,7 +160,180 @@ impl BossPart {
     }
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct BossAfflictions {
+    #[serde(default)]
+    pub head: Vec<Affliction>,
+    #[serde(default)]
+    pub torso: Vec<Affliction>,
+    #[serde(default)]
+    pub left_shoulder: Vec<Affliction>,
+    #[serde(default)]
+    pub right_shoulder: Vec<Affliction>,
+    #[serde(default)]
+    pub left_hand: Vec<Affliction>,
+    #[serde(default)]
+    pub right_hand: Vec<Affliction>,
+    #[serde(default)]
+    pub left_leg: Vec<Affliction>,
+    #[serde(default)]
+    pub right_leg: Vec<Affliction>,
+}
+
+impl BossAfflictions {
+    pub fn part(&self, part_name: BossPartName) -> &[Affliction] {
+        match part_name {
+            BossPartName::Head => &self.head,
+            BossPartName::Torso => &self.torso,
+            BossPartName::LeftShoulder => &self.left_shoulder,
+            BossPartName::RightShoulder => &self.right_shoulder,
+            BossPartName::LeftHand => &self.left_hand,
+            BossPartName::RightHand => &self.right_hand,
+            BossPartName::LeftLeg => &self.left_leg,
+            BossPartName::RightLeg => &self.right_leg,
+        }
+    }
+
+    pub fn part_mut(&mut self, part_name: BossPartName) -> &mut Vec<Affliction> {
+        match part_name {
+            BossPartName::Head => &mut self.head,
+            BossPartName::Torso => &mut self.torso,
+            BossPartName::LeftShoulder => &mut self.left_shoulder,
+            BossPartName::RightShoulder => &mut self.right_shoulder,
+            BossPartName::LeftHand => &mut self.left_hand,
+            BossPartName::RightHand => &mut self.right_hand,
+            BossPartName::LeftLeg => &mut self.left_leg,
+            BossPartName::RightLeg => &mut self.right_leg,
+        }
+    }
+
+    fn parts(&self) -> [&Vec<Affliction>; 8] {
+        [
+            &self.head,
+            &self.torso,
+            &self.left_shoulder,
+            &self.right_shoulder,
+            &self.left_hand,
+            &self.right_hand,
+            &self.left_leg,
+            &self.right_leg,
+        ]
+    }
+
+    fn apply(&mut self, part_name: BossPartName, affliction: Affliction) {
+        let afflictions = self.part_mut(part_name);
+        let incoming_stack_count = affliction.stack_count() as u32;
+        let incoming_duration = affliction
+            .stacks
+            .first()
+            .map(|stack| stack.attached_duration)
+            .unwrap_or(0.0);
+        let incoming_tick_damage = affliction.damage_per_second;
+        let incoming_expire_damage = affliction.remove_damage;
+        let incoming_tick_interval = affliction.tick_interval_seconds;
+        let incoming_sands_of_time_boosted = affliction
+            .stacks
+            .iter()
+            .any(|stack| stack.sands_of_time_boosted);
+
+        if let Some(existing) = afflictions
+            .iter_mut()
+            .find(|current| current.kind == affliction.kind)
+        {
+            existing.apply_stacks(
+                incoming_stack_count,
+                incoming_duration,
+                incoming_tick_damage,
+                incoming_expire_damage,
+                incoming_tick_interval,
+                incoming_sands_of_time_boosted,
+            );
+            return;
+        }
+
+        afflictions.push(affliction);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.parts().iter().all(|afflictions| afflictions.is_empty())
+    }
+
+    fn has_active_kind(&self, part_name: BossPartName, kind: AfflictionKind) -> bool {
+        self.part(part_name).iter().any(|affliction| {
+            affliction.kind == kind
+                && affliction
+                    .stacks
+                    .iter()
+                    .any(|stack| stack.remaining_duration > 0.0)
+        })
+    }
+
+    fn thriving_plague_part_count(&self) -> usize {
+        self.parts()
+            .iter()
+            .filter(|afflictions| {
+                afflictions
+                    .iter()
+                    .any(|affliction| affliction.kind == AfflictionKind::ThrivingPlagueDebuff)
+            })
+            .count()
+    }
+
+    fn tick_afflictions(
+        &mut self,
+        boss: &BossTickView,
+        elapsed_seconds: f64,
+    ) -> Vec<card_function::AfflictionDamageEvent> {
+        let mut damage_events = Vec::new();
+
+        for part_name in BossPartName::all() {
+            for affliction in self.part_mut(part_name) {
+                damage_events.extend(card_function::tick_affliction(
+                    affliction,
+                    boss,
+                    part_name,
+                    elapsed_seconds,
+                ));
+            }
+        }
+
+        damage_events
+    }
+
+    fn remove_expired(&mut self) {
+        for afflictions in [
+            &mut self.head,
+            &mut self.torso,
+            &mut self.left_shoulder,
+            &mut self.right_shoulder,
+            &mut self.left_hand,
+            &mut self.right_hand,
+            &mut self.left_leg,
+            &mut self.right_leg,
+        ] {
+            for affliction in afflictions.iter_mut() {
+                affliction.remove_expired_stacks();
+            }
+
+            afflictions.retain(|affliction| !affliction.is_expired());
+        }
+    }
+}
+
 impl BossPartName {
+    pub fn all() -> [BossPartName; 8] {
+        [
+            BossPartName::Head,
+            BossPartName::Torso,
+            BossPartName::LeftShoulder,
+            BossPartName::RightShoulder,
+            BossPartName::LeftHand,
+            BossPartName::RightHand,
+            BossPartName::LeftLeg,
+            BossPartName::RightLeg,
+        ]
+    }
+
     pub fn is_limb(&self) -> bool {
         match self {
             BossPartName::Head | BossPartName::Torso => false,
@@ -273,6 +353,8 @@ pub struct Boss {
     pub right_hand: BossPart,
     pub left_leg: BossPart,
     pub right_leg: BossPart,
+    #[serde(skip, default)]
+    pub afflictions: BossAfflictions,
     #[serde(default)]
     pub damage_results: Vec<DamageResult>,
     #[serde(skip, default)]
@@ -335,30 +417,16 @@ impl Boss {
         ]
     }
 
-    pub fn apply_affliction(&mut self, part_name: BossPartName, affliction: Affliction) {
-        match part_name {
-            BossPartName::Head => self.head.apply_affliction(affliction),
-            BossPartName::Torso => self.torso.apply_affliction(affliction),
-            BossPartName::LeftShoulder => self.left_shoulder.apply_affliction(affliction),
-            BossPartName::RightShoulder => self.right_shoulder.apply_affliction(affliction),
-            BossPartName::LeftHand => self.left_hand.apply_affliction(affliction),
-            BossPartName::RightHand => self.right_hand.apply_affliction(affliction),
-            BossPartName::LeftLeg => self.left_leg.apply_affliction(affliction),
-            BossPartName::RightLeg => self.right_leg.apply_affliction(affliction),
-        }
+    pub fn afflictions(&self, part_name: BossPartName) -> &[Affliction] {
+        self.afflictions.part(part_name)
     }
 
-    fn parts_mut(&mut self) -> [&mut BossPart; 8] {
-        [
-            &mut self.head,
-            &mut self.torso,
-            &mut self.left_shoulder,
-            &mut self.right_shoulder,
-            &mut self.left_hand,
-            &mut self.right_hand,
-            &mut self.left_leg,
-            &mut self.right_leg,
-        ]
+    pub fn afflictions_mut(&mut self, part_name: BossPartName) -> &mut Vec<Affliction> {
+        self.afflictions.part_mut(part_name)
+    }
+
+    pub fn apply_affliction(&mut self, part_name: BossPartName, affliction: Affliction) {
+        self.afflictions.apply(part_name, affliction);
     }
 
     pub fn update(&mut self) {
@@ -366,53 +434,68 @@ impl Boss {
     }
 
     pub fn update_with_elapsed(&mut self, elapsed_seconds: f64) {
-        if self.parts().iter().all(|part| part.afflictions.is_empty()) {
+        if self.afflictions.is_empty() {
             return;
         }
 
         self.update_persistent_affliction_timers(elapsed_seconds);
 
-        let snapshot = self.tick_view();
-        let mut damage_events = Vec::new();
-
-        for part in self.parts_mut() {
-            damage_events.extend(part.update(&snapshot, elapsed_seconds));
-        }
-        for part in self.parts_mut() {
-            part.remove_expired_afflictions();
-        }
+        let damage_events = {
+            let tick_view = BossTickView {
+                head: &self.head,
+                torso: &self.torso,
+                left_shoulder: &self.left_shoulder,
+                right_shoulder: &self.right_shoulder,
+                left_hand: &self.left_hand,
+                right_hand: &self.right_hand,
+                left_leg: &self.left_leg,
+                right_leg: &self.right_leg,
+                thriving_plague_part_count: self.afflictions.thriving_plague_part_count(),
+            };
+            let afflictions = &mut self.afflictions;
+            let damage_events = afflictions.tick_afflictions(&tick_view, elapsed_seconds);
+            afflictions.remove_expired();
+            damage_events
+        };
 
         for event in damage_events {
             self.on_hit_with_source(event.part_name, event.damage, event.source);
         }
     }
 
-    fn tick_view(&self) -> BossTickView {
-        BossTickView {
-            head: self.head.tick_view(),
-            torso: self.torso.tick_view(),
-            left_shoulder: self.left_shoulder.tick_view(),
-            right_shoulder: self.right_shoulder.tick_view(),
-            left_hand: self.left_hand.tick_view(),
-            right_hand: self.right_hand.tick_view(),
-            left_leg: self.left_leg.tick_view(),
-            right_leg: self.right_leg.tick_view(),
-        }
-    }
-
     fn update_persistent_affliction_timers(&mut self, elapsed_seconds: f64) {
-        for part in self.parts_mut() {
-            let has_radioactivity = part.afflictions.iter().any(|affliction| {
-                affliction.kind == AfflictionKind::RadioactivityDebuff
-                    && affliction
-                        .stacks
-                        .iter()
-                        .any(|stack| stack.remaining_duration > 0.0)
-            });
+        let afflictions = &self.afflictions;
 
-            if has_radioactivity {
-                part.radioactivity_afflicted_seconds += elapsed_seconds;
-            }
+        if afflictions.has_active_kind(BossPartName::Head, AfflictionKind::RadioactivityDebuff) {
+            self.head.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions.has_active_kind(BossPartName::Torso, AfflictionKind::RadioactivityDebuff) {
+            self.torso.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions
+            .has_active_kind(BossPartName::LeftShoulder, AfflictionKind::RadioactivityDebuff)
+        {
+            self.left_shoulder.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions
+            .has_active_kind(BossPartName::RightShoulder, AfflictionKind::RadioactivityDebuff)
+        {
+            self.right_shoulder.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions.has_active_kind(BossPartName::LeftHand, AfflictionKind::RadioactivityDebuff)
+        {
+            self.left_hand.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions.has_active_kind(BossPartName::RightHand, AfflictionKind::RadioactivityDebuff)
+        {
+            self.right_hand.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions.has_active_kind(BossPartName::LeftLeg, AfflictionKind::RadioactivityDebuff) {
+            self.left_leg.radioactivity_afflicted_seconds += elapsed_seconds;
+        }
+        if afflictions.has_active_kind(BossPartName::RightLeg, AfflictionKind::RadioactivityDebuff)
+        {
+            self.right_leg.radioactivity_afflicted_seconds += elapsed_seconds;
         }
     }
     pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
@@ -597,8 +680,7 @@ impl Boss {
     }
 
     fn part_damage_taken_bonus(&self, part_name: BossPartName) -> f64 {
-        self.part(part_name)
-            .afflictions
+        self.afflictions(part_name)
             .iter()
             .map(|affliction| match affliction.kind {
                 AfflictionKind::GuardBreakDebuff | AfflictionKind::MaelstromDebuff => {

@@ -10,13 +10,12 @@ pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     let consumed_stacks = {
-        let target = boss.part_mut(target_part);
-        let consumed_stacks = target
-            .afflictions
+        let target_afflictions = boss.afflictions_mut(target_part);
+        let consumed_stacks = target_afflictions
             .iter()
             .map(|affliction| affliction.stack_count())
             .sum::<usize>();
-        target.afflictions.clear();
+        target_afflictions.clear();
         consumed_stacks
     };
 

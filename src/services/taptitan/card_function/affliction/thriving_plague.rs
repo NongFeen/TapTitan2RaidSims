@@ -25,11 +25,7 @@ pub fn on_tick(
     stack_multiplier: f64,
     elapsed_seconds: f64,
 ) -> u64 {
-    let afflicted_parts = boss
-        .parts()
-        .iter()
-        .filter(|part| part.has_thriving_plague)
-        .count() as f64;
+    let afflicted_parts = boss.thriving_plague_part_count() as f64;
     let bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.0);
     let max_parts = card_skill_row(affliction.source_card)
         .map(|row| row.bonus_amount_d)

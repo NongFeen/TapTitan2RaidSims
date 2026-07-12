@@ -18,7 +18,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
         .parts()
         .iter()
         .filter(|part| {
-            part.afflictions
+            boss.afflictions(part.part_name)
                 .iter()
                 .any(|affliction| affliction.source_card == CardName::BlazingInferno)
         })
