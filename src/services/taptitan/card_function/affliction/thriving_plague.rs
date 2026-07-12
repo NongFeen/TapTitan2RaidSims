@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_bonusamountC, card_skill_row},
     cards::Card,
 };
 
@@ -26,10 +25,8 @@ pub fn on_tick(
     elapsed_seconds: f64,
 ) -> u64 {
     let afflicted_parts = boss.thriving_plague_part_count() as f64;
-    let bonus = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.0);
-    let max_parts = card_skill_row(affliction.source_card)
-        .map(|row| row.bonus_amount_d)
-        .unwrap_or(6.0);
+    let bonus = affliction.source_skill.bonus_c.unwrap_or(0.0);
+    let max_parts = affliction.source_skill.bonus_d.unwrap_or(6.0);
     let bonus_parts = afflicted_parts.min(max_parts);
     let multiplier = stack_multiplier * (1.0 + bonus * bonus_parts);
 

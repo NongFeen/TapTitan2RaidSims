@@ -1,6 +1,5 @@
 use crate::models::{
     boss::{Boss, BossPartName},
-    card_skill_data::card_skill_value_a,
     cards::Card,
     damage_source::DamageSource,
 };
@@ -16,7 +15,7 @@ pub fn on_proc(
     damage: f64,
     burst_trigger_count: u32,
 ) {
-    let barrage_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
+    let barrage_mult = card.skill.value_a.unwrap_or(1.0);
 
     boss.on_hit_with_source(
         target_part,

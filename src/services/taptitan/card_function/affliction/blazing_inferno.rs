@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_bonusamountC, card_skill_row},
     cards::{Card, CardName},
 };
 
@@ -10,9 +9,9 @@ use super::{shared, AfflictionRemoveView};
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
-    let Some(row) = card_skill_row(card.card_id) else {
+    if !card.skill.has_row {
         return 0.0;
-    };
+    }
 
     let affected_parts = boss
         .parts()
@@ -23,12 +22,12 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
                 .any(|affliction| affliction.source_card == CardName::BlazingInferno)
         })
         .count() as f64;
-    let bonus_per_part = card_skill_bonusamountC(card.card_id).unwrap_or(0.0);
-    let max_parts = row.bonus_amount_d;
-    let chance = row.chance + bonus_per_part * affected_parts.min(max_parts);
+    let bonus_per_part = card.skill.bonus_c.unwrap_or(0.0);
+    let max_parts = card.skill.bonus_d.unwrap_or(0.0);
+    let chance = card.skill.chance + bonus_per_part * affected_parts.min(max_parts);
 
     // chance.min(row.max_chance.max(row.chance))
-    chance.min(row.max_chance.max(row.chance))
+    chance.min(card.skill.max_chance.max(card.skill.chance))
     // 1.0
 }
 

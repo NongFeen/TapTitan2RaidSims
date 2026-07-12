@@ -3,7 +3,6 @@ use rand::Rng;
 use crate::models::{
     affliction::{Affliction, AfflictionKind},
     boss::{Boss, BossPartName, PartState},
-    card_skill_data::{card_skill_bonusamountC, card_skill_bonusamountD},
     cards::{Card, CardName},
 };
 
@@ -40,7 +39,7 @@ pub fn try_spawn(
         return;
     }
 
-    *next_spawn_tick += spawn_interval_ticks();
+    *next_spawn_tick += spawn_interval_ticks(totem_card);
 
     if boss.part(target_part).part_state == PartState::Skeleton {
         return;
@@ -57,8 +56,8 @@ pub fn try_spawn(
     });
 }
 
-pub fn first_spawn_tick() -> f64 {
-    spawn_interval_ticks()
+pub fn first_spawn_tick(totem_card: &Card) -> f64 {
+    spawn_interval_ticks(totem_card)
 }
 
 pub fn update(
@@ -103,13 +102,14 @@ fn apply_debuff(boss: &mut Boss, target_part: BossPartName, card: &Card) {
         return;
     }
 
-    let duration = card_skill_bonusamountC(CardName::TotemOfPower).unwrap_or(2.0);
+    let duration = card.skill.bonus_c.unwrap_or(2.0);
     boss.apply_affliction(
         target_part,
-        Affliction::new(
+        Affliction::new_with_source_skill(
             AfflictionKind::TotemOfPowerDebuff,
             card.card_id,
             card.level,
+            card.skill,
             1,
             duration,
             0.0,
@@ -135,10 +135,8 @@ fn haymaker_stacks_remaining(deck: &[Card]) -> Option<u16> {
     Some(HAYMAKER_MAX_CHARGES.saturating_sub(haymaker.tap_count))
 }
 
-fn spawn_interval_ticks() -> f64 {
-    let spawn_interval_seconds = card_skill_bonusamountD(CardName::TotemOfPower)
-        .unwrap_or(0.66)
-        .max(f64::EPSILON);
+fn spawn_interval_ticks(totem_card: &Card) -> f64 {
+    let spawn_interval_seconds = totem_card.skill.bonus_d.unwrap_or(0.66).max(f64::EPSILON);
     spawn_interval_seconds * TICKS_PER_SECOND as f64
 }
 

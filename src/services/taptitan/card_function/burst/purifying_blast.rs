@@ -1,6 +1,5 @@
 use crate::models::{
     boss::{Boss, BossPartName},
-    card_skill_data::{card_skill_bonusamountC, card_skill_value_a},
     cards::Card,
     damage_source::DamageSource,
 };
@@ -19,8 +18,8 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         consumed_stacks
     };
 
-    let purifying_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
-    let purify_bonus = card_skill_bonusamountC(card.card_id).unwrap_or(1.0);
+    let purifying_mult = card.skill.value_a.unwrap_or(1.0);
+    let purify_bonus = card.skill.bonus_c.unwrap_or(1.0);
     let affliction_mult = 1.0 + (purify_bonus * consumed_stacks as f64);
 
     boss.on_hit_with_source(

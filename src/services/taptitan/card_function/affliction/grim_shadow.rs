@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::card_skill_bonusamountC,
     cards::Card,
 };
 
@@ -24,7 +23,7 @@ pub fn on_tick(
     stack_multiplier: f64,
     elapsed_seconds: f64,
 ) -> u64 {
-    let stack_mult = card_skill_bonusamountC(affliction.source_card).unwrap_or(1.2);
+    let stack_mult = affliction.source_skill.bonus_c.unwrap_or(1.2);
     let multiplier = stack_multiplier * stack_mult.powf(affliction.stack_count() as f64);
 
     shared::on_tick(affliction, boss, part_name, multiplier, elapsed_seconds)

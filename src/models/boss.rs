@@ -4,7 +4,6 @@ use std::{collections::HashMap, sync::Arc};
 use strum_macros::{EnumIter, EnumString};
 
 use crate::models::affliction::{Affliction, AfflictionKind};
-use crate::models::card_skill_data::{card_skill_value_a, card_skill_value_b};
 use crate::models::cards::CardName;
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
@@ -689,9 +688,7 @@ impl Boss {
                         .iter()
                         .filter(|stack| stack.remaining_duration > 0.0)
                         .count() as f64;
-                    card_skill_value_b(affliction.source_card, affliction.source_level)
-                        .unwrap_or(0.0)
-                        * active_stacks
+                    affliction.source_skill.value_b.unwrap_or(0.0) * active_stacks
                 }
                 AfflictionKind::TotemOfPowerDebuff => {
                     let active_stacks = affliction
@@ -699,9 +696,7 @@ impl Boss {
                         .iter()
                         .filter(|stack| stack.remaining_duration > 0.0)
                         .count() as f64;
-                    card_skill_value_a(affliction.source_card, affliction.source_level)
-                        .unwrap_or(0.0)
-                        * active_stacks
+                    affliction.source_skill.value_a.unwrap_or(0.0) * active_stacks
                 }
                 _ => 0.0,
             })

@@ -1,9 +1,6 @@
 use super::attack_pattern::{AttackPattern, generate_attack_patterns};
 use super::card_function::support::totem_of_power::{self, PendingTotem};
 use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::card_skill_data::{
-    card_skill_bonusamountC, card_skill_bonusamountD, card_skill_row,
-};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::damage_source::DamageSource;
 use crate::models::player_raid_data::PlayerRaidData;
@@ -247,7 +244,7 @@ impl SimService {
             usable_card: payload.usable_card,
         };
 
-        let mut select_deck: Vec<Card> = sim_stats
+        let select_deck: Vec<Card> = sim_stats
             .usable_card
             .iter()
             .filter_map(|card_name| {
@@ -259,8 +256,6 @@ impl SimService {
                     .cloned()
             })
             .collect();
-
-        apply_amplify_level_sharing(&mut select_deck);
 
         if select_deck.len() != 3 {
             return None;
@@ -287,6 +282,9 @@ impl SimService {
         round: u64,
         mut progress: Option<&mut SimProgress>,
     ) -> SimDeckResult {
+        let mut select_deck = select_deck;
+        prepare_deck_for_sim(&mut select_deck);
+
         let deck = select_deck
             .iter()
             .map(|card| card.card_id)
@@ -337,7 +335,10 @@ impl SimService {
                     Some(support)
                 };
                 let mut pending_totems: Vec<PendingTotem> = Vec::new();
-                let mut next_totem_spawn_tick = totem_of_power::first_spawn_tick();
+                let mut next_totem_spawn_tick = totem_card
+                    .as_ref()
+                    .map(totem_of_power::first_spawn_tick)
+                    .unwrap_or(f64::INFINITY);
                 let mut last_target: Option<BossPartName> = None;
                 let prepared_pattern =
                     pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
@@ -374,7 +375,7 @@ impl SimService {
 
                             if trigger_astral_echo_extra_tap(&mut deck) {
                                 let astral_proc_chance_scale =
-                                    card_skill_bonusamountD(CardName::AstralEcho).unwrap_or(0.5);
+                                    astral_echo_proc_chance_scale(&deck);
                                 Self::tap_boss(
                                     &mut boss,
                                     current_target,
@@ -579,7 +580,11 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         .card_list
         .iter()
         .filter(|card| sim_stats.usable_card.contains(&card.card_id))
-        .cloned()
+        .map(|card| {
+            let mut card = card.clone();
+            card.ensure_skill_cache();
+            card
+        })
         .collect();
 
     let mut deck_combinations = Vec::new();
@@ -600,8 +605,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
             && is_deck_boss_suitable(sim_stats, c1, c2, c3)
         {
             // Dereference the pointers to store clean Card values
-            let mut deck = vec![c1.clone(), c2.clone(), c3.clone()];
-            apply_amplify_level_sharing(&mut deck);
+            let deck = vec![c1.clone(), c2.clone(), c3.clone()];
             deck_combinations.push(deck);
         }
     }
@@ -917,26 +921,43 @@ fn burst_roll_counts_as_proc(card: &Card, boss: &Boss, attack_part: BossPartName
     }
 }
 
-fn apply_amplify_level_sharing(deck: &mut [Card]) {
-    let Some(amplify_level) = deck
+fn prepare_deck_for_sim(deck: &mut [Card]) {
+    ensure_deck_card_skills(deck);
+    if apply_amplify_level_sharing(deck) {
+        ensure_deck_card_skills(deck);
+    }
+}
+
+fn apply_amplify_level_sharing(deck: &mut [Card]) -> bool {
+    let Some((amplify_level, share_rate)) = deck
         .iter()
         .find(|card| card.card_id == CardName::Amplify)
-        .map(|card| card.level)
+        .map(|card| (card.level, card.skill.bonus_c.unwrap_or(0.1)))
     else {
-        return;
+        return false;
     };
 
-    let share_rate = card_skill_bonusamountC(CardName::Amplify).unwrap_or(0.1);
     let shared_levels = (amplify_level as f64 * share_rate).ceil().max(1.0) as u16;
+    let mut changed = false;
 
     for card in deck
         .iter_mut()
         .filter(|card| card.card_id != CardName::Amplify)
     {
-        let max_level = card_skill_row(card.card_id)
-            .map(|row| row.max_level)
-            .unwrap_or(u16::MAX);
-        card.level = card.level.saturating_add(shared_levels).min(max_level);
+        let max_level = card.skill.max_level;
+        let boosted_level = card.level.saturating_add(shared_levels).min(max_level);
+        if boosted_level != card.level {
+            card.level = boosted_level;
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn ensure_deck_card_skills(deck: &mut [Card]) {
+    for card in deck {
+        card.ensure_skill_cache();
     }
 }
 
@@ -948,9 +969,7 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
         return false;
     };
 
-    let max_charges = card_skill_bonusamountC(CardName::AstralEcho)
-        .unwrap_or(5.0)
-        .max(1.0) as u16;
+    let max_charges = astral_echo.skill.bonus_c.unwrap_or(5.0).max(1.0) as u16;
     astral_echo.tap_count = astral_echo.tap_count.saturating_add(1);
 
     if astral_echo.tap_count < max_charges {
@@ -959,6 +978,13 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
 
     astral_echo.tap_count = 0;
     true
+}
+
+fn astral_echo_proc_chance_scale(deck: &[Card]) -> f64 {
+    deck.iter()
+        .find(|card| card.card_id == CardName::AstralEcho)
+        .and_then(|card| card.skill.bonus_d)
+        .unwrap_or(0.5)
 }
 
 fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {

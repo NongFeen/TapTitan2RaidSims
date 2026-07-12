@@ -27,6 +27,7 @@ mod thriving_plague;
 pub struct AfflictionRemoveView {
     pub source_card: CardName,
     pub remove_damage: f64,
+    pub bonus_c: Option<f64>,
 }
 
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
@@ -81,6 +82,7 @@ pub fn on_tick(
     let remove_view = AfflictionRemoveView {
         source_card,
         remove_damage: affliction.remove_damage,
+        bonus_c: affliction.source_skill.bonus_c,
     };
 
     affliction.tick_elapsed += elapsed_seconds;

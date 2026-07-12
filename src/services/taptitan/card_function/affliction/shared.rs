@@ -1,18 +1,19 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_row, card_skill_value_a, card_skill_value_b},
     cards::{Card, CardName},
 };
 
 use super::AfflictionRemoveView;
 
 pub(super) fn get_proc_chance(card: &Card, _boss: &Boss) -> f64 {
-    let Some(row) = card_skill_row(card.card_id) else {
+    if !card.skill.has_row {
         return 0.0;
-    };
+    }
 
-    row.chance.min(row.max_chance.max(row.chance))
+    card.skill
+        .chance
+        .min(card.skill.max_chance.max(card.skill.chance))
 }
 
 pub(super) fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
@@ -43,8 +44,10 @@ pub(super) fn build_affliction(
     remove_damage: f64,
 ) -> Option<Affliction> {
     let kind = crate::models::affliction::AfflictionKind::from_card(card.card_id)?;
-    let row = card_skill_row(card.card_id)?;
-    let mut duration = row.duration;
+    if !card.skill.has_row {
+        return None;
+    }
+    let mut duration = card.skill.duration;
     let mut sands_of_time_boosted = false;
 
     if card.card_id != CardName::SandsOfTime {
@@ -54,17 +57,18 @@ pub(super) fn build_affliction(
         }
     }
 
-    let damage_rate = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
-    let mut affliction = Affliction::new(
+    let damage_rate = card.skill.value_a.unwrap_or(1.0);
+    let mut affliction = Affliction::new_with_source_skill(
         kind,
         card.card_id,
         card.level,
+        card.skill,
         1,
         duration,
         damage * damage_rate,
         remove_damage,
         1.0,
-        row.max_stacks.max(1),
+        card.skill.max_stacks.max(1),
     );
 
     if sands_of_time_boosted {
@@ -102,6 +106,6 @@ fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> Option<f64> {
                     .any(|stack| stack.remaining_duration > 0.0)
         })
         .and_then(|affliction| {
-            card_skill_value_b(affliction.source_card, affliction.source_level)
+            affliction.source_skill.value_b
         })
 }

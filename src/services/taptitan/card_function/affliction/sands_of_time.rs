@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_row, card_skill_value_b},
     cards::{Card, CardName},
 };
 
@@ -17,16 +16,13 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
 }
 
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
-    let boost = card_skill_value_b(card.card_id, card.level).unwrap_or(1.0);
+    let boost = card.skill.value_b.unwrap_or(1.0);
     for other in boss.afflictions_mut(target_part) {
         if other.source_card == CardName::SandsOfTime {
             continue;
         }
 
-        let Some(row) = card_skill_row(other.source_card) else {
-            continue;
-        };
-        let base_duration = row.duration;
+        let base_duration = other.source_skill.duration;
         let duration_bonus = base_duration * boost;
         let boosted_max_duration = base_duration * (1.0 + boost);
 

@@ -1,6 +1,5 @@
 use crate::models::{
     boss::{Boss, BossPartName, PartState},
-    card_skill_data::card_skill_value_a,
     cards::Card,
     damage_source::DamageSource,
 };
@@ -12,7 +11,7 @@ const STACK_USE: usize = 8;
 const STACK_GAIN: usize = 1;
 
 pub fn on_proc(card: &mut Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
-    let celes_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
+    let celes_mult = card.skill.value_a.unwrap_or(1.0);
     let current_state = boss.get_state_from_part(target_part);
 
     if target_part.is_limb() {

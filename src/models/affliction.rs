@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::cards::CardName;
+use crate::models::cards::{CardName, CardSkillCache};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AfflictionKind {
@@ -94,6 +94,8 @@ pub struct Affliction {
     pub source_card: CardName,
     pub source_level: u16,
     #[serde(default)]
+    pub source_skill: CardSkillCache,
+    #[serde(default)]
     pub stacks: Vec<AfflictionStack>,
     pub damage_per_second: f64,
     pub remove_damage: f64,
@@ -154,6 +156,32 @@ impl Affliction {
         tick_interval_seconds: f64,
         max_stacks: u32,
     ) -> Self {
+        Self::new_with_source_skill(
+            kind,
+            source_card,
+            source_level,
+            CardSkillCache::from_card(source_card, source_level),
+            stack_count,
+            duration,
+            damage_per_second,
+            remove_damage,
+            tick_interval_seconds,
+            max_stacks,
+        )
+    }
+
+    pub fn new_with_source_skill(
+        kind: AfflictionKind,
+        source_card: CardName,
+        source_level: u16,
+        source_skill: CardSkillCache,
+        stack_count: u32,
+        duration: f64,
+        damage_per_second: f64,
+        remove_damage: f64,
+        tick_interval_seconds: f64,
+        max_stacks: u32,
+    ) -> Self {
         let stacks = (0..stack_count)
             .map(|_| AfflictionStack::new(duration))
             .collect();
@@ -161,6 +189,7 @@ impl Affliction {
             kind,
             source_card,
             source_level,
+            source_skill,
             stacks,
             damage_per_second,
             remove_damage,

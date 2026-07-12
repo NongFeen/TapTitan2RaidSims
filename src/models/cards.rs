@@ -1,5 +1,6 @@
 use crate::models::{
     boss::{Boss, BossPartName},
+    card_skill_data::card_skill_row,
     support_modifier::SupportModifiers,
 };
 use serde::{Deserialize, Serialize};
@@ -160,6 +161,77 @@ pub enum CardType {
     Support,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+pub struct CardSkillCache {
+    #[serde(skip)]
+    cached_card_id: Option<CardName>,
+    #[serde(skip)]
+    cached_level: u16,
+    pub has_row: bool,
+    pub value_a: Option<f64>,
+    pub value_b: Option<f64>,
+    pub bonus_c: Option<f64>,
+    pub bonus_d: Option<f64>,
+    pub bonus_e: Option<f64>,
+    pub duration: f64,
+    pub chance: f64,
+    pub max_chance: f64,
+    pub max_stacks: u32,
+    pub max_level: u16,
+}
+
+impl Default for CardSkillCache {
+    fn default() -> Self {
+        Self {
+            cached_card_id: None,
+            cached_level: 0,
+            has_row: false,
+            value_a: None,
+            value_b: None,
+            bonus_c: None,
+            bonus_d: None,
+            bonus_e: None,
+            duration: 0.0,
+            chance: 0.0,
+            max_chance: 0.0,
+            max_stacks: 0,
+            max_level: u16::MAX,
+        }
+    }
+}
+
+impl CardSkillCache {
+    pub fn from_card(card_id: CardName, level: u16) -> Self {
+        let Some(row) = card_skill_row(card_id) else {
+            return Self {
+                cached_card_id: Some(card_id),
+                cached_level: level,
+                ..Self::default()
+            };
+        };
+
+        Self {
+            cached_card_id: Some(card_id),
+            cached_level: level,
+            has_row: true,
+            value_a: row.value_a_at_level(level),
+            value_b: row.value_b_at_level(level),
+            bonus_c: Some(row.bonus_amount_c),
+            bonus_d: Some(row.bonus_amount_d),
+            bonus_e: Some(row.bonus_amount_e),
+            duration: row.duration,
+            chance: row.chance,
+            max_chance: row.max_chance,
+            max_stacks: row.max_stacks,
+            max_level: row.max_level,
+        }
+    }
+
+    pub fn is_for(&self, card_id: CardName, level: u16) -> bool {
+        self.cached_card_id == Some(card_id) && self.cached_level == level
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Card {
     pub card_id: CardName,
@@ -171,9 +243,21 @@ pub struct Card {
     pub chained_parts: Vec<BossPartName>,
     #[serde(default)]
     pub celestial_stacks: usize,
+    #[serde(skip, default)]
+    pub skill: CardSkillCache,
 }
 
 impl Card {
+    pub fn refresh_skill_cache(&mut self) {
+        self.skill = CardSkillCache::from_card(self.card_id, self.level);
+    }
+
+    pub fn ensure_skill_cache(&mut self) {
+        if !self.skill.is_for(self.card_id, self.level) {
+            self.refresh_skill_cache();
+        }
+    }
+
     pub fn get_proc_chance(&self, boss: &Boss) -> f64 {
         crate::services::taptitan::card_function::get_proc_chance(self, boss)
     }

@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_row, card_skill_value_b},
     cards::{Card, CardName},
     damage_source::DamageSource,
 };
@@ -19,10 +18,8 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
     shared::on_proc_with_tick_interval(card, boss, target_part, damage, TICK_INTERVAL_SECONDS);
     refresh_bubble_stacks(boss, target_part);
 
-    let max_stacks = card_skill_row(card.card_id)
-        .map(|row| row.max_stacks as usize)
-        .unwrap_or(5);
-    let pop_multiplier = card_skill_value_b(card.card_id, card.level).unwrap_or(26.0);
+    let max_stacks = card.skill.max_stacks.max(1) as usize;
+    let pop_multiplier = card.skill.value_b.unwrap_or(26.0);
     let (should_pop, affliction_tick_damage) = {
         let bubble_affliction = boss
             .afflictions(target_part)

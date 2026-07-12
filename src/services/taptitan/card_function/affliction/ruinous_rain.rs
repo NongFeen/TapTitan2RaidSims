@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView, PartState},
-    card_skill_data::card_skill_bonusamountC,
     cards::Card,
 };
 
@@ -25,7 +24,7 @@ pub fn on_tick(
     elapsed_seconds: f64,
 ) -> u64 {
     let multiplier = if boss.part(part_name).part_state == PartState::Cursed {
-        stack_multiplier * card_skill_bonusamountC(affliction.source_card).unwrap_or(1.5)
+        stack_multiplier * affliction.source_skill.bonus_c.unwrap_or(1.5)
     } else {
         stack_multiplier
     };

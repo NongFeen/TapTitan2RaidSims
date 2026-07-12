@@ -1,8 +1,7 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::{card_skill_bonusamountC, card_skill_value_a},
-    cards::{Card, CardName},
+    cards::Card,
 };
 
 use super::{shared, AfflictionRemoveView};
@@ -16,7 +15,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
 //mult 73.72
 //bomb dmg : 400300 ~~~ 400460
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
-    let remove_damage = damage * card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
+    let remove_damage = damage * card.skill.value_a.unwrap_or(1.0);
     let Some(affliction) = shared::build_affliction(card, boss, target_part, damage, remove_damage)
     else {
         return;
@@ -42,18 +41,18 @@ pub fn on_tick(
 
 pub fn on_remove(affliction: &AfflictionRemoveView, total_attached_duration: f64) -> u64 {
     remove_damage(
-        affliction.source_card,
+        affliction.bonus_c,
         affliction.remove_damage,
         total_attached_duration,
     )
 }
 
 pub fn remove_damage(
-    source_card: CardName,
+    bonus_c: Option<f64>,
     base_remove_damage: f64,
     total_attached_duration: f64,
 ) -> u64 {
-    let per_second_bonus = card_skill_bonusamountC(source_card).unwrap_or(0.5);
+    let per_second_bonus = bonus_c.unwrap_or(0.5);
     // println!(
     //     "per_second_bonus {} total_attached_duration {}",
     //     per_second_bonus, total_attached_duration

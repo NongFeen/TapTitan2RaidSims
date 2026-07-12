@@ -129,6 +129,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                     tap_count: 0,
                     chained_parts: Default::default(),
                     celestial_stacks: Default::default(),
+                    skill: Default::default(),
                 });
             }
             Err(_) => {

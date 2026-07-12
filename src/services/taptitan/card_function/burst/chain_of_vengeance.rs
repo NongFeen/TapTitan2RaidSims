@@ -1,7 +1,6 @@
 use crate::models::{
     boss::{Boss, BossPartName},
-    card_skill_data::{card_skill_bonusamountC, card_skill_value_a},
-    cards::{Card, CardName},
+    cards::Card,
     damage_source::DamageSource,
 };
 
@@ -17,8 +16,8 @@ pub fn on_proc(
     target_part: BossPartName,
     damage: f64,
 ) {
-    let chain_mult = card_skill_value_a(card.card_id, card.level).unwrap_or(1.0);
-    let part_boost = card_skill_bonusamountC(card.card_id).unwrap_or(1.0);
+    let chain_mult = card.skill.value_a.unwrap_or(1.0);
+    let part_boost = card.skill.bonus_c.unwrap_or(1.0);
 
     if !card.chained_parts.contains(&target_part) {
         card.chained_parts.push(target_part);

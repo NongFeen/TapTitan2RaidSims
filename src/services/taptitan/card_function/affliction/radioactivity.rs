@@ -1,7 +1,6 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    card_skill_data::card_skill_bonusamountC,
     cards::Card,
 };
 
@@ -31,7 +30,7 @@ pub fn on_tick(
     stack_multiplier: f64,
     elapsed_seconds: f64,
 ) -> u64 {
-    let bonus_per_second = card_skill_bonusamountC(affliction.source_card).unwrap_or(0.0);
+    let bonus_per_second = affliction.source_skill.bonus_c.unwrap_or(0.0);
     let afflicted_seconds = boss.part(part_name).radioactivity_afflicted_seconds;
     let ramp_multiplier = 1.0 + (bonus_per_second * afflicted_seconds);
 
