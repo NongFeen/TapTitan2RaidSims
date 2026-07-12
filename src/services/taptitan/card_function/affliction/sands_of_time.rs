@@ -1,7 +1,7 @@
 use crate::models::{
     affliction::Affliction,
     boss::{Boss, BossPartName, BossTickView},
-    cards::{Card, CardName},
+    cards::{Card, CardName, CardType},
 };
 
 use super::{shared, AfflictionRemoveView};
@@ -18,7 +18,9 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
     let boost = card.skill.value_b.unwrap_or(1.0);
     for other in boss.afflictions_mut(target_part) {
-        if other.source_card == CardName::SandsOfTime {
+        if other.source_card == CardName::SandsOfTime
+            || other.source_card.card_type() != CardType::Affliction
+        {
             continue;
         }
 

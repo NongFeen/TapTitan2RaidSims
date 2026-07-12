@@ -1,6 +1,6 @@
 use crate::models::{
     boss::{Boss, BossPartName},
-    cards::Card,
+    cards::{Card, CardType},
     damage_source::DamageSource,
 };
 
@@ -12,9 +12,11 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         let target_afflictions = boss.afflictions_mut(target_part);
         let consumed_stacks = target_afflictions
             .iter()
+            .filter(|affliction| affliction.source_card.card_type() == CardType::Affliction)
             .map(|affliction| affliction.stack_count())
             .sum::<usize>();
-        target_afflictions.clear();
+        target_afflictions
+            .retain(|affliction| affliction.source_card.card_type() != CardType::Affliction);
         consumed_stacks
     };
 
