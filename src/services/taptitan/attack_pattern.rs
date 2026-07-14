@@ -1,5 +1,3 @@
-use rand::seq::IndexedRandom;
-
 use crate::models::affliction::{Affliction, AfflictionKind};
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName};
@@ -56,6 +54,8 @@ const ALL_BOSS_PARTS: [BossPartName; 8] = [
     BossPartName::LeftLeg,
     BossPartName::RightLeg,
 ];
+
+const DEBUG_HEAD_TORSO_SUPPORT_PATTERNS: bool = true;
 
 struct CandidateParts {
     parts: [BossPartName; 8],
@@ -596,6 +596,7 @@ impl AttackPattern {
             .iter()
             .copied()
             .filter(|part| boss.part(*part).part_state != PartState::Skeleton)
+            .filter(|part| part_passes_support_target_rules(boss, deck, *part))
             .collect();
         source_parts
     }
@@ -626,7 +627,7 @@ impl AttackPattern {
         }
 
         for part in attackable_parts.iter().copied() {
-            if part_is_active(boss, part) {
+            if part_is_active(boss, part) && part_passes_support_target_rules(boss, deck, part) {
                 source_parts.push(part);
             }
         }
@@ -775,17 +776,52 @@ fn cycle_first_active_parts(
     first
 }
 
+fn part_passes_support_target_rules(boss: &Boss, deck: &[Card], part: BossPartName) -> bool {
+    let state = boss.part(part).part_state;
+
+    for card in deck {
+        match card.card_id {
+            CardName::GraspingVines => {
+                if !part.is_limb() {
+                    return false;
+                }
+            }
+            CardName::InspiringForce => {
+                if state != PartState::Body {
+                    return false;
+                }
+            }
+            CardName::PrismaticRift | CardName::SkeletalSmash => {
+                if !matches!(state, PartState::Armor | PartState::Cursed) {
+                    return false;
+                }
+            }
+            CardName::SoulFire | CardName::CrushingInstinct => {
+                if !matches!(part, BossPartName::Head | BossPartName::Torso) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    true
+}
+
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
         if pattern_is_available_for_deck(&pattern, deck)
-            && pattern_passes_deck_rules(&pattern, sim_stats, deck)
+            && pattern_passes_deck_rules(&pattern, deck)
             && pattern_has_candidates(&pattern, sim_stats, deck)
         {
             patterns.push(pattern);
         }
     }
+
+    dedupe_generic_attack_patterns(sim_stats, deck, &mut patterns);
+    // debug_print_head_torso_support_patterns(sim_stats, deck, &patterns);
 
     patterns
 }
@@ -856,15 +892,66 @@ fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool
     }
 }
 
-fn pattern_passes_deck_rules(
+fn dedupe_generic_attack_patterns(
+    sim_stats: &SimStats,
+    deck: &[Card],
+    patterns: &mut Vec<AttackPattern>,
+) {
+    let mut seen_signatures: Vec<(u8, Vec<BossPartName>)> = Vec::new();
+
+    patterns.retain(|pattern| {
+        if pattern_is_card_specific(pattern) {
+            return true;
+        }
+
+        let Some(signature) = generic_pattern_signature(pattern, sim_stats, deck) else {
+            return true;
+        };
+
+        if seen_signatures.contains(&signature) {
+            return false;
+        }
+
+        seen_signatures.push(signature);
+        true
+    });
+}
+
+fn generic_pattern_signature(
     pattern: &AttackPattern,
     sim_stats: &SimStats,
+    deck: &[Card],
+) -> Option<(u8, Vec<BossPartName>)> {
+    let candidates = pattern.candidate_parts(
+        &sim_stats.boss_stat,
+        deck,
+        &sim_stats.attackable_part,
+    );
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mode = if pattern_is_single_target(pattern) || candidates.len() <= 1 {
+        0
+    } else if pattern_is_cycle_target(pattern) {
+        1
+    } else {
+        return None;
+    };
+
+    Some((mode, candidates))
+}
+
+fn pattern_passes_deck_rules(
+    pattern: &AttackPattern,
     deck: &[Card],
 ) -> bool {
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
         return false;
     }
-    
+    //spread card should not use do single damage attack pattern
+    // if deck_has_card(deck, CardName::Amplify)||
     true
 }
 
@@ -885,6 +972,19 @@ fn pattern_is_cycle_target(pattern: &AttackPattern) -> bool {
     )
 }
 
+fn pattern_is_card_specific(pattern: &AttackPattern) -> bool {
+    matches!(
+        pattern,
+        AttackPattern::FusionBombSpread
+            | AttackPattern::ThrivingPlagueSpread
+            | AttackPattern::RadioactivitySpread
+            | AttackPattern::DecayingStrikeFocus
+            | AttackPattern::BlazingInfernoStack
+            | AttackPattern::CelestialStatic
+            | AttackPattern::WhipRuinousFocus
+    )
+}
+
 fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
     matches!(
         pattern,
@@ -900,4 +1000,51 @@ fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
 
 fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
     deck.iter().any(|card| card.card_id == card_name)
+}
+
+fn debug_print_head_torso_support_patterns(
+    sim_stats: &SimStats,
+    deck: &[Card],
+    patterns: &[AttackPattern],
+) {
+    if !DEBUG_HEAD_TORSO_SUPPORT_PATTERNS {
+        return;
+    }
+
+    if !deck_has_card(deck, CardName::SoulFire)
+        && !deck_has_card(deck, CardName::CrushingInstinct)
+    {
+        return;
+    }
+
+    let deck_names = deck
+        .iter()
+        .map(|card| card.card_id.display_name())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    println!(
+        "[PATTERN DEBUG] deck {} | total patterns {}",
+        deck_names,
+        patterns.len()
+    );
+
+    for pattern in patterns {
+        let candidates = pattern.candidate_parts(
+            &sim_stats.boss_stat,
+            deck,
+            &sim_stats.attackable_part,
+        );
+        let candidate_names = candidates
+            .iter()
+            .map(|part| format!("{:?}({:?})", part, sim_stats.boss_stat.part(*part).part_state))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        println!(
+            "[PATTERN DEBUG]   {} -> [{}]",
+            pattern.describe(),
+            candidate_names
+        );
+    }
 }
