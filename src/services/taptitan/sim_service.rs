@@ -661,6 +661,8 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     
     let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
 
+    let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
+
     let has_celestial_static = deck.iter().any(|c| c.card_id == CardName::CelestialStatic);
     let has_grasping_vines = deck.iter().any(|c| c.card_id == CardName::GraspingVines);
     let has_totem_of_power = deck.iter().any(|c| c.card_id == CardName::TotemOfPower);
@@ -671,6 +673,14 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     let has_fusion_bomb = deck.iter().any(|c| c.card_id == CardName::FusionBomb);
     let has_soul_fire = deck.iter().any(|c| c.card_id == CardName::SoulFire);
     let has_crushing_instinct = deck.iter().any(|c| c.card_id == CardName::CrushingInstinct);
+    
+    let has_blazing_inferno = deck.iter().any(|c| c.card_id == CardName::BlazingInferno);
+    let has_amplify= deck.iter().any(|c| c.card_id == CardName::Amplify);
+    let has_grim_shadow= deck.iter().any(|c| c.card_id == CardName::GrimShadow);
+    let has_decaying_strike= deck.iter().any(|c| c.card_id == CardName::DecayingStrike);
+    let has_radioactivity= deck.iter().any(|c| c.card_id == CardName::Radioactivity);
+    let has_thriving_plague= deck.iter().any(|c| c.card_id == CardName::ThrivingPlague);
+    
     
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     if !has_support && !has_maelstrom && !has_guard_break {
@@ -783,7 +793,6 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //rule 10 
     // have whip must also have other afflcition
-    let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
     if has_whip && affliction_count <1{
         return false;
     }
@@ -819,7 +828,22 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         }
     } 
     //rule 15 
+    // has totem with spread type affliction without purify
+    if has_totem_of_power && !has_purify{
+        if has_blazing_inferno || 
+        has_amplify ||
+        has_grim_shadow||
+        has_decaying_strike||
+        has_fusion_bomb||
+        has_radioactivity||
+        has_ravenous_swarm||
+        has_thriving_plague
+        {
+            return  false;
+        }
+    }
     true
+
 }
 
 fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
