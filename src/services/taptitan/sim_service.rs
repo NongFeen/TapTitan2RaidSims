@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 // use super::super::sim_payload::SimPayLoad;
-const SIMS_ROUNDS: u64 = 5;
+const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
@@ -680,7 +680,8 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     let has_decaying_strike= deck.iter().any(|c| c.card_id == CardName::DecayingStrike);
     let has_radioactivity= deck.iter().any(|c| c.card_id == CardName::Radioactivity);
     let has_thriving_plague= deck.iter().any(|c| c.card_id == CardName::ThrivingPlague);
-    
+    let has_electro_zap= deck.iter().any(|c| c.card_id == CardName::ElectroZap);
+
     
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     if !has_support && !has_maelstrom && !has_guard_break {
@@ -793,9 +794,15 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //rule 10 
     // have whip must also have other afflcition
-    if has_whip && affliction_count <1{
-        return false;
+    if has_whip  {
+        if affliction_count <1{
+            return false;
+        }
+        if has_electro_zap{
+            return false;
+        }
     }
+    
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 10 PASS")
     }
@@ -842,6 +849,7 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
             return  false;
         }
     }
+    //rule 16 
     true
 
 }
