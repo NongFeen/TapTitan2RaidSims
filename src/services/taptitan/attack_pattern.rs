@@ -864,16 +864,7 @@ fn pattern_passes_deck_rules(
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
         return false;
     }
-
-    if deck_has_card(deck, CardName::BlazingInferno)
-        && pattern
-            .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
-            .len()
-            <= sim_stats.attackable_part.len()
-    {
-        return false;
-    }
-
+    
     true
 }
 
