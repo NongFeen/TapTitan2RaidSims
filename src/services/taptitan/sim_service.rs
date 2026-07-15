@@ -23,7 +23,7 @@ const PRINT_EVERY_SIM_PATTERN: bool = false;
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 const FAST_CALC_PROC_TAP_COUNT: u32 = 600;
-const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 200;
+const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
 const FAST_CALC_CARDS: [CardName; 18] = [
     CardName::MoonBeam,
     CardName::Fragmentize,
@@ -433,6 +433,22 @@ impl SimService {
             card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false);
         }
         card_proc_cache.print_all();
+
+        let fast_calc_deck_count = deck_patterns
+            .iter()
+            .filter(|(deck, _)| Self::is_fast_calc_deck(deck))
+            .count();
+        let fast_calc_deck_percent = if deck_patterns.is_empty() {
+            0.0
+        } else {
+            fast_calc_deck_count as f64 / deck_patterns.len() as f64 * 100.0
+        };
+        println!(
+            "[SIMs] fast calc decks {}/{} ({:.2}%)",
+            fast_calc_deck_count,
+            deck_patterns.len(),
+            fast_calc_deck_percent
+        );
 
         if PRINT_SIM_PATTERN_PROGRESS {
             println!(
