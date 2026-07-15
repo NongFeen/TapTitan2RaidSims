@@ -530,6 +530,16 @@ impl Boss {
         self.record_damage(source, final_damage);
         self.on_hit(part_name, final_damage);
     }
+
+    pub fn preview_damage_with_source(
+        &self,
+        part_name: BossPartName,
+        damage: u64,
+        source: &DamageSource,
+    ) -> u64 {
+        self.final_damage_for(part_name, damage, source)
+    }
+
     pub fn on_hit(&mut self, part_name: BossPartName, damage: u64) {
         match part_name {
             BossPartName::Head => self.head.on_hit(damage),
