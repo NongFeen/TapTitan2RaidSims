@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
-// use super::super::sim_payload::SimPayLoad;
+
 const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
@@ -694,15 +694,13 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     // Rule 2 : Purify card require 1 alffication. but cannot be maelstrom.
     // If any high proc chance affliction is usable, Purify should only use that bucket.
     if has_purify {
-        if !has_affliction || has_maelstrom {
+        if !has_affliction || has_maelstrom || has_fusion_bomb {
             return false;
         }
-
         let has_priority_affliction_available = sim_stats
             .usable_card
             .iter()
             .any(|card_name| is_purify_priority_affliction(*card_name));
-
         if has_priority_affliction_available
             && deck
                 .iter()
@@ -711,6 +709,7 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         {
             return false;
         }
+
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 2 PASS")
@@ -929,6 +928,9 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
         if !boss_has_active_body {
             return false;
         }
+    }
+    if has_inspiring_force && has_prismatic_rift{
+        return  false;
     }
     //Rule 5 :if use Crushing Instinct or Soul Fire, boss must have attakable Head or Torso
     if has_crushing_instinct || has_soul_fire {

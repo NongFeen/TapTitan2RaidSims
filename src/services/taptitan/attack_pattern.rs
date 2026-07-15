@@ -926,6 +926,24 @@ fn card_is_target_insensitive(card_name: CardName) -> bool {
     )
 }
 
+fn deck_has_target_insensitive_card(deck: &[Card]) -> bool {
+    deck.iter()
+        .any(|card| card_is_target_insensitive(card.card_id))
+}
+
+fn deck_has_single_pattern_rejected_affliction(deck: &[Card]) -> bool {
+    deck.iter().any(|card| {
+        card.card_id.card_type() == crate::models::cards::CardType::Affliction
+            && !matches!(
+                card.card_id,
+                CardName::CorrosiveBubbles
+                    | CardName::RuinousRain
+                    | CardName::ElectroZap
+                    | CardName::Maelstrom
+            )
+    })
+}
+
 fn dedupe_generic_attack_patterns(
     sim_stats: &SimStats,
     deck: &[Card],
@@ -984,6 +1002,14 @@ fn pattern_passes_deck_rules(
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
         return false;
     }
+    // remove single pattern spread deck contain insensitive target card
+    if pattern_is_single_target(pattern)
+        && deck_has_target_insensitive_card(deck)
+        && deck_has_single_pattern_rejected_affliction(deck)
+    {
+        return false;
+    }
+
     true
 }
 
