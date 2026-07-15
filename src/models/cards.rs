@@ -269,7 +269,7 @@ impl Card {
         damage: f64,
         mirror_force_boost: u32,
         burst_trigger_count: u32,
-    ) {
+    ) -> u64 {
         crate::services::taptitan::card_function::on_proc(
             self,
             boss,

@@ -50,7 +50,7 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     }
 }
 
-pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
+pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) ->u64 {
     match card.card_id {
         CardName::BlazingInferno => blazing_inferno::on_proc(card, boss, target_part, damage),
         CardName::AcidDrench => acid_drench::on_proc(card, boss, target_part, damage),
@@ -68,6 +68,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         CardName::ElectroZap => electro_zap::on_proc(card, boss, target_part, damage),
         _ => {}
     }
+    return 0; 
 }
 
 pub fn on_tick(

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 
-const SIMS_ROUNDS: u64 = 20;
+const SIMS_ROUNDS: u64 = 2;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
@@ -22,6 +22,29 @@ const PRINT_EVERY_SIM_PATTERN: bool = false;
 
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
+const FAST_CALC_PROC_TAP_COUNT: u32 = 600;
+const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
+const FAST_CALC_CARDS: [CardName; 18] = [
+    CardName::MoonBeam,
+    CardName::Fragmentize,
+    CardName::SkullBash,
+    CardName::RazorWind,
+    CardName::PsychicShackles,
+    CardName::FlakShot,
+    CardName::CosmicHaymaker,
+    CardName::CrushingInstinct,
+    CardName::InsanityVoid,
+    CardName::InspiringForce,
+    CardName::SoulFire,
+    CardName::VictoryMarch,
+    CardName::PrismaticRift,
+    CardName::AncestralFavor,
+    CardName::GraspingVines,
+    CardName::TeamTactics,
+    CardName::SkeletalSmash,
+    CardName::AstralEcho,
+];
+
 #[derive(Debug, Clone)]
 pub struct SimStats {
     pub player_stat: Arc<PlayerRaidData>,
@@ -172,12 +195,207 @@ impl SimDamageContext {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProcScenario {
+    pub proc_chance_basis_points: u16,
+    pub has_crushing_instinct: bool,
+    pub has_ancestral_favor: bool,
+    pub has_raid_buff: bool,
+    pub has_astral_echo: bool,
+    pub tap_count: u32,
+}
 
+impl ProcScenario {
+    pub fn new(
+        proc_chance: f32,
+        has_crushing_instinct: bool,
+        has_ancestral_favor: bool,
+        has_raid_buff: bool,
+        has_astral_echo: bool,
+        tap_count: u32,
+    ) -> Self {
+        Self {
+            proc_chance_basis_points: proc_chance_to_basis_points(proc_chance),
+            has_crushing_instinct,
+            has_ancestral_favor,
+            has_raid_buff,
+            has_astral_echo,
+            tap_count,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        format!(
+            "chance_{}bp|ci_{}|af_{}|raid_{}|echo_{}|taps_{}",
+            self.proc_chance_basis_points,
+            self.has_crushing_instinct,
+            self.has_ancestral_favor,
+            self.has_raid_buff,
+            self.has_astral_echo,
+            self.tap_count
+        )
+    }
+
+    fn base_proc_chance(&self) -> f32 {
+        self.proc_chance_basis_points as f32 / 10_000.0
+    }
+
+    fn modified_proc_chance(&self, proc_chance_scale: f32) -> f32 {
+        let mut proc_chance = self.base_proc_chance();
+
+        if self.has_crushing_instinct {
+            proc_chance *= 1.1;
+        }
+        if self.has_ancestral_favor {
+            proc_chance *= 1.3;
+        }
+        if self.has_raid_buff {
+            proc_chance *= 1.3;
+        }
+
+        proc_chance * proc_chance_scale
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PreDeterminedProc {
+    pub proc_count_by_scenario: HashMap<ProcScenario, f32>,
+}
+
+impl PreDeterminedProc {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn generate_proc_count(
+        &mut self,
+        cards: &[Card],
+        boss: &Boss,
+        has_raid_buff: bool,
+    ) {
+        let proc_chances = Self::fast_calc_burst_proc_chances(cards, boss);
+
+        for proc_chance_basis_points in proc_chances {
+            for (has_crushing_instinct, has_ancestral_favor, has_astral_echo) in
+                Self::proc_buff_combinations()
+            {
+                let scenario = ProcScenario {
+                    proc_chance_basis_points,
+                    has_crushing_instinct,
+                    has_ancestral_favor,
+                    has_raid_buff,
+                    has_astral_echo,
+                    tap_count: FAST_CALC_PROC_TAP_COUNT,
+                };
+
+                self.generate_proc_count_for_scenario(scenario);
+            }
+        }
+    }
+
+    pub fn generate_proc_count_for_scenario(&mut self, scenario: ProcScenario) -> f32 {
+        if let Some(proc_count) = self.proc_count_by_scenario.get(&scenario).copied() {
+            return proc_count;
+        }
+
+        if scenario.proc_chance_basis_points == COSMIC_HAYMAKER_FAST_PROC_KEY {
+            let echo_tap_count = if scenario.has_astral_echo {
+                scenario.tap_count / 5
+            } else {
+                0
+            };
+            let proc_count = ((scenario.tap_count + echo_tap_count)
+                / COSMIC_HAYMAKER_TAPS_PER_PROC as u32) as f32;
+
+            self.proc_count_by_scenario.insert(scenario, proc_count);
+            return proc_count;
+        }
+
+        let normal_proc_chance = scenario.modified_proc_chance(1.0).min(1.0);
+        let normal_proc_count = normal_proc_chance * scenario.tap_count as f32;
+        let echo_proc_count = if scenario.has_astral_echo {
+            let echo_tap_count = scenario.tap_count / 5;
+            let echo_proc_chance = if scenario.base_proc_chance() >= 1.0 {
+                1.0
+            } else {
+                scenario.modified_proc_chance(0.5).min(1.0)
+            };
+
+            echo_proc_chance * echo_tap_count as f32
+        } else {
+            0.0
+        };
+
+        let proc_count = normal_proc_count + echo_proc_count;
+        self.proc_count_by_scenario.insert(scenario, proc_count);
+        proc_count
+    }
+
+    fn proc_buff_combinations() -> [(bool, bool, bool); 7] {
+        [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, true, false),
+            (true, false, true),
+            (false, true, true),
+        ]
+    }
+
+    pub fn fast_calc_burst_proc_chances(cards: &[Card], boss: &Boss) -> Vec<u16> {
+        let mut proc_chances = Vec::new();
+
+        for card in cards.iter().filter(|card| {
+            card.cardtype == CardType::Burst && FAST_CALC_CARDS.contains(&card.card_id)
+        }) {
+            let proc_chance = if card.card_id == CardName::CosmicHaymaker {
+                COSMIC_HAYMAKER_FAST_PROC_KEY
+            } else {
+                proc_chance_to_basis_points(card.get_proc_chance(boss) as f32)
+            };
+
+            if !proc_chances.contains(&proc_chance) {
+                proc_chances.push(proc_chance);
+            }
+        }
+
+        proc_chances.sort_unstable();
+        proc_chances
+    }
+
+    pub fn get_proc_count(&self, scenario: ProcScenario) -> Option<f32> {
+        self.proc_count_by_scenario.get(&scenario).copied()
+    }
+
+    pub fn print_all(&self) {
+        let mut proc_counts = self.proc_count_by_scenario.iter().collect::<Vec<_>>();
+        proc_counts.sort_by(|(left_scenario, _), (right_scenario, _)| {
+            left_scenario.name().cmp(&right_scenario.name())
+        });
+
+        println!("[PROC CACHE] total scenarios {}", proc_counts.len());
+        for (scenario, proc_count) in proc_counts {
+            println!("[PROC CACHE] {} => {:.2}", scenario.name(), proc_count);
+        }
+    }
+}
+
+fn proc_chance_to_basis_points(proc_chance: f32) -> u16 {
+    (proc_chance.clamp(0.0, 1.0) * 10_000.0).round() as u16
+}
 
 //release version 20R all cards 2m 1.56 sec
 pub struct SimService;
 
 impl SimService {
+    pub fn is_fast_calc_deck(deck: &[Card]) -> bool {
+        !deck.is_empty()
+            && deck
+                .iter()
+                .all(|card| FAST_CALC_CARDS.contains(&card.card_id))
+    }
+
     pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
         let sim_stats = SimStats {
             player_stat: Arc::new(payload.player_raid_data),
@@ -206,6 +424,12 @@ impl SimService {
                 .sum(),
         };
 
+        let mut card_proc_cache = PreDeterminedProc::new();
+        for (deck, _) in &deck_patterns {
+            card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false);
+        }
+        card_proc_cache.print_all();
+
         if PRINT_SIM_PATTERN_PROGRESS {
             println!(
                 "[SIMs] start | decks {} | patterns {} | rounds {} | ticks {}",
@@ -214,18 +438,23 @@ impl SimService {
                 SIMS_ROUNDS,
                 TICKS_PER_ROUND
             );
-        }
+        };
 
         let decks = deck_patterns
             .into_iter()
             .map(|(deck, attack_patterns)| {
-                Self::run_deck_sim(
-                    &sim_stats,
-                    deck,
-                    attack_patterns,
-                    SIMS_ROUNDS,
-                    Some(&mut progress),
-                )
+                // if Self::is_fast_calc_deck(&deck) {
+                //     // must return SimDeckResult here
+                //     Self::run_fast_calc_deck_sim(&sim_stats, deck, attack_patterns)
+                // } else {
+                    Self::run_deck_sim(
+                        &sim_stats,
+                        deck,
+                        attack_patterns,
+                        SIMS_ROUNDS,
+                        Some(&mut progress),
+                    )
+            // }
             })
             .collect::<Vec<_>>();
 
@@ -500,7 +729,6 @@ impl SimService {
             best_pattern: pattern_results.into_iter().next(),
         }
     }
-
     fn tap_boss(
         boss: &mut Boss,
         attack_part: BossPartName,
@@ -572,6 +800,9 @@ impl SimService {
         let tap_damage = true_base_tap as u64;
         boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
     }
+    // pub fn run_fast_calc_deck_sim(&sim_stats, deck, attack_patterns,proc_cache) -> Option<SimDeckResult>{
+
+    // }
 }
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
