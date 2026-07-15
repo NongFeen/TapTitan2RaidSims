@@ -507,8 +507,17 @@ impl AttackPattern {
             AttackPattern::CycleCursed => source_parts
                 .into_iter()
                 .filter(|part| boss.part(*part).part_state == PartState::Cursed)
-                .collect(),
+            .collect(),
         }
+    }
+
+    pub fn fast_calc_target_parts(
+        &self,
+        boss: &Boss,
+        deck: &[Card],
+        attackable_parts: &[BossPartName],
+    ) -> Vec<BossPartName> {
+        self.candidate_parts(boss, deck, attackable_parts)
     }
 
     fn candidate_parts_buffer(

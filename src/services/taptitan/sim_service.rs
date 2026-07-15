@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 
-const SIMS_ROUNDS: u64 = 2;
+const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
@@ -23,7 +23,7 @@ const PRINT_EVERY_SIM_PATTERN: bool = false;
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 const FAST_CALC_PROC_TAP_COUNT: u32 = 600;
-const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
+const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 200;
 const FAST_CALC_CARDS: [CardName; 18] = [
     CardName::MoonBeam,
     CardName::Fragmentize,
@@ -198,6 +198,7 @@ impl SimDamageContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProcScenario {
     pub proc_chance_basis_points: u16,
+    pub is_cosmic_haymaker: bool,
     pub has_crushing_instinct: bool,
     pub has_ancestral_favor: bool,
     pub has_raid_buff: bool,
@@ -216,6 +217,7 @@ impl ProcScenario {
     ) -> Self {
         Self {
             proc_chance_basis_points: proc_chance_to_basis_points(proc_chance),
+            is_cosmic_haymaker: false,
             has_crushing_instinct,
             has_ancestral_favor,
             has_raid_buff,
@@ -226,8 +228,9 @@ impl ProcScenario {
 
     pub fn name(&self) -> String {
         format!(
-            "chance_{}bp|ci_{}|af_{}|raid_{}|echo_{}|taps_{}",
+            "chance_{}bp|haymaker_{}|ci_{}|af_{}|raid_{}|echo_{}|taps_{}",
             self.proc_chance_basis_points,
+            self.is_cosmic_haymaker,
             self.has_crushing_instinct,
             self.has_ancestral_favor,
             self.has_raid_buff,
@@ -275,12 +278,13 @@ impl PreDeterminedProc {
     ) {
         let proc_chances = Self::fast_calc_burst_proc_chances(cards, boss);
 
-        for proc_chance_basis_points in proc_chances {
+        for (proc_chance_basis_points, is_cosmic_haymaker) in proc_chances {
             for (has_crushing_instinct, has_ancestral_favor, has_astral_echo) in
                 Self::proc_buff_combinations()
             {
                 let scenario = ProcScenario {
                     proc_chance_basis_points,
+                    is_cosmic_haymaker,
                     has_crushing_instinct,
                     has_ancestral_favor,
                     has_raid_buff,
@@ -298,7 +302,7 @@ impl PreDeterminedProc {
             return proc_count;
         }
 
-        if scenario.proc_chance_basis_points == COSMIC_HAYMAKER_FAST_PROC_KEY {
+        if scenario.is_cosmic_haymaker {
             let echo_tap_count = if scenario.has_astral_echo {
                 scenario.tap_count / 5
             } else {
@@ -343,16 +347,16 @@ impl PreDeterminedProc {
         ]
     }
 
-    pub fn fast_calc_burst_proc_chances(cards: &[Card], boss: &Boss) -> Vec<u16> {
+    pub fn fast_calc_burst_proc_chances(cards: &[Card], boss: &Boss) -> Vec<(u16, bool)> {
         let mut proc_chances = Vec::new();
 
         for card in cards.iter().filter(|card| {
             card.cardtype == CardType::Burst && FAST_CALC_CARDS.contains(&card.card_id)
         }) {
             let proc_chance = if card.card_id == CardName::CosmicHaymaker {
-                COSMIC_HAYMAKER_FAST_PROC_KEY
+                (COSMIC_HAYMAKER_FAST_PROC_KEY, true)
             } else {
-                proc_chance_to_basis_points(card.get_proc_chance(boss) as f32)
+                (proc_chance_to_basis_points(card.get_proc_chance(boss) as f32), false)
             };
 
             if !proc_chances.contains(&proc_chance) {
@@ -443,10 +447,15 @@ impl SimService {
         let decks = deck_patterns
             .into_iter()
             .map(|(deck, attack_patterns)| {
-                // if Self::is_fast_calc_deck(&deck) {
-                //     // must return SimDeckResult here
-                //     Self::run_fast_calc_deck_sim(&sim_stats, deck, attack_patterns)
-                // } else {
+                if Self::is_fast_calc_deck(&deck) {
+                    Self::run_fast_calc_deck_sim(
+                        &sim_stats,
+                        deck,
+                        attack_patterns,
+                        &card_proc_cache,
+                        Some(&mut progress),
+                    )
+                } else {
                     Self::run_deck_sim(
                         &sim_stats,
                         deck,
@@ -454,7 +463,7 @@ impl SimService {
                         SIMS_ROUNDS,
                         Some(&mut progress),
                     )
-            // }
+                }
             })
             .collect::<Vec<_>>();
 
@@ -800,9 +809,293 @@ impl SimService {
         let tap_damage = true_base_tap as u64;
         boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
     }
-    // pub fn run_fast_calc_deck_sim(&sim_stats, deck, attack_patterns,proc_cache) -> Option<SimDeckResult>{
+    pub fn run_fast_calc_deck_sim(
+        sim_stats: &SimStats,
+        select_deck: Vec<Card>,
+        attack_patterns: Vec<AttackPattern>,
+        proc_cache: &PreDeterminedProc,
+        mut progress: Option<&mut SimProgress>,
+    ) -> SimDeckResult {
+        let mut select_deck = select_deck;
+        prepare_deck_for_sim(&mut select_deck);
 
-    // }
+        let deck = select_deck
+            .iter()
+            .map(|card| card.card_id)
+            .collect::<Vec<_>>();
+        let deck_names = select_deck
+            .iter()
+            .map(|card| card.card_id.display_name().to_string())
+            .collect::<Vec<_>>();
+        let total_attack_patterns = attack_patterns.len();
+
+        if attack_patterns.is_empty() {
+            return SimDeckResult {
+                deck,
+                deck_names,
+                total_attack_patterns,
+                best_pattern: None,
+            };
+        }
+
+        let mut pattern_results = Vec::new();
+
+        for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
+            let pattern_name = pattern.describe();
+            let mut boss = sim_stats.boss_stat.clone();
+            boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
+
+            let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
+            let mut support_deck = select_deck.clone();
+            let support = combined_support_modifiers(&mut support_deck, &boss);
+            boss.set_support_modifiers(support);
+
+            let target_parts =
+                pattern.fast_calc_target_parts(&boss, &select_deck, &sim_stats.attackable_part);
+            let target_tap_counts =
+                Self::fast_math_target_tap_counts(&pattern, &target_parts, &select_deck);
+            let total_target_taps = target_tap_counts
+                .iter()
+                .map(|(_, tap_count)| *tap_count)
+                .sum::<u32>();
+
+            let mut total_damage = 0u64;
+            let mut card_damage_totals: HashMap<CardName, u64> = HashMap::new();
+            let mut card_proc_totals: HashMap<CardName, f32> = HashMap::new();
+
+            for (target_part, tap_count) in &target_tap_counts {
+                let current_state = boss.get_state_from_part(*target_part);
+                let tap_damage =
+                    damage_context.true_base_tap(*target_part, current_state) as u64;
+                let final_tap_damage =
+                    boss.preview_damage_with_source(*target_part, tap_damage, &DamageSource::Tap);
+
+                total_damage =
+                    total_damage.saturating_add(final_tap_damage.saturating_mul(*tap_count as u64));
+            }
+
+            if total_target_taps > 0 {
+                for card in select_deck
+                    .iter()
+                    .filter(|card| card.cardtype == CardType::Burst)
+                {
+                    let proc_count =
+                        Self::fast_proc_count_for_card(card, &boss, &select_deck, proc_cache);
+
+                    if proc_count <= 0.0 {
+                        continue;
+                    }
+
+                    card_proc_totals.insert(card.card_id, proc_count);
+
+                    for (target_part, tap_count) in &target_tap_counts {
+                        let target_proc_count =
+                            proc_count * (*tap_count as f32 / total_target_taps as f32);
+
+                        if target_proc_count <= 0.0 {
+                            continue;
+                        }
+
+                        let current_state = boss.get_state_from_part(*target_part);
+                        let true_base_tap =
+                            damage_context.true_base_tap(*target_part, current_state);
+                        let card_base_damage =
+                            (true_base_tap + damage_context.card_type_add(card.cardtype)) as f64;
+                        let final_damage_per_proc = Self::fast_card_final_damage_per_proc(
+                            card,
+                            &boss,
+                            *target_part,
+                            card_base_damage,
+                        );
+                        let card_damage =
+                            (final_damage_per_proc as f32 * target_proc_count).max(0.0) as u64;
+
+                        total_damage = total_damage.saturating_add(card_damage);
+                        *card_damage_totals.entry(card.card_id).or_insert(0) += card_damage;
+                    }
+                }
+            }
+
+            let card_damage = select_deck
+                .iter()
+                .map(|card| {
+                    let average_damage =
+                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0);
+                    SimCardDamageResult {
+                        card: card.card_id,
+                        card_name: card.card_id.display_name().to_string(),
+                        average_damage,
+                        average_damage_display: format_compact(average_damage),
+                    }
+                })
+                .collect();
+
+            pattern_results.push(SimPatternResult {
+                pattern: pattern_name.clone(),
+                average_damage: total_damage,
+                average_damage_display: format_compact(total_damage),
+                lowest_round_damage: total_damage,
+                lowest_round_damage_display: format_compact(total_damage),
+                highest_round_damage: total_damage,
+                highest_round_damage_display: format_compact(total_damage),
+                card_damage,
+            });
+
+            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut() {
+                progress.current_pattern += 1;
+                (progress.current_pattern, progress.total_patterns)
+            } else {
+                (pattern_index + 1, total_attack_patterns)
+            };
+
+            if should_print_sim_pattern_progress(current_progress, total_progress) {
+                let card_summary = select_deck
+                    .iter()
+                    .map(|card| {
+                        let average_damage =
+                            card_damage_totals.get(&card.card_id).copied().unwrap_or(0);
+                        let average_proc_count =
+                            card_proc_totals.get(&card.card_id).copied().unwrap_or(0.0);
+
+                        format!(
+                            "{} dmg {} proc {}",
+                            card_display_with_level(card),
+                            format_compact(average_damage),
+                            format_float_count(average_proc_count)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+
+                println!(
+                    "[SIMs] {} | {} : avg {} l {} h {} | {}",
+                    sim_progress_summary(current_progress, total_progress),
+                    pattern_name,
+                    format_compact(total_damage),
+                    format_compact(total_damage),
+                    format_compact(total_damage),
+                    card_summary
+                );
+            }
+        }
+
+        pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
+
+        SimDeckResult {
+            deck,
+            deck_names,
+            total_attack_patterns,
+            best_pattern: pattern_results.into_iter().next(),
+        }
+    }
+
+    fn fast_math_target_tap_counts(
+        pattern: &AttackPattern,
+        target_parts: &[BossPartName],
+        deck: &[Card],
+    ) -> Vec<(BossPartName, u32)> {
+        if target_parts.is_empty() {
+            return Vec::new();
+        }
+
+        let total_taps = Self::fast_total_taps(deck);
+
+        if fast_calc_pattern_is_single_target(pattern) {
+            return vec![(target_parts[0], total_taps)];
+        }
+
+        let target_count = target_parts.len() as u32;
+        let base_taps = total_taps / target_count;
+        let extra_taps = total_taps % target_count;
+
+        target_parts
+            .iter()
+            .enumerate()
+            .map(|(index, part)| {
+                let tap_count = base_taps + u32::from((index as u32) < extra_taps);
+                (*part, tap_count)
+            })
+            .filter(|(_, tap_count)| *tap_count > 0)
+            .collect()
+    }
+
+    fn fast_total_taps(deck: &[Card]) -> u32 {
+        let base_taps = FAST_CALC_PROC_TAP_COUNT;
+        let echo_taps = if deck.iter().any(|card| card.card_id == CardName::AstralEcho) {
+            base_taps / 5
+        } else {
+            0
+        };
+
+        base_taps + echo_taps
+    }
+
+    fn fast_proc_count_for_card(
+        card: &Card,
+        boss: &Boss,
+        deck: &[Card],
+        proc_cache: &PreDeterminedProc,
+    ) -> f32 {
+        let proc_chance_basis_points = if card.card_id == CardName::CosmicHaymaker {
+            COSMIC_HAYMAKER_FAST_PROC_KEY
+        } else {
+            proc_chance_to_basis_points(card.get_proc_chance(boss) as f32)
+        };
+        let scenario = ProcScenario {
+            proc_chance_basis_points,
+            is_cosmic_haymaker: card.card_id == CardName::CosmicHaymaker,
+            has_crushing_instinct: deck
+                .iter()
+                .any(|card| card.card_id == CardName::CrushingInstinct),
+            has_ancestral_favor: deck
+                .iter()
+                .any(|card| card.card_id == CardName::AncestralFavor),
+            has_raid_buff: false,
+            has_astral_echo: deck.iter().any(|card| card.card_id == CardName::AstralEcho),
+            tap_count: FAST_CALC_PROC_TAP_COUNT,
+        };
+
+        proc_cache.get_proc_count(scenario).unwrap_or(0.0)
+    }
+
+    fn fast_card_final_damage_per_proc(
+        card: &Card,
+        boss: &Boss,
+        target_part: BossPartName,
+        card_base_damage: f64,
+    ) -> u64 {
+        let mut scratch_boss = boss.clone();
+        let mut scratch_card = card.clone();
+
+        if scratch_card.card_id == CardName::CosmicHaymaker {
+            scratch_card.tap_count = COSMIC_HAYMAKER_TAPS_PER_PROC.saturating_sub(1);
+        }
+
+        let raw_damage =
+            scratch_card.on_proc(&mut scratch_boss, target_part, card_base_damage, 0, 0);
+        let source = DamageSource::Card(card.card_id);
+        let mut final_damage = boss.preview_damage_with_source(target_part, raw_damage, &source);
+
+        if card.card_id == CardName::FlakShot
+            && matches!(
+                boss.get_state_from_part(target_part),
+                PartState::Armor | PartState::Cursed
+            )
+        {
+            if let Some(body_part) = boss
+                .parts()
+                .iter()
+                .find(|part| part.part_state == PartState::Body)
+                .map(|part| part.part_name)
+            {
+                final_damage = final_damage.saturating_add(
+                    boss.preview_damage_with_source(body_part, raw_damage, &source),
+                );
+            }
+        }
+
+        final_damage
+    }
 }
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
@@ -1209,6 +1502,27 @@ fn format_average_count(total_count: u64, rounds: u64) -> String {
     } else {
         format!("{:.2}", average)
     }
+}
+
+fn format_float_count(count: f32) -> String {
+    if (count.fract()).abs() < f32::EPSILON {
+        format!("{:.0}", count)
+    } else {
+        format!("{:.2}", count)
+    }
+}
+
+fn fast_calc_pattern_is_single_target(pattern: &AttackPattern) -> bool {
+    matches!(
+        pattern,
+        AttackPattern::SingleAny
+            | AttackPattern::SingleHead
+            | AttackPattern::SingleTorso
+            | AttackPattern::SingleBody
+            | AttackPattern::SingleArmor
+            | AttackPattern::SingleLimb
+            | AttackPattern::SingleCursed
+    )
 }
 
 fn should_print_sim_pattern_progress(current_pattern: usize, total_patterns: usize) -> bool {
