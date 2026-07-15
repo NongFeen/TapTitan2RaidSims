@@ -681,6 +681,8 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     let has_radioactivity= deck.iter().any(|c| c.card_id == CardName::Radioactivity);
     let has_thriving_plague= deck.iter().any(|c| c.card_id == CardName::ThrivingPlague);
     let has_electro_zap= deck.iter().any(|c| c.card_id == CardName::ElectroZap);
+    let has_prismatic_rift= deck.iter().any(|c| c.card_id == CardName::PrismaticRift);
+    let has_inspiring_force= deck.iter().any(|c| c.card_id == CardName::InspiringForce);
 
     
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
@@ -849,6 +851,9 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         }
     }
     //rule 16 
+    if has_inspiring_force && has_prismatic_rift{
+        return false;
+    }
     true
 
 }
