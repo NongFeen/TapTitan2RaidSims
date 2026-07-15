@@ -49,11 +49,9 @@ pub fn on_proc(
     damage: f64,
     mirror_force_boost: u32,
     burst_trigger_count: u32,
-) {
+) -> u64 {
     match card.card_id {
-        CardName::ClanshipBarrage => {
-            clanship_barrage::on_proc(card, boss, target_part, damage, burst_trigger_count)
-        }
+        CardName::ClanshipBarrage => clanship_barrage::on_proc(card, boss, target_part, damage, burst_trigger_count),
         CardName::MoonBeam => moon_beam::on_proc(card, boss, target_part, damage),
         CardName::PurifyingBlast => purifying_blast::on_proc(card, boss, target_part, damage),
         CardName::RazorWind => razor_wind::on_proc(card, boss, target_part, damage),
@@ -67,6 +65,6 @@ pub fn on_proc(
         CardName::MirrorForce => mirror_force::on_proc(card, boss, target_part, damage,mirror_force_boost),
         CardName::CelestialStatic => celestial_static::on_proc(card, boss, target_part, damage),
         CardName::GuardBreak => guard_break::on_proc(card, boss, target_part, damage),
-        _ => {}
+        _ => 0
     }
 }
