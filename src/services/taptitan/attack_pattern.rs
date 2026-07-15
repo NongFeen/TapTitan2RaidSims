@@ -55,6 +55,7 @@ const ALL_BOSS_PARTS: [BossPartName; 8] = [
     BossPartName::RightLeg,
 ];
 
+#[allow(dead_code)]
 const DEBUG_HEAD_TORSO_SUPPORT_PATTERNS: bool = true;
 
 struct CandidateParts {
@@ -809,6 +810,15 @@ fn part_passes_support_target_rules(boss: &Boss, deck: &[Card], part: BossPartNa
 }
 
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
+    if deck_is_target_insensitive(deck) {
+        let pattern = AttackPattern::SingleAny;
+        return if pattern_has_candidates(&pattern, sim_stats, deck) {
+            vec![pattern]
+        } else {
+            Vec::new()
+        };
+    }
+
     let mut patterns = Vec::new();
 
     for pattern in base_attack_patterns() {
@@ -892,6 +902,30 @@ fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool
     }
 }
 
+fn deck_is_target_insensitive(deck: &[Card]) -> bool {
+    deck.iter()
+        .all(|card| card_is_target_insensitive(card.card_id))
+}
+
+fn card_is_target_insensitive(card_name: CardName) -> bool {
+    matches!(
+        card_name,
+        CardName::ClanshipBarrage
+            | CardName::PurifyingBlast
+            | CardName::CosmicHaymaker
+            | CardName::MirrorForce
+            | CardName::GuardBreak
+            | CardName::ElectroZap
+            | CardName::InsanityVoid
+            | CardName::RancidGas
+            | CardName::VictoryMarch
+            | CardName::AncestralFavor
+            | CardName::TeamTactics
+            | CardName::AstralEcho
+            | CardName::RadiantKaleidoscope
+    )
+}
+
 fn dedupe_generic_attack_patterns(
     sim_stats: &SimStats,
     deck: &[Card],
@@ -950,8 +984,6 @@ fn pattern_passes_deck_rules(
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
         return false;
     }
-    //spread card should not use do single damage attack pattern
-    // if deck_has_card(deck, CardName::Amplify)||
     true
 }
 
@@ -1002,6 +1034,7 @@ fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
     deck.iter().any(|card| card.card_id == card_name)
 }
 
+#[allow(dead_code)]
 fn debug_print_head_torso_support_patterns(
     sim_stats: &SimStats,
     deck: &[Card],
