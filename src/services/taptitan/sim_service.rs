@@ -10,7 +10,10 @@ use itertools::Itertools;
 use rand::random;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering as AtomicOrdering},
+};
 use strum::IntoEnumIterator;
 
 const SIMS_ROUNDS: u64 = 20;
@@ -20,6 +23,9 @@ const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
 const PRINT_EVERY_SIM_PATTERN: bool = false;
 // const PRINT_EVERY_SIM_PATTERN: bool = true;
+const PRINT_PROC_CACHE: bool = false;
+const ENABLE_PARALLEL_SIM: bool = true;
+const SIM_WORKER_COUNT: usize = 0; // 0 = use available_parallelism()
 
 const GLOBAL_RAID_BURST_DAMAGE_ENABLED: bool = false;
 const GLOBAL_RAID_BURST_DAMAGE_MULT: f64 = 1.3;
@@ -167,8 +173,47 @@ pub struct SimCardDamageResult {
 }
 
 pub struct SimProgress {
-    current_pattern: usize,
+    current_pattern: AtomicUsize,
     total_patterns: usize,
+}
+
+type DeckPatternWork = (Vec<Card>, Vec<AttackPattern>);
+type IndexedDeckPatternWork = (usize, Vec<Card>, Vec<AttackPattern>);
+
+struct RoundSupportCache {
+    support: SupportModifiers,
+    state_signature: u16,
+    dynamic: bool,
+}
+
+impl RoundSupportCache {
+    fn new(deck: &mut [Card], boss: &mut Boss) -> Self {
+        let support = combined_support_modifiers(deck, boss);
+        boss.set_support_modifiers(support.clone());
+
+        Self {
+            support,
+            state_signature: boss.part_state_signature(),
+            dynamic: deck_has_dynamic_support_modifier(deck),
+        }
+    }
+
+    fn current<'a>(&'a mut self, deck: &mut [Card], boss: &mut Boss) -> &'a SupportModifiers {
+        if self.dynamic {
+            let state_signature = boss.part_state_signature();
+            if state_signature != self.state_signature {
+                self.support = combined_support_modifiers(deck, boss);
+                self.state_signature = state_signature;
+                boss.set_support_modifiers(self.support.clone());
+            }
+        }
+
+        &self.support
+    }
+
+    fn bonus_tap_proc_chance_mult(&self) -> f64 {
+        self.support.bonus_tap_proc_chance_mult
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -453,6 +498,55 @@ fn mult_to_basis_points(mult: f32) -> u16 {
     (mult.max(0.0) * 10_000.0).round().min(u16::MAX as f32) as u16
 }
 
+fn sim_worker_count(work_items: usize) -> usize {
+    if !ENABLE_PARALLEL_SIM || work_items <= 1 {
+        return 1;
+    }
+
+    let available = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1);
+    let requested = if SIM_WORKER_COUNT == 0 {
+        available
+    } else {
+        SIM_WORKER_COUNT
+    };
+
+    requested.clamp(1, work_items)
+}
+
+fn split_deck_pattern_work(
+    deck_patterns: Vec<DeckPatternWork>,
+    worker_count: usize,
+) -> Vec<Vec<IndexedDeckPatternWork>> {
+    let mut chunks = (0..worker_count).map(|_| Vec::new()).collect::<Vec<_>>();
+    let mut loads = vec![0usize; worker_count];
+    let mut indexed_work = deck_patterns
+        .into_iter()
+        .enumerate()
+        .map(|(index, (deck, attack_patterns))| {
+            let pattern_count = attack_patterns.len();
+            (index, deck, attack_patterns, pattern_count)
+        })
+        .collect::<Vec<_>>();
+
+    indexed_work.sort_by(|left, right| right.3.cmp(&left.3));
+
+    for (index, deck, attack_patterns, pattern_count) in indexed_work {
+        let worker_index = loads
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, load)| **load)
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+
+        loads[worker_index] += pattern_count;
+        chunks[worker_index].push((index, deck, attack_patterns));
+    }
+
+    chunks
+}
+
 //release version 20R all cards 2m 1.56 sec
 pub struct SimService;
 
@@ -493,8 +587,8 @@ impl SimService {
                 }
             })
             .collect::<Vec<_>>();
-        let mut progress = SimProgress {
-            current_pattern: 0,
+        let progress = SimProgress {
+            current_pattern: AtomicUsize::new(0),
             total_patterns: deck_patterns
                 .iter()
                 .map(|(_, attack_patterns)| attack_patterns.len())
@@ -506,7 +600,9 @@ impl SimService {
             let tap_count = Self::deck_tick_count(deck, &sim_stats.boss_stat);
             card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, tap_count);
         }
-        card_proc_cache.print_all();
+        if PRINT_PROC_CACHE {
+            card_proc_cache.print_all();
+        }
 
         let fast_calc_deck_count = deck_patterns
             .iter()
@@ -524,38 +620,21 @@ impl SimService {
             fast_calc_deck_percent
         );
 
+        let worker_count = sim_worker_count(deck_patterns.len());
+
         if PRINT_SIM_PATTERN_PROGRESS {
             println!(
-                "[SIMs] start | decks {} | patterns {} | rounds {} | ticks {}",
+                "[SIMs] start | decks {} | patterns {} | rounds {} | ticks {} | workers {}",
                 deck_patterns.len(),
                 progress.total_patterns,
                 SIMS_ROUNDS,
-                TICKS_PER_ROUND
+                TICKS_PER_ROUND,
+                worker_count
             );
         };
 
-        let decks = deck_patterns
-            .into_iter()
-            .map(|(deck, attack_patterns)| {
-                if Self::is_fast_calc_deck(&deck) {
-                    Self::run_fast_calc_deck_sim(
-                        &sim_stats,
-                        deck,
-                        attack_patterns,
-                        &card_proc_cache,
-                        Some(&mut progress),
-                    )
-                } else {
-                    Self::run_deck_sim(
-                        &sim_stats,
-                        deck,
-                        attack_patterns,
-                        SIMS_ROUNDS,
-                        Some(&mut progress),
-                    )
-                }
-            })
-            .collect::<Vec<_>>();
+        let decks =
+            Self::run_deck_pattern_work(&sim_stats, deck_patterns, &card_proc_cache, &progress);
 
         return SimRunResult {
             total_decks: decks.len(),
@@ -564,6 +643,81 @@ impl SimService {
             ticks_per_round: TICKS_PER_ROUND,
             decks,
         };
+    }
+
+    fn run_deck_pattern_work(
+        sim_stats: &SimStats,
+        deck_patterns: Vec<DeckPatternWork>,
+        proc_cache: &PreDeterminedProc,
+        progress: &SimProgress,
+    ) -> Vec<SimDeckResult> {
+        let worker_count = sim_worker_count(deck_patterns.len());
+
+        if worker_count <= 1 {
+            return deck_patterns
+                .into_iter()
+                .map(|(deck, attack_patterns)| {
+                    Self::run_single_deck_pattern_work(
+                        sim_stats,
+                        deck,
+                        attack_patterns,
+                        proc_cache,
+                        Some(progress),
+                    )
+                })
+                .collect();
+        }
+
+        let chunks = split_deck_pattern_work(deck_patterns, worker_count);
+        let mut indexed_results = std::thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunks.len());
+
+            for chunk in chunks.into_iter().filter(|chunk| !chunk.is_empty()) {
+                handles.push(scope.spawn(move || {
+                    let mut results = Vec::with_capacity(chunk.len());
+
+                    for (index, deck, attack_patterns) in chunk {
+                        let result = Self::run_single_deck_pattern_work(
+                            sim_stats,
+                            deck,
+                            attack_patterns,
+                            proc_cache,
+                            Some(progress),
+                        );
+                        results.push((index, result));
+                    }
+
+                    results
+                }));
+            }
+
+            let mut results = Vec::new();
+            for handle in handles {
+                results.extend(handle.join().expect("sim worker panicked"));
+            }
+
+            results
+        });
+
+        indexed_results.sort_by_key(|(index, _)| *index);
+        indexed_results
+            .into_iter()
+            .map(|(_, result)| result)
+            .collect()
+    }
+
+    fn run_single_deck_pattern_work(
+        sim_stats: &SimStats,
+        deck: Vec<Card>,
+        attack_patterns: Vec<AttackPattern>,
+        proc_cache: &PreDeterminedProc,
+        progress: Option<&SimProgress>,
+    ) -> SimDeckResult {
+        if Self::is_fast_calc_deck(&deck) {
+            Self::run_fast_calc_deck_sim(sim_stats, deck, attack_patterns, proc_cache, progress)
+        } else {
+            Self::run_deck_sim(sim_stats, deck, attack_patterns, SIMS_ROUNDS, progress)
+        }
     }
 
     pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
@@ -610,10 +764,11 @@ impl SimService {
         select_deck: Vec<Card>,
         attack_patterns: Vec<AttackPattern>,
         round: u64,
-        mut progress: Option<&mut SimProgress>,
+        progress: Option<&SimProgress>,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck);
+        cache_deck_proc_chances(&mut select_deck, &sim_stats.boss_stat);
 
         let deck = select_deck
             .iter()
@@ -637,6 +792,10 @@ impl SimService {
         let sim_rounds = round;
         let tap_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
         let should_update_boss = deck_creates_timed_boss_effect(&select_deck);
+        let deck_card_names = select_deck
+            .iter()
+            .map(|card| card.card_id)
+            .collect::<Vec<_>>();
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
@@ -644,12 +803,13 @@ impl SimService {
             let mut total_sim_damage: u64 = 0;
             let mut lowest_round_damage = u64::MAX;
             let mut highest_round_damage = 0;
-            let mut card_damage_totals: HashMap<CardName, u64> = HashMap::new();
-            let mut card_proc_totals: HashMap<CardName, u64> = HashMap::new();
+            let mut card_damage_totals = vec![0u64; select_deck.len()];
+            let mut card_proc_totals = vec![0u64; select_deck.len()];
 
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
+                boss.prepare_card_damage_tracking(&deck_card_names);
                 let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
                 let mut total_burst_proc: u32 = 0;
                 let mut deck = select_deck.clone();
@@ -657,13 +817,7 @@ impl SimService {
                     .iter()
                     .find(|card| card.card_id == CardName::TotemOfPower)
                     .cloned();
-                let cached_support = if deck_has_dynamic_support_modifier(&deck) {
-                    None
-                } else {
-                    let support = combined_support_modifiers(&mut deck, &boss);
-                    boss.set_support_modifiers(support.clone());
-                    Some(support)
-                };
+                let mut support_cache = RoundSupportCache::new(&mut deck, &mut boss);
                 let mut pending_totems: Vec<PendingTotem> = Vec::new();
                 let mut next_totem_spawn_tick = totem_card
                     .as_ref()
@@ -698,15 +852,12 @@ impl SimService {
                             &mut total_burst_proc,
                             1.0,
                             &mut card_proc_totals,
-                            cached_support.as_ref(),
+                            &mut support_cache,
                         );
 
                         if trigger_astral_echo_extra_tap(&mut deck) {
-                            let astral_proc_chance_scale = astral_echo_proc_chance_scale(
-                                cached_support.as_ref(),
-                                &mut deck,
-                                &boss,
-                            );
+                            let astral_proc_chance_scale =
+                                support_cache.bonus_tap_proc_chance_mult();
                             Self::tap_boss(
                                 &mut boss,
                                 current_target,
@@ -715,7 +866,7 @@ impl SimService {
                                 &mut total_burst_proc,
                                 astral_proc_chance_scale,
                                 &mut card_proc_totals,
-                                cached_support.as_ref(),
+                                &mut support_cache,
                             );
                         }
 
@@ -741,8 +892,12 @@ impl SimService {
                 lowest_round_damage = lowest_round_damage.min(round_damage);
                 highest_round_damage = highest_round_damage.max(round_damage);
 
-                for (card_name, damage) in boss.card_damage_totals.iter() {
-                    *card_damage_totals.entry(*card_name).or_insert(0) += *damage;
+                for (card_index, card_name) in deck_card_names.iter().enumerate() {
+                    let damage = boss.card_damage_total(*card_name);
+                    if damage > 0 {
+                        card_damage_totals[card_index] =
+                            card_damage_totals[card_index].saturating_add(damage);
+                    }
                 }
             }
 
@@ -755,9 +910,9 @@ impl SimService {
 
             let card_damage = select_deck
                 .iter()
-                .map(|card| {
-                    let average_damage =
-                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0) / sim_rounds;
+                .enumerate()
+                .map(|(card_index, card)| {
+                    let average_damage = card_damage_totals[card_index] / sim_rounds;
                     SimCardDamageResult {
                         card: card.card_id,
                         card_name: card.card_id.display_name().to_string(),
@@ -778,25 +933,17 @@ impl SimService {
                 card_damage,
             });
 
-            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut()
-            {
-                progress.current_pattern += 1;
-                (progress.current_pattern, progress.total_patterns)
-            } else {
-                (pattern_index + 1, total_attack_patterns)
-            };
+            let (current_progress, total_progress) =
+                advance_sim_progress(progress, pattern_index, total_attack_patterns);
 
             if should_print_sim_pattern_progress(current_progress, total_progress) {
                 let card_summary = select_deck
                     .iter()
-                    .map(|card| {
-                        let average_damage =
-                            card_damage_totals.get(&card.card_id).copied().unwrap_or(0)
-                                / sim_rounds;
-                        let average_proc_count = format_average_count(
-                            card_proc_totals.get(&card.card_id).copied().unwrap_or(0),
-                            sim_rounds,
-                        );
+                    .enumerate()
+                    .map(|(card_index, card)| {
+                        let average_damage = card_damage_totals[card_index] / sim_rounds;
+                        let average_proc_count =
+                            format_average_count(card_proc_totals[card_index], sim_rounds);
 
                         format!(
                             "{} dmg {} proc {}",
@@ -836,8 +983,8 @@ impl SimService {
         damage_context: &SimDamageContext,
         total_burst_proc: &mut u32,
         proc_chance_scale: f64,
-        card_proc_totals: &mut HashMap<CardName, u64>,
-        cached_support: Option<&SupportModifiers>,
+        card_proc_totals: &mut [u64],
+        support_cache: &mut RoundSupportCache,
     ) {
         if boss.get_state_from_part(attack_part) == PartState::Skeleton {
             return;
@@ -846,17 +993,10 @@ impl SimService {
         let current_state = boss.get_state_from_part(attack_part);
         let true_base_tap = damage_context.true_base_tap(attack_part, current_state);
 
-        let owned_support;
-        let combined_support = if let Some(support) = cached_support {
-            support
-        } else {
-            owned_support = combined_support_modifiers(deck, boss);
-            boss.set_support_modifiers(owned_support.clone());
-            &owned_support
-        };
+        let combined_support = support_cache.current(deck, boss);
 
         // card proc
-        for card in deck.iter_mut() {
+        for (card_index, card) in deck.iter_mut().enumerate() {
             if !matches!(card.cardtype, CardType::Burst | CardType::Affliction) {
                 continue;
             }
@@ -874,7 +1014,11 @@ impl SimService {
             //     "card_base_damage : {} true_base_tap {}",
             //     card_base_damage, true_base_tap
             // );
-            let card_proc_chance = card.get_proc_chance(boss);
+            let card_proc_chance = if card_has_dynamic_proc_chance(card.card_id) {
+                card.get_proc_chance(boss)
+            } else {
+                card.proc_chance_cache
+            };
             let proc_chance = if proc_chance_scale < 1.0 && card_proc_chance >= 1.0 {
                 1.0
             } else {
@@ -889,7 +1033,9 @@ impl SimService {
                     if card.cardtype == CardType::Burst {
                         *total_burst_proc += 1;
                     }
-                    *card_proc_totals.entry(card.card_id).or_insert(0) += 1;
+                    if let Some(total) = card_proc_totals.get_mut(card_index) {
+                        *total = total.saturating_add(1);
+                    }
                 }
 
                 card.on_proc(boss, attack_part, card_base_damage, 0, *total_burst_proc);
@@ -905,7 +1051,7 @@ impl SimService {
         select_deck: Vec<Card>,
         attack_patterns: Vec<AttackPattern>,
         proc_cache: &PreDeterminedProc,
-        mut progress: Option<&mut SimProgress>,
+        progress: Option<&SimProgress>,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck);
@@ -1036,13 +1182,8 @@ impl SimService {
                 card_damage,
             });
 
-            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut()
-            {
-                progress.current_pattern += 1;
-                (progress.current_pattern, progress.total_patterns)
-            } else {
-                (pattern_index + 1, total_attack_patterns)
-            };
+            let (current_progress, total_progress) =
+                advance_sim_progress(progress, pattern_index, total_attack_patterns);
 
             if should_print_sim_pattern_progress(current_progress, total_progress) {
                 let card_summary = select_deck
@@ -1643,6 +1784,22 @@ fn should_print_sim_pattern_progress(current_pattern: usize, total_patterns: usi
     current_pattern == total_patterns || current_bucket > previous_bucket
 }
 
+fn advance_sim_progress(
+    progress: Option<&SimProgress>,
+    pattern_index: usize,
+    total_attack_patterns: usize,
+) -> (usize, usize) {
+    if let Some(progress) = progress {
+        let current_pattern = progress
+            .current_pattern
+            .fetch_add(1, AtomicOrdering::Relaxed)
+            + 1;
+        return (current_pattern, progress.total_patterns);
+    }
+
+    (pattern_index + 1, total_attack_patterns)
+}
+
 fn sim_progress_summary(current_pattern: usize, total_patterns: usize) -> String {
     let percent = if total_patterns == 0 {
         100.0
@@ -1735,6 +1892,22 @@ fn ensure_deck_card_skills(deck: &mut [Card]) {
     }
 }
 
+fn cache_deck_proc_chances(deck: &mut [Card], boss: &Boss) {
+    for card in deck
+        .iter_mut()
+        .filter(|card| matches!(card.cardtype, CardType::Burst | CardType::Affliction))
+    {
+        card.proc_chance_cache = card.get_proc_chance(boss);
+    }
+}
+
+fn card_has_dynamic_proc_chance(card_name: CardName) -> bool {
+    matches!(
+        card_name,
+        CardName::BlazingInferno | CardName::WhipOfLightning
+    )
+}
+
 fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
     let Some(astral_echo) = deck
         .iter_mut()
@@ -1754,17 +1927,6 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
     true
 }
 
-fn astral_echo_proc_chance_scale(
-    cached_support: Option<&SupportModifiers>,
-    deck: &mut [Card],
-    boss: &Boss,
-) -> f64 {
-    cached_support
-        .cloned()
-        .unwrap_or_else(|| combined_support_modifiers(deck, boss))
-        .bonus_tap_proc_chance_mult
-}
-
 fn support_modifiers_for_deck(deck: &[Card], boss: &Boss) -> SupportModifiers {
     let mut deck = deck.to_vec();
     combined_support_modifiers(&mut deck, boss)
@@ -1773,16 +1935,18 @@ fn support_modifiers_for_deck(deck: &[Card], boss: &Boss) -> SupportModifiers {
 fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {
     let deck_snapshot = deck.to_vec();
     let global = global_raid_modifiers();
-    let support_mods: Vec<SupportModifiers> = deck
+    let mut support = SupportModifiers::default();
+
+    for card in deck
         .iter_mut()
         .filter(|card| card.cardtype == CardType::Support)
-        .map(|card| {
-            card.support_modifiers(boss, deck_snapshot.clone())
-                .scale_effects(global.support_effect_mult)
-        })
-        .collect();
+    {
+        let modifier = card
+            .support_modifiers(boss, &deck_snapshot)
+            .scale_effects(global.support_effect_mult);
+        support.merge(&modifier);
+    }
 
-    let mut support = SupportModifiers::accumulate(&support_mods);
     support.burst_damage_mult *= global.burst_damage_mult;
     support.burst_chance_mult *= global.burst_chance_mult;
     support.affliction_chance_mult *= global.affliction_chance_mult;

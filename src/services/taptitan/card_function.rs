@@ -47,7 +47,7 @@ pub fn on_proc(
     }
 }
 
-pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: Vec<Card>) -> SupportModifiers {
+pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: &[Card]) -> SupportModifiers {
     debug_assert_eq!(card.cardtype, CardType::Support);
     support::get_support_modifiers(card, boss, deck)
 }

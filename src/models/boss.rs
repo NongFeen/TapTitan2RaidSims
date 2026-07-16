@@ -269,6 +269,30 @@ impl BossAfflictions {
         })
     }
 
+    fn has_part_damage_taken_debuff(&self) -> bool {
+        self.parts().iter().any(|afflictions| {
+            afflictions.iter().any(|affliction| {
+                is_part_damage_taken_debuff(affliction.kind)
+                    && affliction
+                        .stacks
+                        .iter()
+                        .any(|stack| stack.remaining_duration > 0.0)
+            })
+        })
+    }
+
+    fn has_active_kind_anywhere(&self, kind: AfflictionKind) -> bool {
+        self.parts().iter().any(|afflictions| {
+            afflictions.iter().any(|affliction| {
+                affliction.kind == kind
+                    && affliction
+                        .stacks
+                        .iter()
+                        .any(|stack| stack.remaining_duration > 0.0)
+            })
+        })
+    }
+
     fn thriving_plague_part_count(&self) -> usize {
         self.parts()
             .iter()
@@ -342,6 +366,107 @@ impl BossPartName {
         }
     }
 }
+
+fn part_state_bits(state: PartState) -> u8 {
+    match state {
+        PartState::Cursed => 0,
+        PartState::Armor => 1,
+        PartState::Body => 2,
+        PartState::Skeleton => 3,
+    }
+}
+
+fn is_part_damage_taken_debuff(kind: AfflictionKind) -> bool {
+    matches!(
+        kind,
+        AfflictionKind::GuardBreakDebuff
+            | AfflictionKind::MaelstromDebuff
+            | AfflictionKind::TotemOfPowerDebuff
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BossDamageMultiplierCache {
+    ready: bool,
+    raid_all_mult: f32,
+    boss_mult: f32,
+    part_mult: [f32; 8],
+    state_mult: [f32; 4],
+}
+
+impl Default for BossDamageMultiplierCache {
+    fn default() -> Self {
+        Self {
+            ready: false,
+            raid_all_mult: 1.0,
+            boss_mult: 1.0,
+            part_mult: [1.0; 8],
+            state_mult: [1.0; 4],
+        }
+    }
+}
+
+impl BossDamageMultiplierCache {
+    fn from_player(player_raid_data: &PlayerRaidData, boss_name: BossName) -> Self {
+        let jade_set = if player_raid_data.raid_set.jade_anniversary {
+            0.04
+        } else {
+            0.0
+        };
+
+        let mut cache = Self {
+            ready: true,
+            raid_all_mult: 1.0 + jade_set + player_raid_data.title,
+            boss_mult: 1.0
+                + player_raid_data
+                    .titan_soul_research
+                    .get_boss_mult(boss_name),
+            part_mult: [1.0; 8],
+            state_mult: [1.0; 4],
+        };
+
+        for part_name in BossPartName::all() {
+            cache.part_mult[part_name_index(part_name)] = 1.0
+                + player_raid_data
+                    .titan_soul_research
+                    .get_part_mult(part_name);
+        }
+
+        for state in [
+            PartState::Cursed,
+            PartState::Armor,
+            PartState::Body,
+            PartState::Skeleton,
+        ] {
+            cache.state_mult[part_state_index(state)] =
+                1.0 + player_raid_data.titan_soul_research.get_state_mult(state);
+        }
+
+        cache
+    }
+}
+
+fn part_name_index(part_name: BossPartName) -> usize {
+    match part_name {
+        BossPartName::Head => 0,
+        BossPartName::Torso => 1,
+        BossPartName::LeftShoulder => 2,
+        BossPartName::RightShoulder => 3,
+        BossPartName::LeftHand => 4,
+        BossPartName::RightHand => 5,
+        BossPartName::LeftLeg => 6,
+        BossPartName::RightLeg => 7,
+    }
+}
+
+fn part_state_index(state: PartState) -> usize {
+    match state {
+        PartState::Cursed => 0,
+        PartState::Armor => 1,
+        PartState::Body => 2,
+        PartState::Skeleton => 3,
+    }
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 
 pub struct Boss {
@@ -365,18 +490,39 @@ pub struct Boss {
     #[serde(skip, default)]
     pub card_damage_totals: HashMap<CardName, u64>,
     #[serde(skip, default)]
+    pub(crate) part_damage_taken_debuffs_present: bool,
+    #[serde(skip, default)]
+    pub(crate) radioactivity_debuffs_present: bool,
+    #[serde(skip, default)]
+    pub(crate) tracked_card_names: [Option<CardName>; 3],
+    #[serde(skip, default)]
+    pub(crate) tracked_card_damage_totals: [u64; 3],
+    #[serde(skip, default)]
     pub player_raid_data: Option<Arc<PlayerRaidData>>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
+    #[serde(skip, default)]
+    pub(crate) damage_multiplier_cache: BossDamageMultiplierCache,
 }
 
 impl Boss {
     pub fn set_player_raid_data(&mut self, player_raid_data: Arc<PlayerRaidData>) {
+        self.damage_multiplier_cache =
+            BossDamageMultiplierCache::from_player(&player_raid_data, self.boss_name);
         self.player_raid_data = Some(player_raid_data);
     }
 
     pub fn set_support_modifiers(&mut self, support_modifiers: SupportModifiers) {
         self.support_modifiers = support_modifiers;
+    }
+
+    pub fn prepare_card_damage_tracking(&mut self, card_names: &[CardName]) {
+        self.tracked_card_names = [None; 3];
+        self.tracked_card_damage_totals = [0; 3];
+
+        for (index, card_name) in card_names.iter().take(3).enumerate() {
+            self.tracked_card_names[index] = Some(*card_name);
+        }
     }
 
     pub fn part_mut(&mut self, part_name: BossPartName) -> &mut BossPart {
@@ -427,6 +573,13 @@ impl Boss {
     }
 
     pub fn apply_affliction(&mut self, part_name: BossPartName, affliction: Affliction) {
+        if is_part_damage_taken_debuff(affliction.kind) {
+            self.part_damage_taken_debuffs_present = true;
+        }
+        if affliction.kind == AfflictionKind::RadioactivityDebuff {
+            self.radioactivity_debuffs_present = true;
+        }
+
         self.afflictions.apply(part_name, affliction);
     }
 
@@ -439,7 +592,9 @@ impl Boss {
             return;
         }
 
-        self.update_persistent_affliction_timers(elapsed_seconds);
+        if self.radioactivity_debuffs_present {
+            self.update_persistent_affliction_timers(elapsed_seconds);
+        }
 
         let damage_events = {
             let tick_view = BossTickView {
@@ -458,6 +613,10 @@ impl Boss {
             afflictions.remove_expired();
             damage_events
         };
+        self.part_damage_taken_debuffs_present = self.afflictions.has_part_damage_taken_debuff();
+        self.radioactivity_debuffs_present = self
+            .afflictions
+            .has_active_kind_anywhere(AfflictionKind::RadioactivityDebuff);
 
         for event in damage_events {
             self.on_hit_with_source(event.part_name, event.damage, event.source);
@@ -509,10 +668,39 @@ impl Boss {
                 self.tap_damage_total = self.tap_damage_total.saturating_add(damage);
             }
             DamageSource::Card(card_name) => {
+                if self.record_tracked_card_damage(card_name, damage) {
+                    return;
+                }
+
                 let total = self.card_damage_totals.entry(card_name).or_insert(0);
                 *total = total.saturating_add(damage);
             }
         }
+    }
+
+    fn record_tracked_card_damage(&mut self, card_name: CardName, damage: u64) -> bool {
+        for (index, tracked_name) in self.tracked_card_names.iter().enumerate() {
+            if *tracked_name == Some(card_name) {
+                self.tracked_card_damage_totals[index] =
+                    self.tracked_card_damage_totals[index].saturating_add(damage);
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn card_damage_total(&self, card_name: CardName) -> u64 {
+        for (index, tracked_name) in self.tracked_card_names.iter().enumerate() {
+            if *tracked_name == Some(card_name) {
+                return self.tracked_card_damage_totals[index];
+            }
+        }
+
+        self.card_damage_totals
+            .get(&card_name)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn on_hit_with_source(
@@ -560,6 +748,17 @@ impl Boss {
         self.part(part_name).part_state
     }
 
+    pub fn part_state_signature(&self) -> u16 {
+        BossPartName::all()
+            .iter()
+            .enumerate()
+            .fold(0u16, |signature, (index, part_name)| {
+                signature
+                    | ((part_state_bits(self.get_state_from_part(*part_name)) as u16)
+                        << (index * 2))
+            })
+    }
+
     pub fn get_total_damage(&self) -> u64 {
         if self.total_damage == 0 && !self.damage_results.is_empty() {
             return self.damage_results.iter().map(|entry| entry.damage).sum();
@@ -590,6 +789,21 @@ impl Boss {
             entries.push((
                 DamageSource::Tap.label(),
                 Self::format_compact(self.tap_damage_total),
+            ));
+        }
+
+        for (index, card_name) in self.tracked_card_names.iter().enumerate() {
+            let Some(card_name) = card_name else {
+                continue;
+            };
+            let damage = self.tracked_card_damage_totals[index];
+            if damage == 0 {
+                continue;
+            }
+
+            entries.push((
+                DamageSource::Card(*card_name).label(),
+                Self::format_compact(damage),
             ));
         }
 
@@ -651,26 +865,12 @@ impl Boss {
         raw_damage: u64,
         source: &DamageSource,
     ) -> u64 {
-        let Some(player_raid_data) = self.player_raid_data.as_ref() else {
+        let cache = &self.damage_multiplier_cache;
+        if !cache.ready {
             return raw_damage;
-        };
+        }
 
         let state = self.get_state_from_part(part_name);
-        let jade_set = if player_raid_data.raid_set.jade_anniversary {
-            0.04
-        } else {
-            0.0
-        };
-        let raid_all_mult = 1.0 + jade_set + player_raid_data.title;
-        let tts_boss_mult = 1.0
-            + player_raid_data
-                .titan_soul_research
-                .get_boss_mult(self.boss_name);
-        let tts_part_mult = 1.0
-            + player_raid_data
-                .titan_soul_research
-                .get_part_mult(part_name);
-        let tts_state_mult = 1.0 + player_raid_data.titan_soul_research.get_state_mult(state);
 
         let card_type = match source {
             DamageSource::Tap => None,
@@ -684,10 +884,10 @@ impl Boss {
         //for guardbreak / maelStrom
         let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
         // println!("support mult {}", 1.0 + support_bonus + part_debuff_bonus);
-        let total_multiplier = raid_all_mult
-            * tts_boss_mult
-            * tts_part_mult
-            * tts_state_mult
+        let total_multiplier = cache.raid_all_mult
+            * cache.boss_mult
+            * cache.part_mult[part_name_index(part_name)]
+            * cache.state_mult[part_state_index(state)]
             * (1.0 + support_bonus + part_debuff_bonus) as f32
             * support_damage_mult as f32;
 
@@ -695,6 +895,10 @@ impl Boss {
     }
 
     fn part_damage_taken_bonus(&self, part_name: BossPartName) -> f64 {
+        if !self.part_damage_taken_debuffs_present {
+            return 0.0;
+        }
+
         self.afflictions(part_name)
             .iter()
             .map(|affliction| match affliction.kind {
