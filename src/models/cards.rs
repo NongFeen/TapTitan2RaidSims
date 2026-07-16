@@ -251,6 +251,8 @@ pub struct Card {
     pub celestial_stacks: usize,
     #[serde(skip, default)]
     pub skill: CardSkillCache,
+    #[serde(skip, default)]
+    pub proc_chance_cache: f64,
 }
 
 impl Card {
@@ -285,7 +287,7 @@ impl Card {
             burst_trigger_count,
         )
     }
-    pub fn support_modifiers(&mut self, boss: &Boss, deck: Vec<Card>) -> SupportModifiers {
+    pub fn support_modifiers(&mut self, boss: &Boss, deck: &[Card]) -> SupportModifiers {
         crate::services::taptitan::card_function::get_support_modifiers(self, boss, deck)
     }
 }

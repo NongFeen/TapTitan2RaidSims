@@ -59,23 +59,27 @@ impl Default for SupportModifiers {
 impl SupportModifiers {
     pub fn accumulate(mods: &[SupportModifiers]) -> SupportModifiers {
         mods.iter().fold(SupportModifiers::default(), |mut acc, m| {
-            acc.head_damage_add += m.head_damage_add;
-            acc.torso_damage_add += m.torso_damage_add;
-            acc.limb_damage_add += m.limb_damage_add;
-            acc.body_damage_add += m.body_damage_add;
-            acc.armor_damage_add += m.armor_damage_add;
-            acc.burst_damage_add += m.burst_damage_add;
-            acc.affliction_damage_add += m.affliction_damage_add;
-            acc.all_damage_add += m.all_damage_add;
-            acc.burst_damage_mult *= m.burst_damage_mult;
-            acc.affliction_damage_mult *= m.affliction_damage_mult;
-            acc.all_damage_mult *= m.all_damage_mult;
-            acc.attack_duration_add_seconds += m.attack_duration_add_seconds;
-            acc.burst_chance_mult *= m.burst_chance_mult;
-            acc.affliction_chance_mult *= m.affliction_chance_mult;
-            acc.bonus_tap_proc_chance_mult *= m.bonus_tap_proc_chance_mult;
+            acc.merge(m);
             return acc;
         })
+    }
+
+    pub fn merge(&mut self, other: &SupportModifiers) {
+        self.head_damage_add += other.head_damage_add;
+        self.torso_damage_add += other.torso_damage_add;
+        self.limb_damage_add += other.limb_damage_add;
+        self.body_damage_add += other.body_damage_add;
+        self.armor_damage_add += other.armor_damage_add;
+        self.burst_damage_add += other.burst_damage_add;
+        self.affliction_damage_add += other.affliction_damage_add;
+        self.all_damage_add += other.all_damage_add;
+        self.burst_damage_mult *= other.burst_damage_mult;
+        self.affliction_damage_mult *= other.affliction_damage_mult;
+        self.all_damage_mult *= other.all_damage_mult;
+        self.attack_duration_add_seconds += other.attack_duration_add_seconds;
+        self.burst_chance_mult *= other.burst_chance_mult;
+        self.affliction_chance_mult *= other.affliction_chance_mult;
+        self.bonus_tap_proc_chance_mult *= other.bonus_tap_proc_chance_mult;
     }
 
     pub fn scale_effects(mut self, effect_mult: f64) -> Self {

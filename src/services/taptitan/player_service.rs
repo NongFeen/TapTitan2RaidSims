@@ -130,6 +130,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                     chained_parts: Default::default(),
                     celestial_stacks: Default::default(),
                     skill: Default::default(),
+                    proc_chance_cache: 0.0,
                 });
             }
             Err(_) => {

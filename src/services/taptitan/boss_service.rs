@@ -77,8 +77,13 @@ impl BossService {
             total_damage: 0,
             tap_damage_total: 0,
             card_damage_totals: Default::default(),
+            part_damage_taken_debuffs_present: false,
+            radioactivity_debuffs_present: false,
+            tracked_card_names: Default::default(),
+            tracked_card_damage_totals: Default::default(),
             player_raid_data: None,
             support_modifiers: Default::default(),
+            damage_multiplier_cache: Default::default(),
         }
     }
 
