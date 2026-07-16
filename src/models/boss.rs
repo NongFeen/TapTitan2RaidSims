@@ -679,6 +679,7 @@ impl Boss {
         let support_bonus = self
             .support_modifiers
             .total_damage_bonus(part_name, state, card_type);
+        let support_damage_mult = self.support_modifiers.damage_multiplier(card_type);
 
         //for guardbreak / maelStrom
         let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
@@ -687,7 +688,8 @@ impl Boss {
             * tts_boss_mult
             * tts_part_mult
             * tts_state_mult
-            * (1.0 + support_bonus + part_debuff_bonus) as f32;
+            * (1.0 + support_bonus + part_debuff_bonus) as f32
+            * support_damage_mult as f32;
 
         (raw_damage as f64 * total_multiplier as f64).max(0.0) as u64
     }

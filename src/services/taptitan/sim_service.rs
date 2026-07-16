@@ -21,6 +21,23 @@ const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
 const PRINT_EVERY_SIM_PATTERN: bool = false;
 // const PRINT_EVERY_SIM_PATTERN: bool = true;
 
+const GLOBAL_RAID_BURST_DAMAGE_ENABLED: bool = false;
+const GLOBAL_RAID_BURST_DAMAGE_MULT: f64 = 1.3;
+const GLOBAL_RAID_BURST_CHANCE_ENABLED: bool = false;
+const GLOBAL_RAID_BURST_CHANCE_MULT: f64 = 1.3;
+const GLOBAL_RAID_SUPPORT_EFFECT_ENABLED: bool = false;
+const GLOBAL_RAID_SUPPORT_EFFECT_MULT: f64 = 1.15;
+const GLOBAL_RAID_AFFLICTION_CHANCE_ENABLED: bool = false;
+const GLOBAL_RAID_AFFLICTION_CHANCE_MULT: f64 = 1.3;
+const GLOBAL_RAID_AFFLICTION_DAMAGE_ENABLED: bool = false;
+const GLOBAL_RAID_AFFLICTION_DAMAGE_MULT: f64 = 1.3;
+const GLOBAL_RAID_ALL_DAMAGE_ENABLED: bool = false;
+const GLOBAL_RAID_ALL_DAMAGE_MULT: f64 = 1.15;
+const GLOBAL_RAID_ATTACK_DURATION_ENABLED: bool = false;
+const GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS: f64 = 3.0;
+const GLOBAL_RAID_AFFLICTION_DURATION_ENABLED: bool = false;
+const GLOBAL_RAID_AFFLICTION_DURATION_MULT: f64 = 1.5;
+
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
@@ -46,6 +63,63 @@ const FAST_CALC_CARDS: [CardName; 20] = [
     CardName::AstralEcho,
     CardName::BattleDrums,
 ];
+
+#[derive(Debug, Clone, Copy)]
+struct GlobalRaidModifiers {
+    burst_damage_mult: f64,
+    burst_chance_mult: f64,
+    support_effect_mult: f64,
+    affliction_chance_mult: f64,
+    affliction_damage_mult: f64,
+    all_damage_mult: f64,
+    attack_duration_add_seconds: f64,
+    affliction_duration_mult: f64,
+}
+
+fn global_raid_modifiers() -> GlobalRaidModifiers {
+    GlobalRaidModifiers {
+        burst_damage_mult: if GLOBAL_RAID_BURST_DAMAGE_ENABLED {
+            GLOBAL_RAID_BURST_DAMAGE_MULT
+        } else {
+            1.0
+        },
+        burst_chance_mult: if GLOBAL_RAID_BURST_CHANCE_ENABLED {
+            GLOBAL_RAID_BURST_CHANCE_MULT
+        } else {
+            1.0
+        },
+        support_effect_mult: if GLOBAL_RAID_SUPPORT_EFFECT_ENABLED {
+            GLOBAL_RAID_SUPPORT_EFFECT_MULT
+        } else {
+            1.0
+        },
+        affliction_chance_mult: if GLOBAL_RAID_AFFLICTION_CHANCE_ENABLED {
+            GLOBAL_RAID_AFFLICTION_CHANCE_MULT
+        } else {
+            1.0
+        },
+        affliction_damage_mult: if GLOBAL_RAID_AFFLICTION_DAMAGE_ENABLED {
+            GLOBAL_RAID_AFFLICTION_DAMAGE_MULT
+        } else {
+            1.0
+        },
+        all_damage_mult: if GLOBAL_RAID_ALL_DAMAGE_ENABLED {
+            GLOBAL_RAID_ALL_DAMAGE_MULT
+        } else {
+            1.0
+        },
+        attack_duration_add_seconds: if GLOBAL_RAID_ATTACK_DURATION_ENABLED {
+            GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS
+        } else {
+            0.0
+        },
+        affliction_duration_mult: if GLOBAL_RAID_AFFLICTION_DURATION_ENABLED {
+            GLOBAL_RAID_AFFLICTION_DURATION_MULT
+        } else {
+            1.0
+        },
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SimStats {
@@ -198,9 +272,7 @@ impl SimDamageContext {
 pub struct ProcScenario {
     pub proc_chance_basis_points: u16,
     pub is_cosmic_haymaker: bool,
-    pub has_crushing_instinct: bool,
-    pub has_ancestral_favor: bool,
-    pub has_raid_buff: bool,
+    pub proc_chance_mult_basis_points: u16,
     pub has_astral_echo: bool,
     pub bonus_tap_proc_chance_mult_basis_points: u16,
     pub tap_count: u32,
@@ -209,9 +281,7 @@ pub struct ProcScenario {
 impl ProcScenario {
     pub fn new(
         proc_chance: f32,
-        has_crushing_instinct: bool,
-        has_ancestral_favor: bool,
-        has_raid_buff: bool,
+        proc_chance_mult: f32,
         has_astral_echo: bool,
         bonus_tap_proc_chance_mult: f32,
         tap_count: u32,
@@ -219,11 +289,9 @@ impl ProcScenario {
         Self {
             proc_chance_basis_points: proc_chance_to_basis_points(proc_chance),
             is_cosmic_haymaker: false,
-            has_crushing_instinct,
-            has_ancestral_favor,
-            has_raid_buff,
+            proc_chance_mult_basis_points: mult_to_basis_points(proc_chance_mult),
             has_astral_echo,
-            bonus_tap_proc_chance_mult_basis_points: proc_chance_to_basis_points(
+            bonus_tap_proc_chance_mult_basis_points: mult_to_basis_points(
                 bonus_tap_proc_chance_mult,
             ),
             tap_count,
@@ -232,12 +300,10 @@ impl ProcScenario {
 
     pub fn name(&self) -> String {
         format!(
-            "chance_{}bp|haymaker_{}|ci_{}|af_{}|raid_{}|echo_{}|echo_scale_{}bp|taps_{}",
+            "chance_{}bp|haymaker_{}|chance_mult_{}bp|echo_{}|echo_scale_{}bp|taps_{}",
             self.proc_chance_basis_points,
             self.is_cosmic_haymaker,
-            self.has_crushing_instinct,
-            self.has_ancestral_favor,
-            self.has_raid_buff,
+            self.proc_chance_mult_basis_points,
             self.has_astral_echo,
             self.bonus_tap_proc_chance_mult_basis_points,
             self.tap_count
@@ -249,19 +315,11 @@ impl ProcScenario {
     }
 
     fn modified_proc_chance(&self, proc_chance_scale: f32) -> f32 {
-        let mut proc_chance = self.base_proc_chance();
+        self.base_proc_chance() * self.proc_chance_mult() * proc_chance_scale
+    }
 
-        if self.has_crushing_instinct {
-            proc_chance *= 1.1;
-        }
-        if self.has_ancestral_favor {
-            proc_chance *= 1.3;
-        }
-        if self.has_raid_buff {
-            proc_chance *= 1.3;
-        }
-
-        proc_chance * proc_chance_scale
+    fn proc_chance_mult(&self) -> f32 {
+        self.proc_chance_mult_basis_points as f32 / 10_000.0
     }
 
     fn bonus_tap_proc_chance_mult(&self) -> f32 {
@@ -279,38 +337,30 @@ impl PreDeterminedProc {
         Self::default()
     }
 
-    pub fn generate_proc_count(
-        &mut self,
-        cards: &[Card],
-        boss: &Boss,
-        has_raid_buff: bool,
-        tap_count: u32,
-    ) {
+    pub fn generate_proc_count(&mut self, cards: &[Card], boss: &Boss, tap_count: u32) {
         let proc_chances = Self::fast_calc_burst_proc_chances(cards, boss);
         let support_modifiers = support_modifiers_for_deck(cards, boss);
-        let bonus_tap_proc_chance_mult = support_modifiers.bonus_tap_proc_chance_mult as f32;
+        let has_astral_echo = cards
+            .iter()
+            .any(|card| card.card_id == CardName::AstralEcho);
 
         for (proc_chance_basis_points, is_cosmic_haymaker) in proc_chances {
-            for (has_crushing_instinct, has_ancestral_favor, has_astral_echo) in
-                Self::proc_buff_combinations()
-            {
-                let scenario = ProcScenario {
-                    proc_chance_basis_points,
-                    is_cosmic_haymaker,
-                    has_crushing_instinct,
-                    has_ancestral_favor,
-                    has_raid_buff,
-                    has_astral_echo,
-                    bonus_tap_proc_chance_mult_basis_points: if has_astral_echo {
-                        proc_chance_to_basis_points(bonus_tap_proc_chance_mult)
-                    } else {
-                        proc_chance_to_basis_points(1.0)
-                    },
-                    tap_count,
-                };
+            let scenario = ProcScenario {
+                proc_chance_basis_points,
+                is_cosmic_haymaker,
+                proc_chance_mult_basis_points: mult_to_basis_points(
+                    support_modifiers.burst_chance_mult as f32,
+                ),
+                has_astral_echo,
+                bonus_tap_proc_chance_mult_basis_points: if has_astral_echo {
+                    mult_to_basis_points(support_modifiers.bonus_tap_proc_chance_mult as f32)
+                } else {
+                    mult_to_basis_points(1.0)
+                },
+                tap_count,
+            };
 
-                self.generate_proc_count_for_scenario(scenario);
-            }
+            self.generate_proc_count_for_scenario(scenario);
         }
     }
 
@@ -352,18 +402,6 @@ impl PreDeterminedProc {
         let proc_count = normal_proc_count + echo_proc_count;
         self.proc_count_by_scenario.insert(scenario, proc_count);
         proc_count
-    }
-
-    fn proc_buff_combinations() -> [(bool, bool, bool); 7] {
-        [
-            (false, false, false),
-            (true, false, false),
-            (false, true, false),
-            (false, false, true),
-            (true, true, false),
-            (true, false, true),
-            (false, true, true),
-        ]
     }
 
     pub fn fast_calc_burst_proc_chances(cards: &[Card], boss: &Boss) -> Vec<(u16, bool)> {
@@ -409,6 +447,10 @@ impl PreDeterminedProc {
 
 fn proc_chance_to_basis_points(proc_chance: f32) -> u16 {
     (proc_chance.clamp(0.0, 1.0) * 10_000.0).round() as u16
+}
+
+fn mult_to_basis_points(mult: f32) -> u16 {
+    (mult.max(0.0) * 10_000.0).round().min(u16::MAX as f32) as u16
 }
 
 //release version 20R all cards 2m 1.56 sec
@@ -462,7 +504,7 @@ impl SimService {
         let mut card_proc_cache = PreDeterminedProc::new();
         for (deck, _) in &deck_patterns {
             let tap_count = Self::deck_tick_count(deck, &sim_stats.boss_stat);
-            card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false, tap_count);
+            card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, tap_count);
         }
         card_proc_cache.print_all();
 
@@ -1100,21 +1142,17 @@ impl SimService {
         let scenario = ProcScenario {
             proc_chance_basis_points,
             is_cosmic_haymaker: card.card_id == CardName::CosmicHaymaker,
-            has_crushing_instinct: deck
-                .iter()
-                .any(|card| card.card_id == CardName::CrushingInstinct),
-            has_ancestral_favor: deck
-                .iter()
-                .any(|card| card.card_id == CardName::AncestralFavor),
-            has_raid_buff: false,
+            proc_chance_mult_basis_points: mult_to_basis_points(
+                support_modifiers.burst_chance_mult as f32,
+            ),
             has_astral_echo: deck.iter().any(|card| card.card_id == CardName::AstralEcho),
             bonus_tap_proc_chance_mult_basis_points: if deck
                 .iter()
                 .any(|card| card.card_id == CardName::AstralEcho)
             {
-                proc_chance_to_basis_points(support_modifiers.bonus_tap_proc_chance_mult as f32)
+                mult_to_basis_points(support_modifiers.bonus_tap_proc_chance_mult as f32)
             } else {
-                proc_chance_to_basis_points(1.0)
+                mult_to_basis_points(1.0)
             },
             tap_count: Self::deck_tick_count(deck, boss),
         };
@@ -1646,6 +1684,22 @@ fn prepare_deck_for_sim(deck: &mut [Card]) {
     if apply_amplify_level_sharing(deck) {
         ensure_deck_card_skills(deck);
     }
+    apply_global_raid_card_modifiers(deck);
+}
+
+fn apply_global_raid_card_modifiers(deck: &mut [Card]) {
+    let global = global_raid_modifiers();
+
+    if (global.affliction_duration_mult - 1.0).abs() <= f64::EPSILON {
+        return;
+    }
+
+    for card in deck
+        .iter_mut()
+        .filter(|card| card.cardtype == CardType::Affliction)
+    {
+        card.skill.duration *= global.affliction_duration_mult;
+    }
 }
 
 fn apply_amplify_level_sharing(deck: &mut [Card]) -> bool {
@@ -1718,13 +1772,25 @@ fn support_modifiers_for_deck(deck: &[Card], boss: &Boss) -> SupportModifiers {
 
 fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {
     let deck_snapshot = deck.to_vec();
+    let global = global_raid_modifiers();
     let support_mods: Vec<SupportModifiers> = deck
         .iter_mut()
         .filter(|card| card.cardtype == CardType::Support)
-        .map(|card| card.support_modifiers(boss, deck_snapshot.clone()))
+        .map(|card| {
+            card.support_modifiers(boss, deck_snapshot.clone())
+                .scale_effects(global.support_effect_mult)
+        })
         .collect();
 
-    SupportModifiers::accumulate(&support_mods)
+    let mut support = SupportModifiers::accumulate(&support_mods);
+    support.burst_damage_mult *= global.burst_damage_mult;
+    support.burst_chance_mult *= global.burst_chance_mult;
+    support.affliction_chance_mult *= global.affliction_chance_mult;
+    support.affliction_damage_mult *= global.affliction_damage_mult;
+    support.all_damage_mult *= global.all_damage_mult;
+    support.attack_duration_add_seconds += global.attack_duration_add_seconds;
+
+    support
 }
 
 fn deck_has_dynamic_support_modifier(deck: &[Card]) -> bool {

@@ -21,6 +21,11 @@ pub struct SupportModifiers {
     //all dmg
     pub all_damage_add: f64,
 
+    //damage multipliers
+    pub burst_damage_mult: f64,
+    pub affliction_damage_mult: f64,
+    pub all_damage_mult: f64,
+
     //raid flow
     pub attack_duration_add_seconds: f64,
 
@@ -40,6 +45,9 @@ impl Default for SupportModifiers {
             burst_damage_add: 0.0,
             affliction_damage_add: 0.0,
             all_damage_add: 0.0,
+            burst_damage_mult: 1.0,
+            affliction_damage_mult: 1.0,
+            all_damage_mult: 1.0,
             attack_duration_add_seconds: 0.0,
 
             burst_chance_mult: 1.0,
@@ -59,12 +67,39 @@ impl SupportModifiers {
             acc.burst_damage_add += m.burst_damage_add;
             acc.affliction_damage_add += m.affliction_damage_add;
             acc.all_damage_add += m.all_damage_add;
+            acc.burst_damage_mult *= m.burst_damage_mult;
+            acc.affliction_damage_mult *= m.affliction_damage_mult;
+            acc.all_damage_mult *= m.all_damage_mult;
             acc.attack_duration_add_seconds += m.attack_duration_add_seconds;
             acc.burst_chance_mult *= m.burst_chance_mult;
             acc.affliction_chance_mult *= m.affliction_chance_mult;
             acc.bonus_tap_proc_chance_mult *= m.bonus_tap_proc_chance_mult;
             return acc;
         })
+    }
+
+    pub fn scale_effects(mut self, effect_mult: f64) -> Self {
+        self.head_damage_add *= effect_mult;
+        self.torso_damage_add *= effect_mult;
+        self.limb_damage_add *= effect_mult;
+        self.body_damage_add *= effect_mult;
+        self.armor_damage_add *= effect_mult;
+        self.burst_damage_add *= effect_mult;
+        self.affliction_damage_add *= effect_mult;
+        self.all_damage_add *= effect_mult;
+        self.attack_duration_add_seconds *= effect_mult;
+
+        self.burst_damage_mult = scale_multiplier_effect(self.burst_damage_mult, effect_mult);
+        self.affliction_damage_mult =
+            scale_multiplier_effect(self.affliction_damage_mult, effect_mult);
+        self.all_damage_mult = scale_multiplier_effect(self.all_damage_mult, effect_mult);
+        self.burst_chance_mult = scale_multiplier_effect(self.burst_chance_mult, effect_mult);
+        self.affliction_chance_mult =
+            scale_multiplier_effect(self.affliction_chance_mult, effect_mult);
+        self.bonus_tap_proc_chance_mult =
+            scale_multiplier_effect(self.bonus_tap_proc_chance_mult, effect_mult);
+
+        self
     }
 
     /// Bonus that stacks into part_mult, based on which part was attacked.
@@ -91,6 +126,16 @@ impl SupportModifiers {
         self.all_damage_add
     }
 
+    pub fn damage_multiplier(&self, card_type: Option<CardType>) -> f64 {
+        let type_mult = match card_type {
+            Some(CardType::Burst) => self.burst_damage_mult,
+            Some(CardType::Affliction) => self.affliction_damage_mult,
+            _ => 1.0,
+        };
+
+        self.all_damage_mult * type_mult
+    }
+
     pub fn total_damage_bonus(
         &self,
         attack_part: BossPartName,
@@ -113,7 +158,7 @@ impl fmt::Display for SupportModifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SupportModifiers {{ head: +{}%, torso: +{}%, limb: +{}%, body: +{}%, armor: +{}%, burst_dmg: +{}%, affliction_dmg: +{}%, all: +{}%, duration: {}s, burst_chance: x{:.2}, affliction_chance: x{:.2}, bonus_tap_proc_chance: x{:.2} }}",
+            "SupportModifiers {{ head: +{}%, torso: +{}%, limb: +{}%, body: +{}%, armor: +{}%, burst_dmg: +{}%, affliction_dmg: +{}%, all: +{}%, burst_mult: x{:.2}, affliction_mult: x{:.2}, all_mult: x{:.2}, duration: {}s, burst_chance: x{:.2}, affliction_chance: x{:.2}, bonus_tap_proc_chance: x{:.2} }}",
             self.head_damage_add * 100.0,
             self.torso_damage_add * 100.0,
             self.limb_damage_add * 100.0,
@@ -122,10 +167,17 @@ impl fmt::Display for SupportModifiers {
             self.burst_damage_add * 100.0,
             self.affliction_damage_add * 100.0,
             self.all_damage_add * 100.0,
+            self.burst_damage_mult,
+            self.affliction_damage_mult,
+            self.all_damage_mult,
             self.attack_duration_add_seconds,
             self.burst_chance_mult,
             self.affliction_chance_mult,
             self.bonus_tap_proc_chance_mult,
         )
     }
+}
+
+fn scale_multiplier_effect(mult: f64, effect_mult: f64) -> f64 {
+    (1.0 + ((mult - 1.0) * effect_mult)).max(0.0)
 }
