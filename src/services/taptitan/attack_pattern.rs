@@ -842,6 +842,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     }
 
     dedupe_generic_attack_patterns(sim_stats, deck, &mut patterns);
+    keep_max_coverage_spread_affliction_patterns(sim_stats, deck, &mut patterns);
     keep_top_attack_patterns(sim_stats, deck, &mut patterns);
     // debug_print_head_torso_support_patterns(sim_stats, deck, &patterns);
 
@@ -977,6 +978,49 @@ fn dedupe_generic_attack_patterns(
         seen_signatures.push(signature);
         true
     });
+}
+
+fn keep_max_coverage_spread_affliction_patterns(
+    sim_stats: &SimStats,
+    deck: &[Card],
+    patterns: &mut Vec<AttackPattern>,
+) {
+    if !deck_has_spread_affliction(deck) || patterns.len() <= 1 {
+        return;
+    }
+
+    let max_candidate_count = patterns
+        .iter()
+        .map(|pattern| {
+            pattern
+                .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+                .len()
+        })
+        .max()
+        .unwrap_or(0);
+
+    if max_candidate_count == 0 {
+        return;
+    }
+
+    patterns.retain(|pattern| {
+        pattern
+            .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+            .len()
+            == max_candidate_count
+    });
+}
+
+fn deck_has_spread_affliction(deck: &[Card]) -> bool {
+    deck.iter().any(|card| {
+        matches!(
+            card.card_id,
+            CardName::FusionBomb
+            | CardName::ThrivingPlague
+            | CardName::BlazingInferno
+            | CardName::Amplify
+        )
+    })
 }
 
 fn keep_top_attack_patterns(
