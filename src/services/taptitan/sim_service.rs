@@ -16,7 +16,7 @@ use std::sync::{
 };
 use strum::IntoEnumIterator;
 
-const SIMS_ROUNDS: u64 = 20;
+const SIMS_ROUNDS: u64 = 5;
 const TICKS_PER_ROUND: u32 = 600;
 const TICKS_PER_SECOND: f64 = 20.0;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
@@ -25,7 +25,7 @@ const PRINT_EVERY_SIM_PATTERN: bool = false;
 // const PRINT_EVERY_SIM_PATTERN: bool = true;
 const PRINT_PROC_CACHE: bool = false;
 const ENABLE_PARALLEL_SIM: bool = true;
-const SIM_WORKER_COUNT: usize = 0; // 0 = use available_parallelism()
+const SIM_WORKER_COUNT: usize = 1; // 0 = use available_parallelism()
 
 const GLOBAL_RAID_BURST_DAMAGE_ENABLED: bool = false;
 const GLOBAL_RAID_BURST_DAMAGE_MULT: f64 = 1.3;

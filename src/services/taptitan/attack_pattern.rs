@@ -1,6 +1,6 @@
 use crate::models::affliction::{Affliction, AfflictionKind};
 use crate::models::boss::{Boss, BossPartName, PartState};
-use crate::models::cards::{Card, CardName};
+use crate::models::cards::{Card, CardName, CardType};
 use std::cmp::Ordering;
 
 use super::sim_service::SimStats;
@@ -57,6 +57,7 @@ const ALL_BOSS_PARTS: [BossPartName; 8] = [
 
 #[allow(dead_code)]
 const DEBUG_HEAD_TORSO_SUPPORT_PATTERNS: bool = true;
+const MAX_ATTACK_PATTERNS_PER_DECK: usize = 3; // 0 = no cap
 
 struct CandidateParts {
     parts: [BossPartName; 8],
@@ -833,7 +834,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
 
     for pattern in base_attack_patterns() {
         if pattern_is_available_for_deck(&pattern, deck)
-            && pattern_passes_deck_rules(&pattern, deck)
+            && pattern_passes_deck_rules(&pattern, sim_stats, deck)
             && pattern_has_candidates(&pattern, sim_stats, deck)
         {
             patterns.push(pattern);
@@ -841,6 +842,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     }
 
     dedupe_generic_attack_patterns(sim_stats, deck, &mut patterns);
+    keep_top_attack_patterns(sim_stats, deck, &mut patterns);
     // debug_print_head_torso_support_patterns(sim_stats, deck, &patterns);
 
     patterns
@@ -977,6 +979,300 @@ fn dedupe_generic_attack_patterns(
     });
 }
 
+fn keep_top_attack_patterns(
+    sim_stats: &SimStats,
+    deck: &[Card],
+    patterns: &mut Vec<AttackPattern>,
+) {
+    if MAX_ATTACK_PATTERNS_PER_DECK == 0 || patterns.len() <= MAX_ATTACK_PATTERNS_PER_DECK {
+        return;
+    }
+
+    let mut ranked_patterns = patterns.drain(..).enumerate().collect::<Vec<_>>();
+
+    ranked_patterns.sort_by(|(left_index, left_pattern), (right_index, right_pattern)| {
+        attack_pattern_priority(right_pattern, sim_stats, deck)
+            .cmp(&attack_pattern_priority(left_pattern, sim_stats, deck))
+            .then_with(|| left_index.cmp(right_index))
+    });
+
+    patterns.extend(
+        ranked_patterns
+            .into_iter()
+            .take(MAX_ATTACK_PATTERNS_PER_DECK)
+            .map(|(_, pattern)| pattern),
+    );
+}
+
+fn attack_pattern_priority(
+    pattern: &AttackPattern,
+    sim_stats: &SimStats,
+    deck: &[Card],
+) -> (i32, usize, usize) {
+    let candidates =
+        pattern.candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part);
+    let candidate_count = candidates.len();
+    let source_count = pattern
+        .source_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+        .len();
+
+    let mut score = 0;
+
+    if pattern_is_card_specific(pattern) {
+        score += 20_000;
+    }
+
+    if deck_wants_wide_attack(deck) {
+        score += candidate_count as i32 * 1_000;
+        if pattern_is_cycle_target(pattern) {
+            score += 750;
+        }
+        if pattern_is_single_target(pattern) {
+            score -= 1_000;
+        }
+    } else {
+        score += candidate_count as i32 * 250;
+    }
+
+    score += support_pattern_fit_score(pattern, deck);
+    score += burst_target_fit_score(pattern, deck, &sim_stats.boss_stat, &candidates);
+    score += pattern_shape_score(pattern, candidate_count, source_count);
+
+    (score, candidate_count, source_count)
+}
+
+fn deck_wants_wide_attack(deck: &[Card]) -> bool {
+    deck.iter().any(|card| {
+        card.cardtype == CardType::Affliction
+            && !matches!(
+                card.card_id,
+                CardName::CorrosiveBubbles
+                    | CardName::RuinousRain
+                    | CardName::ElectroZap
+                    | CardName::Maelstrom
+            )
+    })
+}
+
+fn support_pattern_fit_score(pattern: &AttackPattern, deck: &[Card]) -> i32 {
+    let mut score = 0;
+
+    for card in deck {
+        match card.card_id {
+            CardName::GraspingVines => {
+                if matches!(
+                    pattern,
+                    AttackPattern::SingleLimb | AttackPattern::CycleLimb
+                ) {
+                    score += 1_500;
+                }
+            }
+            CardName::InspiringForce => {
+                if matches!(
+                    pattern,
+                    AttackPattern::SingleBody | AttackPattern::CycleBody
+                ) {
+                    score += 1_500;
+                }
+            }
+            CardName::PrismaticRift | CardName::SkeletalSmash => {
+                if matches!(
+                    pattern,
+                    AttackPattern::SingleArmor | AttackPattern::CycleArmor
+                ) {
+                    score += 1_500;
+                }
+            }
+            CardName::SoulFire | CardName::CrushingInstinct => {
+                if matches!(
+                    pattern,
+                    AttackPattern::SingleHead
+                        | AttackPattern::SingleTorso
+                        | AttackPattern::CycleHeadTorso
+                ) {
+                    score += 1_500;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    score
+}
+
+fn burst_target_fit_score(
+    pattern: &AttackPattern,
+    deck: &[Card],
+    boss: &Boss,
+    candidates: &[BossPartName],
+) -> i32 {
+    if candidates.is_empty() {
+        return 0;
+    }
+
+    let mut score = 0;
+
+    for card in deck {
+        match card.card_id {
+            CardName::MoonBeam => {
+                score += matching_target_score(candidates, |part| {
+                    matches!(
+                        part,
+                        BossPartName::Torso
+                            | BossPartName::LeftShoulder
+                            | BossPartName::RightShoulder
+                            | BossPartName::LeftHand
+                            | BossPartName::RightHand
+                    )
+                });
+            }
+            CardName::SkullBash => {
+                score += matching_target_score(candidates, |part| {
+                    matches!(
+                        part,
+                        BossPartName::Head | BossPartName::LeftLeg | BossPartName::RightLeg
+                    )
+                });
+            }
+            CardName::Fragmentize => {
+                score += matching_state_score(candidates, boss, |state| {
+                    matches!(state, PartState::Armor | PartState::Cursed)
+                });
+                score +=
+                    matching_state_score(candidates, boss, |state| state == PartState::Cursed) / 2;
+            }
+            CardName::RazorWind => {
+                score += matching_state_score(candidates, boss, |state| state == PartState::Body);
+            }
+            CardName::PsychicShackles => {
+                score += matching_target_score(candidates, |part| part.is_limb());
+            }
+            CardName::FlakShot => {
+                if boss
+                    .parts()
+                    .iter()
+                    .any(|part| part.part_state == PartState::Body)
+                {
+                    score += matching_state_score(candidates, boss, |state| {
+                        matches!(state, PartState::Armor | PartState::Cursed)
+                    });
+                }
+            }
+            CardName::BarbedMorningstar => {
+                score += barbed_morningstar_target_score(card, boss, candidates);
+            }
+            CardName::ChainOfVengeance => {
+                if pattern_is_cycle_target(pattern) {
+                    score += (candidates.len().min(6) as i32) * 300;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    score
+}
+
+fn matching_target_score(
+    candidates: &[BossPartName],
+    predicate: impl Fn(BossPartName) -> bool,
+) -> i32 {
+    let matching_count = candidates
+        .iter()
+        .copied()
+        .filter(|part| predicate(*part))
+        .count();
+
+    ratio_score(matching_count, candidates.len(), 2_500)
+}
+
+fn matching_state_score(
+    candidates: &[BossPartName],
+    boss: &Boss,
+    predicate: impl Fn(PartState) -> bool,
+) -> i32 {
+    let matching_count = candidates
+        .iter()
+        .copied()
+        .filter(|part| predicate(boss.part(*part).part_state))
+        .count();
+
+    ratio_score(matching_count, candidates.len(), 2_500)
+}
+
+fn ratio_score(matching_count: usize, total_count: usize, max_score: i32) -> i32 {
+    if matching_count == 0 || total_count == 0 {
+        return 0;
+    }
+
+    ((matching_count as f64 / total_count as f64) * max_score as f64).round() as i32
+        + matching_count as i32 * 50
+}
+
+fn barbed_morningstar_target_score(card: &Card, boss: &Boss, candidates: &[BossPartName]) -> i32 {
+    let armor_damage_boost = card.skill.bonus_c.unwrap_or(0.0);
+    let body_damage_boost = card.skill.bonus_d.unwrap_or(0.0);
+    let max_bonus_parts = card
+        .skill
+        .bonus_e
+        .map(|value| value.max(0.0) as usize)
+        .unwrap_or(5);
+    let armor_part_count = boss
+        .parts()
+        .iter()
+        .filter(|part| matches!(part.part_state, PartState::Armor | PartState::Cursed))
+        .count()
+        .min(max_bonus_parts);
+    let body_part_count = boss
+        .parts()
+        .iter()
+        .filter(|part| part.part_state == PartState::Body)
+        .count()
+        .min(max_bonus_parts);
+
+    let total_bonus = candidates
+        .iter()
+        .copied()
+        .map(|part| match boss.part(part).part_state {
+            PartState::Armor | PartState::Cursed => armor_damage_boost * body_part_count as f64,
+            PartState::Body => body_damage_boost * armor_part_count as f64,
+            PartState::Skeleton => 0.0,
+        })
+        .sum::<f64>();
+
+    ((total_bonus / candidates.len() as f64) * 2_000.0).round() as i32
+}
+
+fn pattern_shape_score(
+    pattern: &AttackPattern,
+    candidate_count: usize,
+    source_count: usize,
+) -> i32 {
+    match pattern {
+        AttackPattern::CelestialStatic | AttackPattern::WhipRuinousFocus => 4_000,
+        AttackPattern::FusionBombSpread
+        | AttackPattern::ThrivingPlagueSpread
+        | AttackPattern::RadioactivitySpread
+        | AttackPattern::BlazingInfernoStack => 3_000,
+        AttackPattern::DecayingStrikeFocus => 2_000,
+        AttackPattern::CycleAllActive => 1_000,
+        AttackPattern::CycleParts(count) if *count == source_count.saturating_sub(1) => 900,
+        AttackPattern::CycleParts(count) => 500 + (*count as i32 * 20),
+        AttackPattern::CycleHeadTorso
+        | AttackPattern::CycleLimb
+        | AttackPattern::CycleBody
+        | AttackPattern::CycleArmor
+        | AttackPattern::CycleCursed => 650 + candidate_count as i32 * 20,
+        AttackPattern::SingleAny => 100,
+        AttackPattern::SingleHead
+        | AttackPattern::SingleTorso
+        | AttackPattern::SingleBody
+        | AttackPattern::SingleArmor
+        | AttackPattern::SingleLimb
+        | AttackPattern::SingleCursed => 250,
+    }
+}
+
 fn generic_pattern_signature(
     pattern: &AttackPattern,
     sim_stats: &SimStats,
@@ -1000,8 +1296,16 @@ fn generic_pattern_signature(
     Some((mode, candidates))
 }
 
-fn pattern_passes_deck_rules(pattern: &AttackPattern, deck: &[Card]) -> bool {
+fn pattern_passes_deck_rules(pattern: &AttackPattern, sim_stats: &SimStats, deck: &[Card]) -> bool {
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
+        return false;
+    }
+    if deck_has_card(deck, CardName::FusionBomb)
+        && pattern
+            .candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part)
+            .len()
+            < 3
+    {
         return false;
     }
     // remove single pattern spread deck contain insensitive target card
