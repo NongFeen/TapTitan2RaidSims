@@ -103,7 +103,8 @@ impl PreparedAttackPattern {
                     .next_target(boss, last_target, deck, attackable_parts)
             }
             PreparedTargetPlan::Ordered(targets) => {
-                self.pattern.next_prepared_target(boss, targets, last_target)
+                self.pattern
+                    .next_prepared_target(boss, targets, last_target)
             }
             PreparedTargetPlan::FirstActiveParts {
                 source_parts,
@@ -507,7 +508,7 @@ impl AttackPattern {
             AttackPattern::CycleCursed => source_parts
                 .into_iter()
                 .filter(|part| boss.part(*part).part_state == PartState::Cursed)
-            .collect(),
+                .collect(),
         }
     }
 
@@ -864,12 +865,9 @@ fn base_attack_patterns() -> Vec<AttackPattern> {
         AttackPattern::CycleParts(6),
         AttackPattern::CycleParts(7),
         AttackPattern::CycleAllActive,
-
-
         //new
         AttackPattern::SingleCursed,
         AttackPattern::CycleCursed,
-
         // card specific patterns
         AttackPattern::FusionBombSpread,
         AttackPattern::ThrivingPlagueSpread,
@@ -932,6 +930,7 @@ fn card_is_target_insensitive(card_name: CardName) -> bool {
             | CardName::TeamTactics
             | CardName::AstralEcho
             | CardName::RadiantKaleidoscope
+            | CardName::BattleDrums
     )
 }
 
@@ -983,11 +982,8 @@ fn generic_pattern_signature(
     sim_stats: &SimStats,
     deck: &[Card],
 ) -> Option<(u8, Vec<BossPartName>)> {
-    let candidates = pattern.candidate_parts(
-        &sim_stats.boss_stat,
-        deck,
-        &sim_stats.attackable_part,
-    );
+    let candidates =
+        pattern.candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part);
 
     if candidates.is_empty() {
         return None;
@@ -1004,10 +1000,7 @@ fn generic_pattern_signature(
     Some((mode, candidates))
 }
 
-fn pattern_passes_deck_rules(
-    pattern: &AttackPattern,
-    deck: &[Card],
-) -> bool {
+fn pattern_passes_deck_rules(pattern: &AttackPattern, deck: &[Card]) -> bool {
     if deck_has_card(deck, CardName::TotemOfPower) && pattern_is_cycle_target(pattern) {
         return false;
     }
@@ -1079,8 +1072,7 @@ fn debug_print_head_torso_support_patterns(
         return;
     }
 
-    if !deck_has_card(deck, CardName::SoulFire)
-        && !deck_has_card(deck, CardName::CrushingInstinct)
+    if !deck_has_card(deck, CardName::SoulFire) && !deck_has_card(deck, CardName::CrushingInstinct)
     {
         return;
     }
@@ -1098,14 +1090,17 @@ fn debug_print_head_torso_support_patterns(
     );
 
     for pattern in patterns {
-        let candidates = pattern.candidate_parts(
-            &sim_stats.boss_stat,
-            deck,
-            &sim_stats.attackable_part,
-        );
+        let candidates =
+            pattern.candidate_parts(&sim_stats.boss_stat, deck, &sim_stats.attackable_part);
         let candidate_names = candidates
             .iter()
-            .map(|part| format!("{:?}({:?})", part, sim_stats.boss_stat.part(*part).part_state))
+            .map(|part| {
+                format!(
+                    "{:?}({:?})",
+                    part,
+                    sim_stats.boss_stat.part(*part).part_state
+                )
+            })
             .collect::<Vec<_>>()
             .join(", ");
 

@@ -64,6 +64,9 @@ pub enum CardName {
     #[serde(rename = "Weaken")]
     #[strum(serialize = "Weaken")]
     GuardBreak,
+    #[serde(rename = "BarbedMorningstar")]
+    #[strum(serialize = "BarbedMorningstar")]
+    BarbedMorningstar,
 
     // Affliction
     #[serde(rename = "BurningAttack")]
@@ -152,6 +155,9 @@ pub enum CardName {
     #[serde(rename = "TriangleSupport")]
     #[strum(serialize = "TriangleSupport")]
     RadiantKaleidoscope,
+    #[serde(rename = "BattleDrums")]
+    #[strum(serialize = "BattleDrums")]
+    BattleDrums,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy)]
@@ -302,6 +308,7 @@ impl CardName {
             CardName::MirrorForce => "MirrorForce",
             CardName::CelestialStatic => "CelestialStatic",
             CardName::GuardBreak => "Weaken",
+            CardName::BarbedMorningstar => "BarbedMorningstar",
             CardName::BlazingInferno => "BurningAttack",
             CardName::AcidDrench => "PoisonAttack",
             CardName::DecayingStrike => "DecayingAttack",
@@ -330,6 +337,7 @@ impl CardName {
             CardName::SkeletalSmash => "SpinalTap",
             CardName::AstralEcho => "AstralEcho",
             CardName::RadiantKaleidoscope => "TriangleSupport",
+            CardName::BattleDrums => "BattleDrums",
         }
     }
 
@@ -350,6 +358,7 @@ impl CardName {
             CardName::MirrorForce => "Mirror Force",
             CardName::CelestialStatic => "Celestial Static",
             CardName::GuardBreak => "Guard Break",
+            CardName::BarbedMorningstar => "Barbed Morningstar",
             CardName::BlazingInferno => "Blazing Inferno",
             CardName::AcidDrench => "Acid Drench",
             CardName::DecayingStrike => "Decaying Strike",
@@ -378,6 +387,7 @@ impl CardName {
             CardName::SkeletalSmash => "Skeletal Smash",
             CardName::AstralEcho => "Astral Echo",
             CardName::RadiantKaleidoscope => "Radiant Kaleidoscope",
+            CardName::BattleDrums => "Battle Drums",
         }
     }
 
@@ -404,7 +414,8 @@ impl CardName {
             | CardName::ChainOfVengeance
             | CardName::MirrorForce
             | CardName::CelestialStatic
-            | CardName::GuardBreak => CardType::Burst,
+            | CardName::GuardBreak
+            | CardName::BarbedMorningstar => CardType::Burst,
 
             CardName::BlazingInferno
             | CardName::AcidDrench
@@ -434,7 +445,8 @@ impl CardName {
             | CardName::TeamTactics
             | CardName::SkeletalSmash
             | CardName::AstralEcho
-            | CardName::RadiantKaleidoscope => CardType::Support,
+            | CardName::RadiantKaleidoscope
+            | CardName::BattleDrums => CardType::Support,
         }
     }
 }

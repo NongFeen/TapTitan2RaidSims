@@ -1,8 +1,4 @@
-use crate::models::{
-    boss::Boss,
-    cards::Card,
-    support_modifier::SupportModifiers,
-};
+use crate::models::{boss::Boss, cards::Card, support_modifier::SupportModifiers};
 
 pub fn get_modifiers(card: &mut Card, boss: &Boss) -> SupportModifiers {
     return SupportModifiers {

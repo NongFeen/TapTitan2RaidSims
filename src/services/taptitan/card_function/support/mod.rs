@@ -5,6 +5,7 @@ use crate::models::{
 };
 mod ancestral_favor;
 mod astral_echo;
+mod battle_drums;
 mod crushing_instinct;
 mod grasping_vines;
 mod insanity_void;
@@ -41,6 +42,7 @@ pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: Vec<Card>) -> S
     match card.card_id {
         CardName::AncestralFavor => ancestral_favor::get_modifiers(card, boss),
         CardName::AstralEcho => astral_echo::get_modifiers(card, boss),
+        CardName::BattleDrums => battle_drums::get_modifiers(card, boss),
         CardName::CrushingInstinct => crushing_instinct::get_modifiers(card, boss),
         CardName::GraspingVines => grasping_vines::get_modifiers(card, boss),
         CardName::InsanityVoid => insanity_void::get_modifiers(card, boss),

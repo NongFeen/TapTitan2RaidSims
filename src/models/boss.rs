@@ -254,7 +254,9 @@ impl BossAfflictions {
     }
 
     fn is_empty(&self) -> bool {
-        self.parts().iter().all(|afflictions| afflictions.is_empty())
+        self.parts()
+            .iter()
+            .all(|afflictions| afflictions.is_empty())
     }
 
     fn has_active_kind(&self, part_name: BossPartName, kind: AfflictionKind) -> bool {
@@ -471,14 +473,16 @@ impl Boss {
         if afflictions.has_active_kind(BossPartName::Torso, AfflictionKind::RadioactivityDebuff) {
             self.torso.radioactivity_afflicted_seconds += elapsed_seconds;
         }
-        if afflictions
-            .has_active_kind(BossPartName::LeftShoulder, AfflictionKind::RadioactivityDebuff)
-        {
+        if afflictions.has_active_kind(
+            BossPartName::LeftShoulder,
+            AfflictionKind::RadioactivityDebuff,
+        ) {
             self.left_shoulder.radioactivity_afflicted_seconds += elapsed_seconds;
         }
-        if afflictions
-            .has_active_kind(BossPartName::RightShoulder, AfflictionKind::RadioactivityDebuff)
-        {
+        if afflictions.has_active_kind(
+            BossPartName::RightShoulder,
+            AfflictionKind::RadioactivityDebuff,
+        ) {
             self.right_shoulder.radioactivity_afflicted_seconds += elapsed_seconds;
         }
         if afflictions.has_active_kind(BossPartName::LeftHand, AfflictionKind::RadioactivityDebuff)

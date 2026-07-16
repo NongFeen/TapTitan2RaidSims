@@ -7,7 +7,7 @@ pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
     0.12
 }
 
-pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) ->u64 {
+pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> u64 {
     let flak_mult = card.skill.value_a.unwrap_or(1.0);
     let total_flak_damage = (damage * flak_mult) as u64;
     let current_state = boss.get_state_from_part(target_part);
@@ -28,5 +28,5 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
             );
         }
     }
-    total_flak_damage 
+    total_flak_damage
 }

@@ -58,12 +58,12 @@ pub async fn send_sim_payload(Json(simdata): Json<SimPayLoad>) -> impl IntoRespo
     }
 
     // 2. Verify that the usable cards do not exceed the 42 max allowed game cards
-    if simdata.usable_card.len() > 42 {
+    if simdata.usable_card.len() > 44 {
         let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
             error: ApiError {
                 code: "USABLE_CARDS_EXCEEDED".to_string(),
                 message: format!(
-                    "Usable cards list exceeds the maximum game limit of 42 cards (Received: {}).",
+                    "Usable cards list exceeds the maximum game limit of 44 cards (Received: {}).",
                     simdata.usable_card.len()
                 ),
             },

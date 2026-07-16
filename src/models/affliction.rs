@@ -67,11 +67,7 @@ impl AfflictionStack {
         self.refresh_with_sands_of_time_boost(duration, self.sands_of_time_boosted);
     }
 
-    pub fn refresh_with_sands_of_time_boost(
-        &mut self,
-        duration: f64,
-        sands_of_time_boosted: bool,
-    ) {
+    pub fn refresh_with_sands_of_time_boost(&mut self, duration: f64, sands_of_time_boosted: bool) {
         self.remaining_duration = duration;
         self.attached_duration = duration;
         self.tick_elapsed = 0.0;
@@ -233,13 +229,9 @@ impl Affliction {
         let max_stacks = self.max_stacks as usize;
         let available_slots = max_stacks.saturating_sub(self.stacks.len());
         let stacks_to_add = usize::min(stack_count as usize, available_slots);
-        self.stacks.extend(
-            (0..stacks_to_add)
-                .map(|_| AfflictionStack::new_with_sands_of_time_boost(
-                    duration,
-                    sands_of_time_boosted,
-                )),
-        );
+        self.stacks.extend((0..stacks_to_add).map(|_| {
+            AfflictionStack::new_with_sands_of_time_boost(duration, sands_of_time_boosted)
+        }));
 
         if stacks_to_add < stack_count as usize
             && self.overflow == AfflictionOverflow::ReplaceOldest

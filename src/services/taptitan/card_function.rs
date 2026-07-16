@@ -32,7 +32,7 @@ pub fn on_proc(
     damage: f64,
     mirror_force_boost: u32,
     burst_trigger_count: u32,
-) -> u64{
+) -> u64 {
     match card.cardtype {
         CardType::Burst => burst::on_proc(
             card,
@@ -43,7 +43,7 @@ pub fn on_proc(
             burst_trigger_count,
         ),
         CardType::Affliction => affliction::on_proc(card, boss, target_part, damage),
-        CardType::Support => 0
+        CardType::Support => 0,
     }
 }
 

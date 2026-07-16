@@ -5,7 +5,7 @@ use crate::models::{
     damage_source::DamageSource,
 };
 
-use super::{shared, AfflictionRemoveView};
+use super::{AfflictionRemoveView, shared};
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 

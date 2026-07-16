@@ -15,6 +15,8 @@ use strum::IntoEnumIterator;
 
 const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
+const BATTLE_DRUMS_DEFAULT_TICK_REDUCTION: u32 = 200;
+const TICKS_PER_SECOND: f64 = 20.0;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
 const PRINT_EVERY_SIM_PATTERN: bool = false;
@@ -22,9 +24,8 @@ const PRINT_EVERY_SIM_PATTERN: bool = false;
 
 const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
-const FAST_CALC_PROC_TAP_COUNT: u32 = 600;
 const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
-const FAST_CALC_CARDS: [CardName; 18] = [
+const FAST_CALC_CARDS: [CardName; 20] = [
     CardName::MoonBeam,
     CardName::Fragmentize,
     CardName::SkullBash,
@@ -32,6 +33,7 @@ const FAST_CALC_CARDS: [CardName; 18] = [
     CardName::PsychicShackles,
     CardName::FlakShot,
     CardName::CosmicHaymaker,
+    CardName::BarbedMorningstar,
     CardName::CrushingInstinct,
     CardName::InsanityVoid,
     CardName::InspiringForce,
@@ -43,6 +45,7 @@ const FAST_CALC_CARDS: [CardName; 18] = [
     CardName::TeamTactics,
     CardName::SkeletalSmash,
     CardName::AstralEcho,
+    CardName::BattleDrums,
 ];
 
 #[derive(Debug, Clone)]
@@ -140,10 +143,7 @@ impl SimDamageContext {
         let affliction_add_total = (player_raid_data.raid_card_research.base_affliction_damage
             + player_raid_data.gem_stone_research.base_affliction_damage)
             as f32
-            + player_raid_data.get_total_card_type_boss_add(
-                boss.boss_name,
-                CardType::Affliction,
-            )
+            + player_raid_data.get_total_card_type_boss_add(boss.boss_name, CardType::Affliction)
             + if player_raid_data.raid_set.dancer_venom {
                 120.0
             } else {
@@ -275,6 +275,7 @@ impl PreDeterminedProc {
         cards: &[Card],
         boss: &Boss,
         has_raid_buff: bool,
+        tap_count: u32,
     ) {
         let proc_chances = Self::fast_calc_burst_proc_chances(cards, boss);
 
@@ -289,7 +290,7 @@ impl PreDeterminedProc {
                     has_ancestral_favor,
                     has_raid_buff,
                     has_astral_echo,
-                    tap_count: FAST_CALC_PROC_TAP_COUNT,
+                    tap_count,
                 };
 
                 self.generate_proc_count_for_scenario(scenario);
@@ -356,7 +357,10 @@ impl PreDeterminedProc {
             let proc_chance = if card.card_id == CardName::CosmicHaymaker {
                 (COSMIC_HAYMAKER_FAST_PROC_KEY, true)
             } else {
-                (proc_chance_to_basis_points(card.get_proc_chance(boss) as f32), false)
+                (
+                    proc_chance_to_basis_points(card.get_proc_chance(boss) as f32),
+                    false,
+                )
             };
 
             if !proc_chances.contains(&proc_chance) {
@@ -400,6 +404,23 @@ impl SimService {
                 .all(|card| FAST_CALC_CARDS.contains(&card.card_id))
     }
 
+    fn deck_tick_count(deck: &[Card]) -> u32 {
+        let reduction_ticks = deck
+            .iter()
+            .find(|card| card.card_id == CardName::BattleDrums)
+            .map(|card| {
+                card.skill
+                    .value_b
+                    .map(|duration_seconds| {
+                        (duration_seconds.abs() * TICKS_PER_SECOND).round().max(0.0) as u32
+                    })
+                    .unwrap_or(BATTLE_DRUMS_DEFAULT_TICK_REDUCTION)
+            })
+            .unwrap_or(0);
+
+        TICKS_PER_ROUND.saturating_sub(reduction_ticks)
+    }
+
     pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
         let sim_stats = SimStats {
             player_stat: Arc::new(payload.player_raid_data),
@@ -430,7 +451,8 @@ impl SimService {
 
         let mut card_proc_cache = PreDeterminedProc::new();
         for (deck, _) in &deck_patterns {
-            card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false);
+            let tap_count = Self::deck_tick_count(deck);
+            card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false, tap_count);
         }
         card_proc_cache.print_all();
 
@@ -561,7 +583,7 @@ impl SimService {
         }
 
         let sim_rounds = round;
-        let tap_count = TICKS_PER_ROUND;
+        let tap_count = Self::deck_tick_count(&select_deck);
         let should_update_boss = deck_creates_timed_boss_effect(&select_deck);
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
@@ -596,64 +618,60 @@ impl SimService {
                     .map(totem_of_power::first_spawn_tick)
                     .unwrap_or(f64::INFINITY);
                 let mut last_target: Option<BossPartName> = None;
-                let prepared_pattern =
-                    pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
+                let prepared_pattern = pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
 
-                for i in 0..TICKS_PER_ROUND {
-                    if i < tap_count {
-                        if let Some(current_target) = prepared_pattern.next_target(
-                            &boss,
-                            last_target,
-                            &deck,
-                            &sim_stats.attackable_part,
-                        ) {
-                            last_target = Some(current_target);
+                for i in 0..tap_count {
+                    if let Some(current_target) = prepared_pattern.next_target(
+                        &boss,
+                        last_target,
+                        &deck,
+                        &sim_stats.attackable_part,
+                    ) {
+                        last_target = Some(current_target);
 
-                            if let Some(totem_card) = &totem_card {
-                                totem_of_power::update(
-                                    &mut pending_totems,
-                                    totem_card,
-                                    &deck,
-                                    &mut boss,
-                                    i,
-                                );
-                            }
-                                Self::tap_boss(
-                                    &mut boss,
-                                    current_target,
-                                    &mut deck,
-                                    &damage_context,
-                                    &mut total_burst_proc,
-                                    1.0,
-                                    &mut card_proc_totals,
-                                    cached_support.as_ref(),
-                                );
+                        if let Some(totem_card) = &totem_card {
+                            totem_of_power::update(
+                                &mut pending_totems,
+                                totem_card,
+                                &deck,
+                                &mut boss,
+                                i,
+                            );
+                        }
+                        Self::tap_boss(
+                            &mut boss,
+                            current_target,
+                            &mut deck,
+                            &damage_context,
+                            &mut total_burst_proc,
+                            1.0,
+                            &mut card_proc_totals,
+                            cached_support.as_ref(),
+                        );
 
-                            if trigger_astral_echo_extra_tap(&mut deck) {
-                                let astral_proc_chance_scale =
-                                    astral_echo_proc_chance_scale(&deck);
-                                Self::tap_boss(
-                                    &mut boss,
-                                    current_target,
-                                    &mut deck,
-                                    &damage_context,
-                                    &mut total_burst_proc,
-                                    astral_proc_chance_scale,
-                                    &mut card_proc_totals,
-                                    cached_support.as_ref(),
-                                );
-                            }
+                        if trigger_astral_echo_extra_tap(&mut deck) {
+                            let astral_proc_chance_scale = astral_echo_proc_chance_scale(&deck);
+                            Self::tap_boss(
+                                &mut boss,
+                                current_target,
+                                &mut deck,
+                                &damage_context,
+                                &mut total_burst_proc,
+                                astral_proc_chance_scale,
+                                &mut card_proc_totals,
+                                cached_support.as_ref(),
+                            );
+                        }
 
-                            if let Some(totem_card) = &totem_card {
-                                totem_of_power::try_spawn(
-                                    &mut pending_totems,
-                                    totem_card,
-                                    &boss,
-                                    current_target,
-                                    i,
-                                    &mut next_totem_spawn_tick,
-                                );
-                            }
+                        if let Some(totem_card) = &totem_card {
+                            totem_of_power::try_spawn(
+                                &mut pending_totems,
+                                totem_card,
+                                &boss,
+                                current_target,
+                                i,
+                                &mut next_totem_spawn_tick,
+                            );
                         }
                     }
 
@@ -704,7 +722,8 @@ impl SimService {
                 card_damage,
             });
 
-            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut() {
+            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut()
+            {
                 progress.current_pattern += 1;
                 (progress.current_pattern, progress.total_patterns)
             } else {
@@ -881,8 +900,7 @@ impl SimService {
 
             for (target_part, tap_count) in &target_tap_counts {
                 let current_state = boss.get_state_from_part(*target_part);
-                let tap_damage =
-                    damage_context.true_base_tap(*target_part, current_state) as u64;
+                let tap_damage = damage_context.true_base_tap(*target_part, current_state) as u64;
                 let final_tap_damage =
                     boss.preview_damage_with_source(*target_part, tap_damage, &DamageSource::Tap);
 
@@ -957,7 +975,8 @@ impl SimService {
                 card_damage,
             });
 
-            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut() {
+            let (current_progress, total_progress) = if let Some(progress) = progress.as_deref_mut()
+            {
                 progress.current_pattern += 1;
                 (progress.current_pattern, progress.total_patterns)
             } else {
@@ -1036,7 +1055,7 @@ impl SimService {
     }
 
     fn fast_total_taps(deck: &[Card]) -> u32 {
-        let base_taps = FAST_CALC_PROC_TAP_COUNT;
+        let base_taps = Self::deck_tick_count(deck);
         let echo_taps = if deck.iter().any(|card| card.card_id == CardName::AstralEcho) {
             base_taps / 5
         } else {
@@ -1068,7 +1087,7 @@ impl SimService {
                 .any(|card| card.card_id == CardName::AncestralFavor),
             has_raid_buff: false,
             has_astral_echo: deck.iter().any(|card| card.card_id == CardName::AstralEcho),
-            tap_count: FAST_CALC_PROC_TAP_COUNT,
+            tap_count: Self::deck_tick_count(deck),
         };
 
         proc_cache.get_proc_count(scenario).unwrap_or(0.0)
@@ -1155,7 +1174,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     deck_combinations
 }
 
-const IS_CHECK_CARD_SYNERGY:bool = false;
+const IS_CHECK_CARD_SYNERGY: bool = false;
 const PURIFY_PRIORITY_AFFLICTIONS: [CardName; 6] = [
     CardName::AcidDrench,
     CardName::RavenousSwarm,
@@ -1193,12 +1212,14 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     let has_purify = deck.iter().any(|c| c.card_id == CardName::PurifyingBlast);
     let has_affliction = affliction_count > 0;
 
-    let has_radiant_kaleidoscope = deck.iter().any(|c| c.card_id == CardName::RadiantKaleidoscope);
+    let has_radiant_kaleidoscope = deck
+        .iter()
+        .any(|c| c.card_id == CardName::RadiantKaleidoscope);
 
     let has_ancestral_favor = deck.iter().any(|c| c.card_id == CardName::AncestralFavor);
 
     let has_rancid_gas = deck.iter().any(|c| c.card_id == CardName::RancidGas);
-    
+
     let has_sands_of_time = deck.iter().any(|c| c.card_id == CardName::SandsOfTime);
 
     let has_whip = deck.iter().any(|c| c.card_id == CardName::WhipOfLightning);
@@ -1213,18 +1234,17 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     let has_fusion_bomb = deck.iter().any(|c| c.card_id == CardName::FusionBomb);
     let has_soul_fire = deck.iter().any(|c| c.card_id == CardName::SoulFire);
     let has_crushing_instinct = deck.iter().any(|c| c.card_id == CardName::CrushingInstinct);
-    
-    let has_blazing_inferno = deck.iter().any(|c| c.card_id == CardName::BlazingInferno);
-    let has_amplify= deck.iter().any(|c| c.card_id == CardName::Amplify);
-    let has_grim_shadow= deck.iter().any(|c| c.card_id == CardName::GrimShadow);
-    let has_decaying_strike= deck.iter().any(|c| c.card_id == CardName::DecayingStrike);
-    let has_radioactivity= deck.iter().any(|c| c.card_id == CardName::Radioactivity);
-    let has_thriving_plague= deck.iter().any(|c| c.card_id == CardName::ThrivingPlague);
-    let has_electro_zap= deck.iter().any(|c| c.card_id == CardName::ElectroZap);
-    let has_prismatic_rift= deck.iter().any(|c| c.card_id == CardName::PrismaticRift);
-    let has_inspiring_force= deck.iter().any(|c| c.card_id == CardName::InspiringForce);
 
-    
+    let has_blazing_inferno = deck.iter().any(|c| c.card_id == CardName::BlazingInferno);
+    let has_amplify = deck.iter().any(|c| c.card_id == CardName::Amplify);
+    let has_grim_shadow = deck.iter().any(|c| c.card_id == CardName::GrimShadow);
+    let has_decaying_strike = deck.iter().any(|c| c.card_id == CardName::DecayingStrike);
+    let has_radioactivity = deck.iter().any(|c| c.card_id == CardName::Radioactivity);
+    let has_thriving_plague = deck.iter().any(|c| c.card_id == CardName::ThrivingPlague);
+    let has_electro_zap = deck.iter().any(|c| c.card_id == CardName::ElectroZap);
+    let has_prismatic_rift = deck.iter().any(|c| c.card_id == CardName::PrismaticRift);
+    let has_inspiring_force = deck.iter().any(|c| c.card_id == CardName::InspiringForce);
+
     // Rule 1: Deck must include a support card or maelstrom or GuardBreak
     if !has_support && !has_maelstrom && !has_guard_break {
         return false;
@@ -1251,7 +1271,6 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         {
             return false;
         }
-
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 2 PASS")
@@ -1272,7 +1291,7 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         if burst_count < 1 {
             return false;
         }
-        if affliction_count == 1 && !has_maelstrom{
+        if affliction_count == 1 && !has_maelstrom {
             return false;
         }
     }
@@ -1282,10 +1301,10 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //Rule 5 Affliction support must use with burst card or other support card
     if has_rancid_gas {
-        if affliction_count <1 {
+        if affliction_count < 1 {
             return false;
         }
-        if burst_count == 1 && !has_guard_break{
+        if burst_count == 1 && !has_guard_break {
             return false;
         }
     }
@@ -1316,7 +1335,7 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //rule 8 : celestial card not suit with limb support card
     if has_celestial_static {
-        if has_grasping_vines || has_totem_of_power{
+        if has_grasping_vines || has_totem_of_power {
             return false;
         }
     }
@@ -1326,76 +1345,74 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //rule 9
     // have no damage card.
-    if support_count == 3 || (support_count == 2 && has_maelstrom) || (support_count == 2 && has_guard_break) || (support_count == 1 && has_maelstrom && has_guard_break) {
+    if support_count == 3
+        || (support_count == 2 && has_maelstrom)
+        || (support_count == 2 && has_guard_break)
+        || (support_count == 1 && has_maelstrom && has_guard_break)
+    {
         return false;
     }
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 9 PASS")
     }
 
-    //rule 10 
+    //rule 10
     // have whip must also have other afflcition
-    if has_whip  {
-        if affliction_count <1{
+    if has_whip {
+        if affliction_count < 1 {
             return false;
         }
-        if has_electro_zap{
+        if has_electro_zap {
             return false;
         }
     }
-    
+
     if IS_CHECK_CARD_SYNERGY {
         println!("Rule 10 PASS")
     }
-    
-    //rule 11 
+
+    //rule 11
     //some affliction should not use with sot
     if has_sands_of_time {
-        if has_corrosive_bubble ||
-        has_ravenous_swarm||
-        has_ruinous_rain ||
-        has_totem_of_power{
+        if has_corrosive_bubble || has_ravenous_swarm || has_ruinous_rain || has_totem_of_power {
             return false;
         }
     }
 
     //rule 12
-    if has_fusion_bomb{
-        if has_totem_of_power||
-        has_soul_fire||
-        has_crushing_instinct{
-            return  false;
+    if has_fusion_bomb {
+        if has_totem_of_power || has_soul_fire || has_crushing_instinct {
+            return false;
         }
     }
 
-    //rule 14 
-    //2 support cards must intersect some boss part 
+    //rule 14
+    //2 support cards must intersect some boss part
     if has_soul_fire || has_crushing_instinct {
-        if has_grasping_vines{
+        if has_grasping_vines {
             return false;
         }
-    } 
-    //rule 15 
+    }
+    //rule 15
     // has totem with spread type affliction without purify
-    if has_totem_of_power && !has_purify{
-        if has_blazing_inferno || 
-        has_amplify ||
-        has_grim_shadow||
-        has_decaying_strike||
-        has_fusion_bomb||
-        has_radioactivity||
-        has_ravenous_swarm||
-        has_thriving_plague
+    if has_totem_of_power && !has_purify {
+        if has_blazing_inferno
+            || has_amplify
+            || has_grim_shadow
+            || has_decaying_strike
+            || has_fusion_bomb
+            || has_radioactivity
+            || has_ravenous_swarm
+            || has_thriving_plague
         {
-            return  false;
+            return false;
         }
     }
-    //rule 16 
-    if has_inspiring_force && has_prismatic_rift{
+    //rule 16
+    if has_inspiring_force && has_prismatic_rift {
         return false;
     }
     true
-
 }
 
 fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) -> bool {
@@ -1447,16 +1464,12 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
     }
     // Rule 3 : if use Prismatic Rift, boss must have attackable armor
     if has_prismatic_rift {
-        let boss_has_active_armor = sim_stats
-            .attackable_part
-            .iter()
-            .copied()
-            .any(|part_name| {
-                matches!(
-                    boss.part(part_name).part_state,
-                    PartState::Armor | PartState::Cursed
-                )
-            });
+        let boss_has_active_armor = sim_stats.attackable_part.iter().copied().any(|part_name| {
+            matches!(
+                boss.part(part_name).part_state,
+                PartState::Armor | PartState::Cursed
+            )
+        });
 
         if !boss_has_active_armor {
             return false;
@@ -1474,8 +1487,8 @@ fn is_deck_boss_suitable(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) 
             return false;
         }
     }
-    if has_inspiring_force && has_prismatic_rift{
-        return  false;
+    if has_inspiring_force && has_prismatic_rift {
+        return false;
     }
     //Rule 5 :if use Crushing Instinct or Soul Fire, boss must have attakable Head or Torso
     if has_crushing_instinct || has_soul_fire {
@@ -1554,8 +1567,9 @@ fn should_print_sim_pattern_progress(current_pattern: usize, total_patterns: usi
         return false;
     }
 
-    let previous_bucket =
-        (current_pattern.saturating_sub(1) * 100) / total_patterns / SIM_PATTERN_PROGRESS_STEP_PERCENT;
+    let previous_bucket = (current_pattern.saturating_sub(1) * 100)
+        / total_patterns
+        / SIM_PATTERN_PROGRESS_STEP_PERCENT;
     let current_bucket =
         (current_pattern * 100) / total_patterns / SIM_PATTERN_PROGRESS_STEP_PERCENT;
 
@@ -1687,9 +1701,6 @@ fn deck_has_dynamic_support_modifier(deck: &[Card]) -> bool {
 fn deck_creates_timed_boss_effect(deck: &[Card]) -> bool {
     deck.iter().any(|card| {
         matches!(card.cardtype, CardType::Affliction)
-            || matches!(
-                card.card_id,
-                CardName::GuardBreak | CardName::TotemOfPower
-            )
+            || matches!(card.card_id, CardName::GuardBreak | CardName::TotemOfPower)
     })
 }

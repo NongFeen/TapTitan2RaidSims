@@ -4,7 +4,7 @@ use crate::models::{
     cards::Card,
 };
 
-use super::{shared, AfflictionRemoveView};
+use super::{AfflictionRemoveView, shared};
 
 const TICK_INTERVAL_SECONDS: f64 = 0.2;
 const MAX_DAMAGE_PERCENT: f64 = 0.70;

@@ -15,11 +15,7 @@ pub fn on_proc(card: &mut Card, boss: &mut Boss, target_part: BossPartName, dama
     let result_damage = (damage * cosmic_hay_mult).max(0.0) as u64;
     if card.tap_count >= 70 {
         // card_damage = damage * cosmic_hay_mult;
-        boss.on_hit_with_source(
-            target_part,
-            result_damage,
-            DamageSource::Card(card.card_id),
-        );
+        boss.on_hit_with_source(target_part, result_damage, DamageSource::Card(card.card_id));
         card.tap_count = 0;
     }
     result_damage

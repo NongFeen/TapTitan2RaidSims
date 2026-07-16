@@ -10,12 +10,7 @@ pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
 }
 const MAX_TARGET: usize = 6;
 
-pub fn on_proc(
-    card: &mut Card,
-    boss: &mut Boss,
-    target_part: BossPartName,
-    damage: f64,
-) -> u64{
+pub fn on_proc(card: &mut Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> u64 {
     let chain_mult = card.skill.value_a.unwrap_or(1.0);
     let part_boost = card.skill.bonus_c.unwrap_or(1.0);
 
@@ -34,11 +29,7 @@ pub fn on_proc(
     let split_damage = (total_damage / part_count) as u64;
 
     for part in &card.chained_parts {
-        boss.on_hit_with_source(
-            *part,
-            split_damage,
-            DamageSource::Card(card.card_id),
-        );
+        boss.on_hit_with_source(*part, split_damage, DamageSource::Card(card.card_id));
     }
-    split_damage 
+    split_damage
 }

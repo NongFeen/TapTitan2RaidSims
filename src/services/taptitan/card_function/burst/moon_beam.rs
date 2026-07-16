@@ -21,10 +21,6 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
     }
     let result_damage = (damage * moonbeam_mult * bonus_correct_part).max(0.0) as u64;
 
-    boss.on_hit_with_source(
-        target_part,
-        result_damage,
-        DamageSource::Card(card.card_id),
-    );
+    boss.on_hit_with_source(target_part, result_damage, DamageSource::Card(card.card_id));
     result_damage
 }

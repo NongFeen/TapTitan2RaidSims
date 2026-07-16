@@ -105,7 +105,5 @@ fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> Option<f64> {
                     .iter()
                     .any(|stack| stack.remaining_duration > 0.0)
         })
-        .and_then(|affliction| {
-            affliction.source_skill.value_b
-        })
+        .and_then(|affliction| affliction.source_skill.value_b)
 }
