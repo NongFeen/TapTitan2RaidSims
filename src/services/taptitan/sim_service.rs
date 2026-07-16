@@ -15,7 +15,6 @@ use strum::IntoEnumIterator;
 
 const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
-const BATTLE_DRUMS_DEFAULT_TICK_REDUCTION: u32 = 200;
 const TICKS_PER_SECOND: f64 = 20.0;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
 const SIM_PATTERN_PROGRESS_STEP_PERCENT: usize = 10;
@@ -203,6 +202,7 @@ pub struct ProcScenario {
     pub has_ancestral_favor: bool,
     pub has_raid_buff: bool,
     pub has_astral_echo: bool,
+    pub bonus_tap_proc_chance_mult_basis_points: u16,
     pub tap_count: u32,
 }
 
@@ -213,6 +213,7 @@ impl ProcScenario {
         has_ancestral_favor: bool,
         has_raid_buff: bool,
         has_astral_echo: bool,
+        bonus_tap_proc_chance_mult: f32,
         tap_count: u32,
     ) -> Self {
         Self {
@@ -222,19 +223,23 @@ impl ProcScenario {
             has_ancestral_favor,
             has_raid_buff,
             has_astral_echo,
+            bonus_tap_proc_chance_mult_basis_points: proc_chance_to_basis_points(
+                bonus_tap_proc_chance_mult,
+            ),
             tap_count,
         }
     }
 
     pub fn name(&self) -> String {
         format!(
-            "chance_{}bp|haymaker_{}|ci_{}|af_{}|raid_{}|echo_{}|taps_{}",
+            "chance_{}bp|haymaker_{}|ci_{}|af_{}|raid_{}|echo_{}|echo_scale_{}bp|taps_{}",
             self.proc_chance_basis_points,
             self.is_cosmic_haymaker,
             self.has_crushing_instinct,
             self.has_ancestral_favor,
             self.has_raid_buff,
             self.has_astral_echo,
+            self.bonus_tap_proc_chance_mult_basis_points,
             self.tap_count
         )
     }
@@ -258,6 +263,10 @@ impl ProcScenario {
 
         proc_chance * proc_chance_scale
     }
+
+    fn bonus_tap_proc_chance_mult(&self) -> f32 {
+        self.bonus_tap_proc_chance_mult_basis_points as f32 / 10_000.0
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -278,6 +287,8 @@ impl PreDeterminedProc {
         tap_count: u32,
     ) {
         let proc_chances = Self::fast_calc_burst_proc_chances(cards, boss);
+        let support_modifiers = support_modifiers_for_deck(cards, boss);
+        let bonus_tap_proc_chance_mult = support_modifiers.bonus_tap_proc_chance_mult as f32;
 
         for (proc_chance_basis_points, is_cosmic_haymaker) in proc_chances {
             for (has_crushing_instinct, has_ancestral_favor, has_astral_echo) in
@@ -290,6 +301,11 @@ impl PreDeterminedProc {
                     has_ancestral_favor,
                     has_raid_buff,
                     has_astral_echo,
+                    bonus_tap_proc_chance_mult_basis_points: if has_astral_echo {
+                        proc_chance_to_basis_points(bonus_tap_proc_chance_mult)
+                    } else {
+                        proc_chance_to_basis_points(1.0)
+                    },
                     tap_count,
                 };
 
@@ -323,7 +339,9 @@ impl PreDeterminedProc {
             let echo_proc_chance = if scenario.base_proc_chance() >= 1.0 {
                 1.0
             } else {
-                scenario.modified_proc_chance(0.5).min(1.0)
+                scenario
+                    .modified_proc_chance(scenario.bonus_tap_proc_chance_mult())
+                    .min(1.0)
             };
 
             echo_proc_chance * echo_tap_count as f32
@@ -404,21 +422,13 @@ impl SimService {
                 .all(|card| FAST_CALC_CARDS.contains(&card.card_id))
     }
 
-    fn deck_tick_count(deck: &[Card]) -> u32 {
-        let reduction_ticks = deck
-            .iter()
-            .find(|card| card.card_id == CardName::BattleDrums)
-            .map(|card| {
-                card.skill
-                    .value_b
-                    .map(|duration_seconds| {
-                        (duration_seconds.abs() * TICKS_PER_SECOND).round().max(0.0) as u32
-                    })
-                    .unwrap_or(BATTLE_DRUMS_DEFAULT_TICK_REDUCTION)
-            })
-            .unwrap_or(0);
+    fn deck_tick_count(deck: &[Card], boss: &Boss) -> u32 {
+        let support_modifiers = support_modifiers_for_deck(deck, boss);
+        let base_duration_seconds = TICKS_PER_ROUND as f64 / TICKS_PER_SECOND;
+        let duration_seconds =
+            (base_duration_seconds + support_modifiers.attack_duration_add_seconds).max(0.0);
 
-        TICKS_PER_ROUND.saturating_sub(reduction_ticks)
+        (duration_seconds * TICKS_PER_SECOND).round() as u32
     }
 
     pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
@@ -451,7 +461,7 @@ impl SimService {
 
         let mut card_proc_cache = PreDeterminedProc::new();
         for (deck, _) in &deck_patterns {
-            let tap_count = Self::deck_tick_count(deck);
+            let tap_count = Self::deck_tick_count(deck, &sim_stats.boss_stat);
             card_proc_cache.generate_proc_count(deck, &sim_stats.boss_stat, false, tap_count);
         }
         card_proc_cache.print_all();
@@ -583,7 +593,7 @@ impl SimService {
         }
 
         let sim_rounds = round;
-        let tap_count = Self::deck_tick_count(&select_deck);
+        let tap_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
         let should_update_boss = deck_creates_timed_boss_effect(&select_deck);
         let mut pattern_results: Vec<SimPatternResult> = Vec::new();
 
@@ -650,7 +660,11 @@ impl SimService {
                         );
 
                         if trigger_astral_echo_extra_tap(&mut deck) {
-                            let astral_proc_chance_scale = astral_echo_proc_chance_scale(&deck);
+                            let astral_proc_chance_scale = astral_echo_proc_chance_scale(
+                                cached_support.as_ref(),
+                                &mut deck,
+                                &boss,
+                            );
                             Self::tap_boss(
                                 &mut boss,
                                 current_target,
@@ -883,12 +897,12 @@ impl SimService {
             let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
             let mut support_deck = select_deck.clone();
             let support = combined_support_modifiers(&mut support_deck, &boss);
-            boss.set_support_modifiers(support);
+            boss.set_support_modifiers(support.clone());
 
             let target_parts =
                 pattern.fast_calc_target_parts(&boss, &select_deck, &sim_stats.attackable_part);
             let target_tap_counts =
-                Self::fast_math_target_tap_counts(&pattern, &target_parts, &select_deck);
+                Self::fast_math_target_tap_counts(&pattern, &target_parts, &select_deck, &boss);
             let total_target_taps = target_tap_counts
                 .iter()
                 .map(|(_, tap_count)| *tap_count)
@@ -913,8 +927,13 @@ impl SimService {
                     .iter()
                     .filter(|card| card.cardtype == CardType::Burst)
                 {
-                    let proc_count =
-                        Self::fast_proc_count_for_card(card, &boss, &select_deck, proc_cache);
+                    let proc_count = Self::fast_proc_count_for_card(
+                        card,
+                        &boss,
+                        &select_deck,
+                        &support,
+                        proc_cache,
+                    );
 
                     if proc_count <= 0.0 {
                         continue;
@@ -1028,12 +1047,13 @@ impl SimService {
         pattern: &AttackPattern,
         target_parts: &[BossPartName],
         deck: &[Card],
+        boss: &Boss,
     ) -> Vec<(BossPartName, u32)> {
         if target_parts.is_empty() {
             return Vec::new();
         }
 
-        let total_taps = Self::fast_total_taps(deck);
+        let total_taps = Self::fast_total_taps(deck, boss);
 
         if fast_calc_pattern_is_single_target(pattern) {
             return vec![(target_parts[0], total_taps)];
@@ -1054,8 +1074,8 @@ impl SimService {
             .collect()
     }
 
-    fn fast_total_taps(deck: &[Card]) -> u32 {
-        let base_taps = Self::deck_tick_count(deck);
+    fn fast_total_taps(deck: &[Card], boss: &Boss) -> u32 {
+        let base_taps = Self::deck_tick_count(deck, boss);
         let echo_taps = if deck.iter().any(|card| card.card_id == CardName::AstralEcho) {
             base_taps / 5
         } else {
@@ -1069,6 +1089,7 @@ impl SimService {
         card: &Card,
         boss: &Boss,
         deck: &[Card],
+        support_modifiers: &SupportModifiers,
         proc_cache: &PreDeterminedProc,
     ) -> f32 {
         let proc_chance_basis_points = if card.card_id == CardName::CosmicHaymaker {
@@ -1087,7 +1108,15 @@ impl SimService {
                 .any(|card| card.card_id == CardName::AncestralFavor),
             has_raid_buff: false,
             has_astral_echo: deck.iter().any(|card| card.card_id == CardName::AstralEcho),
-            tap_count: Self::deck_tick_count(deck),
+            bonus_tap_proc_chance_mult_basis_points: if deck
+                .iter()
+                .any(|card| card.card_id == CardName::AstralEcho)
+            {
+                proc_chance_to_basis_points(support_modifiers.bonus_tap_proc_chance_mult as f32)
+            } else {
+                proc_chance_to_basis_points(1.0)
+            },
+            tap_count: Self::deck_tick_count(deck, boss),
         };
 
         proc_cache.get_proc_count(scenario).unwrap_or(0.0)
@@ -1671,11 +1700,20 @@ fn trigger_astral_echo_extra_tap(deck: &mut [Card]) -> bool {
     true
 }
 
-fn astral_echo_proc_chance_scale(deck: &[Card]) -> f64 {
-    deck.iter()
-        .find(|card| card.card_id == CardName::AstralEcho)
-        .and_then(|card| card.skill.bonus_d)
-        .unwrap_or(0.5)
+fn astral_echo_proc_chance_scale(
+    cached_support: Option<&SupportModifiers>,
+    deck: &mut [Card],
+    boss: &Boss,
+) -> f64 {
+    cached_support
+        .cloned()
+        .unwrap_or_else(|| combined_support_modifiers(deck, boss))
+        .bonus_tap_proc_chance_mult
+}
+
+fn support_modifiers_for_deck(deck: &[Card], boss: &Boss) -> SupportModifiers {
+    let mut deck = deck.to_vec();
+    combined_support_modifiers(&mut deck, boss)
 }
 
 fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {

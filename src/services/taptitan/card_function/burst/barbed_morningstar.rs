@@ -29,9 +29,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         PartState::Armor | PartState::Cursed => {
             1.0 + armor_damage_boost * body_part_count(boss, max_bonus_parts) as f64
         }
-        PartState::Body => {
-            1.0 + body_damage_boost * armor_part_count(boss, max_bonus_parts) as f64
-        }
+        PartState::Body => 1.0 + body_damage_boost * armor_part_count(boss, max_bonus_parts) as f64,
         PartState::Skeleton => 1.0,
     };
     let result_damage = (damage * burst_mult * bonus_mult).max(0.0) as u64;

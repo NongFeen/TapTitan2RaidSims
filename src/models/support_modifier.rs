@@ -21,9 +21,13 @@ pub struct SupportModifiers {
     //all dmg
     pub all_damage_add: f64,
 
+    //raid flow
+    pub attack_duration_add_seconds: f64,
+
     //multiplcative
     pub burst_chance_mult: f64,
     pub affliction_chance_mult: f64,
+    pub bonus_tap_proc_chance_mult: f64,
 }
 impl Default for SupportModifiers {
     fn default() -> Self {
@@ -36,9 +40,11 @@ impl Default for SupportModifiers {
             burst_damage_add: 0.0,
             affliction_damage_add: 0.0,
             all_damage_add: 0.0,
+            attack_duration_add_seconds: 0.0,
 
             burst_chance_mult: 1.0,
             affliction_chance_mult: 1.0,
+            bonus_tap_proc_chance_mult: 1.0,
         }
     }
 }
@@ -53,8 +59,10 @@ impl SupportModifiers {
             acc.burst_damage_add += m.burst_damage_add;
             acc.affliction_damage_add += m.affliction_damage_add;
             acc.all_damage_add += m.all_damage_add;
+            acc.attack_duration_add_seconds += m.attack_duration_add_seconds;
             acc.burst_chance_mult *= m.burst_chance_mult;
             acc.affliction_chance_mult *= m.affliction_chance_mult;
+            acc.bonus_tap_proc_chance_mult *= m.bonus_tap_proc_chance_mult;
             return acc;
         })
     }
@@ -105,7 +113,7 @@ impl fmt::Display for SupportModifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SupportModifiers {{ head: +{}%, torso: +{}%, limb: +{}%, body: +{}%, armor: +{}%, burst_dmg: +{}%, affliction_dmg: +{}%, all: +{}%, burst_chance: x{:.2}, affliction_chance: x{:.2} }}",
+            "SupportModifiers {{ head: +{}%, torso: +{}%, limb: +{}%, body: +{}%, armor: +{}%, burst_dmg: +{}%, affliction_dmg: +{}%, all: +{}%, duration: {}s, burst_chance: x{:.2}, affliction_chance: x{:.2}, bonus_tap_proc_chance: x{:.2} }}",
             self.head_damage_add * 100.0,
             self.torso_damage_add * 100.0,
             self.limb_damage_add * 100.0,
@@ -114,8 +122,10 @@ impl fmt::Display for SupportModifiers {
             self.burst_damage_add * 100.0,
             self.affliction_damage_add * 100.0,
             self.all_damage_add * 100.0,
+            self.attack_duration_add_seconds,
             self.burst_chance_mult,
             self.affliction_chance_mult,
+            self.bonus_tap_proc_chance_mult,
         )
     }
 }
