@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 use super::sim_service::SimStats;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttackPattern {
     SingleAny,
     SingleHead,
@@ -58,6 +58,35 @@ const ALL_BOSS_PARTS: [BossPartName; 8] = [
 #[allow(dead_code)]
 const DEBUG_HEAD_TORSO_SUPPORT_PATTERNS: bool = true;
 const MAX_ATTACK_PATTERNS_PER_DECK: usize = 3; // 0 = no cap
+
+const BASE_ATTACK_PATTERNS: &[AttackPattern] = &[
+    AttackPattern::SingleAny,
+    AttackPattern::SingleHead,
+    AttackPattern::SingleTorso,
+    AttackPattern::SingleBody,
+    AttackPattern::SingleArmor,
+    AttackPattern::SingleLimb,
+    AttackPattern::CycleHeadTorso,
+    AttackPattern::CycleLimb,
+    AttackPattern::CycleBody,
+    AttackPattern::CycleArmor,
+    AttackPattern::CycleParts(2),
+    AttackPattern::CycleParts(3),
+    AttackPattern::CycleParts(4),
+    AttackPattern::CycleParts(5),
+    AttackPattern::CycleParts(6),
+    AttackPattern::CycleParts(7),
+    AttackPattern::CycleAllActive,
+    AttackPattern::SingleCursed,
+    AttackPattern::CycleCursed,
+    AttackPattern::FusionBombSpread,
+    AttackPattern::ThrivingPlagueSpread,
+    AttackPattern::RadioactivitySpread,
+    AttackPattern::DecayingStrikeFocus,
+    AttackPattern::BlazingInfernoStack,
+    AttackPattern::CelestialStatic,
+    AttackPattern::WhipRuinousFocus,
+];
 
 struct CandidateParts {
     parts: [BossPartName; 8],
@@ -832,7 +861,7 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
 
     let mut patterns = Vec::new();
 
-    for pattern in base_attack_patterns() {
+    for pattern in base_attack_patterns().iter().copied() {
         if pattern_is_available_for_deck(&pattern, deck)
             && pattern_passes_deck_rules(&pattern, sim_stats, deck)
             && pattern_has_candidates(&pattern, sim_stats, deck)
@@ -849,37 +878,8 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     patterns
 }
 
-fn base_attack_patterns() -> Vec<AttackPattern> {
-    vec![
-        AttackPattern::SingleAny,
-        AttackPattern::SingleHead,
-        AttackPattern::SingleTorso,
-        AttackPattern::SingleBody,
-        AttackPattern::SingleArmor,
-        AttackPattern::SingleLimb,
-        AttackPattern::CycleHeadTorso,
-        AttackPattern::CycleLimb,
-        AttackPattern::CycleBody,
-        AttackPattern::CycleArmor,
-        AttackPattern::CycleParts(2),
-        AttackPattern::CycleParts(3),
-        AttackPattern::CycleParts(4),
-        AttackPattern::CycleParts(5),
-        AttackPattern::CycleParts(6),
-        AttackPattern::CycleParts(7),
-        AttackPattern::CycleAllActive,
-        //new
-        AttackPattern::SingleCursed,
-        AttackPattern::CycleCursed,
-        // card specific patterns
-        AttackPattern::FusionBombSpread,
-        AttackPattern::ThrivingPlagueSpread,
-        AttackPattern::RadioactivitySpread,
-        AttackPattern::DecayingStrikeFocus,
-        AttackPattern::BlazingInfernoStack,
-        AttackPattern::CelestialStatic,
-        AttackPattern::WhipRuinousFocus,
-    ]
+fn base_attack_patterns() -> &'static [AttackPattern] {
+    BASE_ATTACK_PATTERNS
 }
 
 fn pattern_has_candidates(pattern: &AttackPattern, sim_stats: &SimStats, deck: &[Card]) -> bool {
