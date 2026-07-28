@@ -1,5 +1,6 @@
 use super::attack_pattern::{AttackPattern, generate_attack_patterns};
 use super::card_function::support::totem_of_power::{self, PendingTotem};
+use super::csv::deck_pair_rules;
 use crate::models::boss::{Boss, BossPartName, PartState};
 use crate::models::cards::{Card, CardName, CardType};
 use crate::models::damage_source::DamageSource;
@@ -1370,7 +1371,9 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         //     c3.card_id.display_name()
         // );
         // 3. Keep the deck only if it is synergistic and boss-compatible!
-        if is_deck_synergistic(sim_stats, c1, c2, c3)
+        let deck = [c1, c2, c3];
+        if deck_pair_rules::deck_passes_pair_table(&deck)
+            && is_deck_synergistic(sim_stats, c1, c2, c3)
             && is_deck_boss_suitable(sim_stats, c1, c2, c3)
         {
             // Dereference the pointers to store clean Card values
@@ -1494,31 +1497,31 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         println!("Rule 3 PASS")
     }
 
-    //Rule 4 Burst support must use with burst card or other support card
-    if has_ancestral_favor {
-        if burst_count < 1 {
-            return false;
-        }
-        if affliction_count == 1 && !has_maelstrom {
-            return false;
-        }
-    }
-    if IS_CHECK_CARD_SYNERGY {
-        println!("Rule 4 PASS")
-    }
+    // //Rule 4 Burst support must use with burst card or other support card
+    // if has_ancestral_favor {
+    //     if burst_count < 1 {
+    //         return false;
+    //     }
+    //     if affliction_count == 1 && !has_maelstrom {
+    //         return false;
+    //     }
+    // }
+    // if IS_CHECK_CARD_SYNERGY {
+    //     println!("Rule 4 PASS")
+    // }
 
     //Rule 5 Affliction support must use with burst card or other support card
-    if has_rancid_gas {
-        if affliction_count < 1 {
-            return false;
-        }
-        if burst_count == 1 && !has_guard_break {
-            return false;
-        }
-    }
-    if IS_CHECK_CARD_SYNERGY {
-        println!("Rule 5 PASS")
-    }
+    // if has_rancid_gas {
+    //     if affliction_count < 1 {
+    //         return false;
+    //     }
+    //     if burst_count == 1 && !has_guard_break {
+    //         return false;
+    //     }
+    // }
+    // if IS_CHECK_CARD_SYNERGY {
+    //     println!("Rule 5 PASS")
+    // }
 
     //Rule 6 never 3 support card
     if support_count == 3 {
@@ -1529,27 +1532,27 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
     }
 
     // //Rule 7 : Sand of Time card must use with another debuff inflict card
-    if has_sands_of_time {
-        if affliction_count <= 1 {
-            return false;
-        }
-        if has_maelstrom && affliction_count == 2 {
-            return false;
-        }
-    }
-    if IS_CHECK_CARD_SYNERGY {
-        println!("Rule 7 PASS")
-    }
+    // if has_sands_of_time {
+    //     if affliction_count <= 1 {
+    //         return false;
+    //     }
+    //     if has_maelstrom && affliction_count == 2 {
+    //         return false;
+    //     }
+    // }
+    // if IS_CHECK_CARD_SYNERGY {
+    //     println!("Rule 7 PASS")
+    // }
 
     //rule 8 : celestial card not suit with limb support card
-    if has_celestial_static {
-        if has_grasping_vines || has_totem_of_power {
-            return false;
-        }
-    }
-    if IS_CHECK_CARD_SYNERGY {
-        println!("Rule 8 PASS")
-    }
+    // if has_celestial_static {
+    //     if has_grasping_vines || has_totem_of_power {
+    //         return false;
+    //     }
+    // }
+    // if IS_CHECK_CARD_SYNERGY {
+    //     println!("Rule 8 PASS")
+    // }
 
     //rule 9
     // have no damage card.
@@ -1570,9 +1573,9 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
         if affliction_count < 1 {
             return false;
         }
-        if has_electro_zap {
-            return false;
-        }
+        // if has_electro_zap {
+        //     return false;
+        // }
     }
 
     if IS_CHECK_CARD_SYNERGY {
@@ -1581,26 +1584,26 @@ fn is_deck_synergistic(sim_stats: &SimStats, c1: &Card, c2: &Card, c3: &Card) ->
 
     //rule 11
     //some affliction should not use with sot
-    if has_sands_of_time {
-        if has_corrosive_bubble || has_ravenous_swarm || has_ruinous_rain || has_totem_of_power {
-            return false;
-        }
-    }
+    // if has_sands_of_time {
+    //     if has_corrosive_bubble || has_ravenous_swarm || has_ruinous_rain || has_totem_of_power {
+    //         return false;
+    //     }
+    // }
 
     //rule 12
-    if has_fusion_bomb {
-        if has_totem_of_power || has_soul_fire || has_crushing_instinct {
-            return false;
-        }
-    }
+    // if has_fusion_bomb {
+    //     if has_totem_of_power || has_soul_fire || has_crushing_instinct {
+    //         return false;
+    //     }
+    // }
 
     //rule 14
     //2 support cards must intersect some boss part
-    if has_soul_fire || has_crushing_instinct {
-        if has_grasping_vines {
-            return false;
-        }
-    }
+    // if has_soul_fire || has_crushing_instinct {
+    //     if has_grasping_vines {
+    //         return false;
+    //     }
+    // }
     //rule 15
     // has totem with spread type affliction without purify
     if has_totem_of_power && !has_purify {

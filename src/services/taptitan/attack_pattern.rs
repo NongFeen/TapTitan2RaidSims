@@ -1016,9 +1016,9 @@ fn deck_has_spread_affliction(deck: &[Card]) -> bool {
         matches!(
             card.card_id,
             CardName::FusionBomb
-            | CardName::ThrivingPlague
-            | CardName::BlazingInferno
-            | CardName::Amplify
+                | CardName::ThrivingPlague
+                | CardName::BlazingInferno
+                | CardName::Amplify
         )
     })
 }
