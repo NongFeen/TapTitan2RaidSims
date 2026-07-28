@@ -63,9 +63,9 @@ impl AfflictionStack {
         }
     }
 
-    pub fn refresh(&mut self, duration: f64) {
-        self.refresh_with_sands_of_time_boost(duration, self.sands_of_time_boosted);
-    }
+    // pub fn refresh(&mut self, duration: f64) {
+    //     self.refresh_with_sands_of_time_boost(duration, self.sands_of_time_boosted);
+    // }
 
     pub fn refresh_with_sands_of_time_boost(&mut self, duration: f64, sands_of_time_boosted: bool) {
         self.remaining_duration = duration;
