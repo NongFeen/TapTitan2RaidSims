@@ -17,7 +17,7 @@ use std::sync::{
 };
 use strum::IntoEnumIterator;
 
-const SIMS_ROUNDS: u64 = 5;
+const SIMS_ROUNDS: u64 = 20;
 const TICKS_PER_ROUND: u32 = 600;
 const TICKS_PER_SECOND: f64 = 20.0;
 const PRINT_SIM_PATTERN_PROGRESS: bool = true;
@@ -797,7 +797,7 @@ impl SimService {
             .iter()
             .map(|card| card.card_id)
             .collect::<Vec<_>>();
-        let mut pattern_results: Vec<SimPatternResult> = Vec::new();
+        let mut best_pattern: Option<SimPatternResult> = None;
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
             let pattern_name = pattern.describe();
@@ -923,7 +923,7 @@ impl SimService {
                 })
                 .collect();
 
-            pattern_results.push(SimPatternResult {
+            let pattern_result = SimPatternResult {
                 pattern: pattern_name.clone(),
                 average_damage,
                 average_damage_display: format_compact(average_damage),
@@ -932,7 +932,13 @@ impl SimService {
                 highest_round_damage,
                 highest_round_damage_display: format_compact(highest_round_damage),
                 card_damage,
-            });
+            };
+
+            if best_pattern.as_ref().map_or(true, |best| {
+                pattern_result.average_damage > best.average_damage
+            }) {
+                best_pattern = Some(pattern_result);
+            }
 
             let (current_progress, total_progress) =
                 advance_sim_progress(progress, pattern_index, total_attack_patterns);
@@ -968,13 +974,11 @@ impl SimService {
             }
         }
 
-        pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
-
         SimDeckResult {
             deck,
             deck_names,
             total_attack_patterns,
-            best_pattern: pattern_results.into_iter().next(),
+            best_pattern,
         }
     }
     fn tap_boss(
@@ -1076,7 +1080,7 @@ impl SimService {
             };
         }
 
-        let mut pattern_results = Vec::new();
+        let mut best_pattern: Option<SimPatternResult> = None;
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
             let pattern_name = pattern.describe();
@@ -1172,7 +1176,7 @@ impl SimService {
                 })
                 .collect();
 
-            pattern_results.push(SimPatternResult {
+            let pattern_result = SimPatternResult {
                 pattern: pattern_name.clone(),
                 average_damage: total_damage,
                 average_damage_display: format_compact(total_damage),
@@ -1181,7 +1185,13 @@ impl SimService {
                 highest_round_damage: total_damage,
                 highest_round_damage_display: format_compact(total_damage),
                 card_damage,
-            });
+            };
+
+            if best_pattern.as_ref().map_or(true, |best| {
+                pattern_result.average_damage > best.average_damage
+            }) {
+                best_pattern = Some(pattern_result);
+            }
 
             let (current_progress, total_progress) =
                 advance_sim_progress(progress, pattern_index, total_attack_patterns);
@@ -1217,13 +1227,11 @@ impl SimService {
             }
         }
 
-        pattern_results.sort_by(|a, b| b.average_damage.cmp(&a.average_damage));
-
         SimDeckResult {
             deck,
             deck_names,
             total_attack_patterns,
-            best_pattern: pattern_results.into_iter().next(),
+            best_pattern,
         }
     }
 
