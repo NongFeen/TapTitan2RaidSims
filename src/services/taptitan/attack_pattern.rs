@@ -1032,19 +1032,28 @@ fn keep_top_attack_patterns(
         return;
     }
 
-    let mut ranked_patterns = patterns.drain(..).enumerate().collect::<Vec<_>>();
+    let mut ranked_patterns = patterns
+        .drain(..)
+        .enumerate()
+        .map(|(index, pattern)| {
+            let priority = attack_pattern_priority(&pattern, sim_stats, deck);
+            (index, pattern, priority)
+        })
+        .collect::<Vec<_>>();
 
-    ranked_patterns.sort_by(|(left_index, left_pattern), (right_index, right_pattern)| {
-        attack_pattern_priority(right_pattern, sim_stats, deck)
-            .cmp(&attack_pattern_priority(left_pattern, sim_stats, deck))
-            .then_with(|| left_index.cmp(right_index))
-    });
+    ranked_patterns.sort_by(
+        |(left_index, _, left_priority), (right_index, _, right_priority)| {
+            right_priority
+                .cmp(left_priority)
+                .then_with(|| left_index.cmp(right_index))
+        },
+    );
 
     patterns.extend(
         ranked_patterns
             .into_iter()
             .take(MAX_ATTACK_PATTERNS_PER_DECK)
-            .map(|(_, pattern)| pattern),
+            .map(|(_, pattern, _)| pattern),
     );
 }
 
