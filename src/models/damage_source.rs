@@ -9,16 +9,4 @@ pub enum DamageSource {
     Card(CardName),
 }
 
-impl DamageSource {
-    pub fn label(&self) -> &'static str {
-        match self {
-            DamageSource::Tap => "Tap",
-            DamageSource::Card(card_name) => match card_name {
-                CardName::MoonBeam => "MoonBeam",
-                CardName::GuardBreak => "Weaken",
-                CardName::RuinousRain => "Rain",
-                _ => card_name.id(),
-            },
-        }
-    }
-}
+impl DamageSource {}

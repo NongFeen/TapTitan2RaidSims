@@ -112,7 +112,7 @@ pub fn on_tick(
             .fold(0u64, u64::saturating_add);
 
         if tick_damage > 0 {
-            let lowest_remaining = affliction
+            let _lowest_remaining = affliction
                 .stacks
                 .iter()
                 .filter(|stack| stack.remaining_duration > 0.0)

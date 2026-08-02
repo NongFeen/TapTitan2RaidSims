@@ -19,10 +19,6 @@ mod razor_wind;
 mod skull_bash;
 mod whip_of_lightning;
 
-fn default_damage(_card: &Card, _boss: &Boss, _target_part: BossPartName, damage: f64) -> f64 {
-    damage
-}
-
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     match card.card_id {
         CardName::CelestialStatic => celestial_static::get_proc_chance(card, boss),

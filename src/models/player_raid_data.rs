@@ -57,7 +57,6 @@ impl TitanSoulResearch {
             BossName::Terro => self.terro_mult,
             BossName::Klonk => self.klonk_mult,
             BossName::Priker => self.priker_mult,
-            _ => 0.0,
         }
     }
 
@@ -171,7 +170,6 @@ impl RaidCardResearch {
             BossName::Terro => self.terro_damage,
             BossName::Klonk => self.klonk_damage,
             BossName::Priker => self.priker_damage,
-            _ => 0,
         };
         amt as f32
     }
@@ -187,7 +185,6 @@ impl RaidCardResearch {
                 BossName::Terro => self.burst_terro_damage,
                 BossName::Klonk => self.burst_klonk_damage,
                 BossName::Priker => self.burst_priker_damage,
-                _ => 0,
             },
             CardType::Affliction => match boss_name {
                 BossName::Lojak => self.affliction_lojak_damage,
@@ -198,7 +195,6 @@ impl RaidCardResearch {
                 BossName::Terro => self.affliction_terro_damage,
                 BossName::Klonk => self.affliction_klonk_damage,
                 BossName::Priker => self.affliction_priker_damage,
-                _ => 0,
             },
             _ => 0,
         };
@@ -296,7 +292,6 @@ impl GemstoneResearch {
             BossName::Terro => self.terro_damage,
             BossName::Klonk => self.klonk_damage,
             BossName::Priker => self.priker_damage,
-            _ => 0,
         };
         amt as f32
     }
@@ -312,7 +307,6 @@ impl GemstoneResearch {
                 BossName::Terro => self.burst_terro_damage,
                 BossName::Klonk => self.burst_klonk_damage,
                 BossName::Priker => self.burst_priker_damage,
-                _ => 0,
             },
             CardType::Affliction => match boss_name {
                 BossName::Lojak => self.affliction_lojak_damage,
@@ -323,7 +317,6 @@ impl GemstoneResearch {
                 BossName::Terro => self.affliction_terro_damage,
                 BossName::Klonk => self.affliction_klonk_damage,
                 BossName::Priker => self.affliction_priker_damage,
-                _ => 0,
             },
             _ => 0,
         };

@@ -8,4 +8,3 @@ pub mod player_raid_data;
 pub mod responses;
 pub mod sim_payload;
 pub mod support_modifier;
-pub mod taptitan_game_dto;

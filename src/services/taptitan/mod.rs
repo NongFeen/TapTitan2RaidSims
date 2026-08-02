@@ -1,5 +1,4 @@
 pub mod attack_pattern;
-pub mod boss_service;
 pub mod card_function;
 pub mod csv;
 pub mod player_service;

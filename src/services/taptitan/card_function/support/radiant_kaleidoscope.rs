@@ -4,7 +4,7 @@ use crate::models::{
     support_modifier::SupportModifiers,
 };
 
-pub fn get_modifiers(card: &mut Card, boss: &Boss, deck: &[Card]) -> SupportModifiers {
+pub fn get_modifiers(card: &mut Card, _boss: &Boss, deck: &[Card]) -> SupportModifiers {
     let has_burst = deck.iter().any(|c| c.cardtype == CardType::Burst);
     let has_affliction = deck.iter().any(|c| c.cardtype == CardType::Affliction);
 

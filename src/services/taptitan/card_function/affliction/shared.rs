@@ -16,10 +16,6 @@ pub(super) fn get_proc_chance(card: &Card, _boss: &Boss) -> f64 {
         .min(card.skill.max_chance.max(card.skill.chance))
 }
 
-pub(super) fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
-    on_proc_with_tick_interval(card, boss, target_part, damage, 1.0);
-}
-
 pub(super) fn on_proc_with_tick_interval(
     card: &Card,
     boss: &mut Boss,

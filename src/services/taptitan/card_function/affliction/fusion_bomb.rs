@@ -28,7 +28,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
 }
 
 pub fn on_tick(
-    affliction: &Affliction,
+    _affliction: &Affliction,
     _boss: &BossTickView,
     _part_name: BossPartName,
     _stack_multiplier: f64,
