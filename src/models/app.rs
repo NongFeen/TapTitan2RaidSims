@@ -13,6 +13,17 @@ pub struct PlayerSummary {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct PlayerDetail {
+    pub player_id: String,
+    pub display_name: String,
+    pub auto_sims: bool,
+    pub latest_stats_version: Option<i64>,
+    pub stats: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreatePlayerRequest {
     pub player_id: String,
@@ -24,6 +35,13 @@ pub struct CreatePlayerRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateAutoSimsRequest {
     pub auto_sims: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum UpdatePlayerStatsRequest {
+    Cleaned(crate::models::player_raid_data::PlayerRaidData),
+    Raw(crate::models::player_data::PlayerData),
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

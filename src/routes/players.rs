@@ -11,11 +11,12 @@ use crate::{
     error::AppError,
     models::{
         app::{
-            CreatePlayerRequest, CreateSimulationJobRequest, PlayerStatsVersion, PlayerSummary,
-            UpdateAutoSimsRequest,
+            CreatePlayerRequest, CreateSimulationJobRequest, PlayerDetail, PlayerStatsVersion,
+            PlayerSummary, UpdateAutoSimsRequest, UpdatePlayerStatsRequest,
         },
         player_raid_data::PlayerRaidData,
     },
+    services::taptitan::player_service::clean_data,
     state::AppState,
 };
 
@@ -72,9 +73,9 @@ pub async fn list(
 pub async fn get(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
-) -> Result<Json<PlayerSummary>, AppError> {
+) -> Result<Json<PlayerDetail>, AppError> {
     let player = sqlx::query_as(
-        "SELECT p.player_id, p.display_name, p.auto_sims, MAX(v.version) AS latest_stats_version, p.created_at, p.updated_at FROM players p LEFT JOIN player_stat_versions v ON v.player_id=p.id WHERE p.player_id=$1 GROUP BY p.id",
+        "SELECT p.player_id, p.display_name, p.auto_sims, latest.version AS latest_stats_version, latest.stats, p.created_at, p.updated_at FROM players p LEFT JOIN LATERAL (SELECT v.version, v.stats FROM player_stat_versions v WHERE v.player_id=p.id ORDER BY v.version DESC LIMIT 1) latest ON TRUE WHERE p.player_id=$1",
     )
     .bind(player_id)
     .fetch_optional(state.db()?)
@@ -86,8 +87,12 @@ pub async fn get(
 pub async fn update_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
-    Json(stats): Json<PlayerRaidData>,
+    Json(request): Json<UpdatePlayerStatsRequest>,
 ) -> Result<(StatusCode, Json<PlayerStatsVersion>), AppError> {
+    let stats = match request {
+        UpdatePlayerStatsRequest::Cleaned(stats) => stats,
+        UpdatePlayerStatsRequest::Raw(raw) => clean_data(&raw),
+    };
     validate_stats(&stats)?;
     let mut tx = state.db()?.begin().await?;
     let internal_id: Option<Uuid> =
@@ -192,4 +197,21 @@ fn validate_stats(stats: &PlayerRaidData) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_raw_player_export_for_stats_update() {
+        let request: UpdatePlayerStatsRequest =
+            serde_json::from_str(include_str!("../../playerDataSample.json"))
+                .expect("raw player sample should deserialize");
+        let UpdatePlayerStatsRequest::Raw(raw) = request else {
+            panic!("raw sample was mistaken for cleaned stats");
+        };
+        let cleaned = clean_data(&raw);
+        validate_stats(&cleaned).expect("converted raw player stats should be valid");
+    }
 }

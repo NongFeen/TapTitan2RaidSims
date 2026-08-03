@@ -37,6 +37,8 @@ docker compose down
 
 Updating the stats of an auto-sim player, or enabling `auto_sims` while a boss is active, automatically schedules the current boss simulation. Equivalent player/stat/boss/simulator inputs reuse the existing job.
 
+`PUT /api/players/{player_id}/stats` accepts either the raw Tap Titans player export or the cleaned `PlayerRaidData` format. Raw input is cleaned automatically before it is validated and stored.
+
 All individual results are available at `GET /api/simulation-jobs/{job_id}/deck-results?limit=100&offset=0`.
 
 The existing synchronous simulation endpoints remain available for debugging and compatibility. New automated callers should use `POST /internal/simulation-jobs`.
