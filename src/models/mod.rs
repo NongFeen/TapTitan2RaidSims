@@ -1,4 +1,5 @@
 pub mod affliction;
+pub mod app;
 pub mod boss;
 pub mod card_skill_data;
 pub mod cards;

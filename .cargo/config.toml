@@ -6,7 +6,7 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [alias]
-dev     = "watch -x run"
-test    = "watch -x test"
-lint    = "clippy --all-targets"
-fmt     = "fmt --all"
+dev       = "watch -x run"
+test-watch = "watch -x test"
+lint      = "clippy --all-targets"
+format    = "fmt --all"

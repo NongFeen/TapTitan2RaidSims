@@ -1,13 +1,54 @@
 use crate::routes;
 use crate::state::AppState;
-use axum::{Router, routing::get, routing::post};
+use axum::{Router, middleware, routing::get, routing::post, routing::put};
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
+    let internal = Router::new()
+        .route("/simulation-jobs", post(routes::jobs::create))
+        .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
+        .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
+        .route("/raid-events", post(routes::raids::ingest_event))
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            routes::internal_auth::require_key,
+        ));
+
     Router::new()
+        .nest("/internal", internal)
         //GET
         .route("/api/health", get(routes::health::handler))
+        .route(
+            "/api/players",
+            post(routes::players::create).get(routes::players::list),
+        )
+        .route("/api/players/{player_id}", get(routes::players::get))
+        .route(
+            "/api/players/{player_id}/simulation-jobs",
+            get(routes::jobs::list_for_player),
+        )
+        .route(
+            "/api/players/{player_id}/stats",
+            put(routes::players::update_stats),
+        )
+        .route(
+            "/api/players/{player_id}/stats/latest",
+            get(routes::players::latest_stats),
+        )
+        .route(
+            "/api/players/{player_id}/auto_sims",
+            put(routes::players::update_auto_sims),
+        )
+        .route("/api/raids/current/boss", get(routes::raids::current))
+        .route(
+            "/api/players/{player_id}/recommendations/current",
+            get(routes::recommendations::current_for_player),
+        )
+        .route(
+            "/api/simulation-jobs/{job_id}/deck-results",
+            get(routes::recommendations::deck_results),
+        )
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
         //POST
         .route(
