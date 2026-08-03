@@ -1,6 +1,6 @@
 # Feen backend
 
-Rust backend for Tap Titans raid simulations. Player stats and boss events are versioned in PostgreSQL; simulations run as persistent background jobs; every deck result is stored; and the backend calculates the highest-total 6- and 9-deck sets without duplicated cards.
+Rust backend for Tap Titans raid simulations. Player stats are versioned in PostgreSQL, one current boss is stored, simulations run as persistent background jobs, every current result is stored, and the backend calculates the highest-total 6- and 9-deck sets without duplicated cards.
 
 ## Run locally
 
@@ -31,7 +31,7 @@ docker compose down
 1. Create a player with `POST /api/players`. The optional unique `player_id` holds the Tap Titans player identifier.
 2. Store the player's current stats with `PUT /api/players/{player_id}/stats`. Each update creates an immutable version.
 3. Enable automatic simulations with `PUT /api/players/{player_id}/auto_sims` and `{ "auto_sims": true }`.
-4. Deliver a normalized boss-spawn event to `POST /internal/raid-events`. Duplicate `event_id` values are idempotent.
+4. Replace the current boss with `PUT /internal/raids/current/boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the boss.
 5. A persistent simulation job is created for every player with `auto_sims` enabled. Poll `GET /internal/simulation-jobs/{job_id}` or list `GET /api/players/{player_id}/simulation-jobs`.
 6. Read the best set from `GET /api/players/{player_id}/recommendations/current?deck_count=6` (or `9`).
 
@@ -45,7 +45,7 @@ The existing synchronous simulation endpoints remain available for debugging and
 
 ## Raid API boundary
 
-`POST /internal/raid-events` is the stable normalized event boundary. Tap Titans exposes raid data over Socket.IO using an in-game generated token, but the protocol documentation and token are external to this repository. A live subscriber can map its boss-spawn message to this endpoint without coupling the simulation/domain code to Socket.IO. Do not commit a raid API token; supply it through runtime configuration when the subscriber is added.
+`PUT /internal/raids/current/boss` is the single normalized boss boundary. Its body contains `boss_data`, `attackable_parts`, and `run_sims`. Replacing the singleton current boss deletes all previous simulation jobs, deck results, and recommendations. A future Tap Titans subscriber should call this route with `run_sims: true`; manual setup can use `false`.
 
 ## Checks
 

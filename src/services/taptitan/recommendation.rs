@@ -6,6 +6,8 @@ use strum::IntoEnumIterator;
 use crate::models::cards::CardName;
 use crate::services::taptitan::sim_service::SimDeckResult;
 
+const GREEDY_SEED_LIMIT: usize = 2_048;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CandidateDeck {
     pub source_index: usize,
@@ -101,7 +103,7 @@ fn seed_with_greedy(
 ) {
     // Multiple starting points produce a useful lower bound before exact search.
     // A strong incumbent makes branch-and-bound practical for a full card pool.
-    for forced in 0..candidates.len().min(64) {
+    for forced in 0..candidates.len().min(GREEDY_SEED_LIMIT) {
         let mut used_cards = candidates[forced].card_mask;
         let mut total = candidates[forced].average_damage;
         let mut selected = vec![forced];

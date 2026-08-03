@@ -39,14 +39,13 @@ pub async fn create_job(
         row.ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
     let player_stats: PlayerRaidData = serde_json::from_value(stats_json)?;
 
-    let boss_row: Option<(serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
-        "SELECT boss_data, attackable_parts, version FROM raid_bosses WHERE id = $1",
+    let boss_row: Option<(Uuid, serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
+        "SELECT id, boss_data, attackable_parts, version FROM raid_bosses WHERE active=TRUE LIMIT 1",
     )
-    .bind(request.raid_boss_id)
     .fetch_optional(state.db()?)
     .await?;
-    let (boss_json, attackable_json, boss_version) =
-        boss_row.ok_or_else(|| AppError::NotFound("Raid boss not found".to_string()))?;
+    let (raid_boss_id, boss_json, attackable_json, boss_version) =
+        boss_row.ok_or_else(|| AppError::NotFound("No current raid boss".to_string()))?;
     let boss_data: Boss = serde_json::from_value(boss_json)?;
     let attackable_part: Vec<BossPartName> = serde_json::from_value(attackable_json)?;
     let usable_card: Vec<CardName> = player_stats
@@ -63,7 +62,7 @@ pub async fn create_job(
     };
     let deduplication_key = format!(
         "{}:{}:{}:{}:{}",
-        internal_player_id, stats_version, request.raid_boss_id, boss_version, SIMULATOR_VERSION
+        internal_player_id, stats_version, raid_boss_id, boss_version, SIMULATOR_VERSION
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(
@@ -72,7 +71,7 @@ pub async fn create_job(
     .bind(job_id)
     .bind(internal_player_id)
     .bind(stats_version_id)
-    .bind(request.raid_boss_id)
+    .bind(raid_boss_id)
     .bind(&deduplication_key)
     .bind(SIMULATOR_VERSION)
     .bind(serde_json::to_value(payload)?)
@@ -212,7 +211,7 @@ async fn persist_results(
 }
 
 pub async fn get_job(state: &AppState, job_id: Uuid) -> Result<SimulationJobView, AppError> {
-    sqlx::query_as("SELECT j.id, p.player_id, j.player_stat_version_id, j.raid_boss_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE j.id=$1")
+    sqlx::query_as("SELECT j.id, p.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE j.id=$1")
         .bind(job_id)
         .fetch_optional(state.db()?)
         .await?
@@ -223,7 +222,7 @@ pub async fn list_player_jobs(
     state: &AppState,
     player_id: &str,
 ) -> Result<Vec<SimulationJobView>, AppError> {
-    let jobs = sqlx::query_as("SELECT j.id, p.player_id, j.player_stat_version_id, j.raid_boss_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 ORDER BY j.created_at DESC LIMIT 100")
+    let jobs = sqlx::query_as("SELECT j.id, p.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 ORDER BY j.created_at DESC LIMIT 100")
         .bind(player_id)
         .fetch_all(state.db()?)
         .await?;

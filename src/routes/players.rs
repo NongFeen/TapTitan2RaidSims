@@ -164,12 +164,11 @@ async fn enqueue_for_current_boss(state: &Arc<AppState>, player_id: &str) -> Res
     .bind(player_id)
     .fetch_optional(state.db()?)
     .await?;
-    if let Some(raid_boss_id) = boss_id {
+    if boss_id.is_some() {
         crate::services::job_service::create_job(
             state,
             CreateSimulationJobRequest {
                 player_id: player_id.to_string(),
-                raid_boss_id,
             },
         )
         .await?;

@@ -9,7 +9,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/simulation-jobs", post(routes::jobs::create))
         .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
-        .route("/raid-events", post(routes::raids::ingest_event))
+        .route(
+            "/raids/current/boss",
+            put(routes::raids::update_current_boss),
+        )
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             routes::internal_auth::require_key,

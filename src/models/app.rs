@@ -55,8 +55,6 @@ pub struct PlayerStatsVersion {
 pub struct SimulationJobView {
     pub id: Uuid,
     pub player_id: String,
-    pub player_stat_version_id: Uuid,
-    pub raid_boss_id: Option<Uuid>,
     pub simulator_version: String,
     pub status: String,
     pub result: Option<Value>,
@@ -71,34 +69,27 @@ pub struct SimulationJobView {
 #[derive(Debug, Deserialize)]
 pub struct CreateSimulationJobRequest {
     pub player_id: String,
-    pub raid_boss_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RaidBossEventRequest {
-    pub raid_external_id: String,
-    pub raid_name: String,
-    pub event_id: String,
+pub struct CurrentBossUpdateRequest {
     pub boss_data: crate::models::boss::Boss,
     pub attackable_parts: Vec<crate::models::boss::BossPartName>,
+    #[serde(default)]
+    pub run_sims: bool,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RaidEventAccepted {
-    pub raid_id: Uuid,
-    pub boss_id: Uuid,
+    pub status: &'static str,
+    pub message: String,
+    pub simulations_triggered: bool,
+    pub deleted_jobs: u64,
     pub created_jobs: Vec<Uuid>,
-    pub duplicate: bool,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct CurrentBossView {
-    pub raid_id: Uuid,
-    pub raid_external_id: String,
-    pub raid_name: String,
-    pub boss_id: Uuid,
-    pub event_id: String,
-    pub version: i64,
     pub boss_data: Value,
     pub attackable_parts: Value,
     pub spawned_at: DateTime<Utc>,
