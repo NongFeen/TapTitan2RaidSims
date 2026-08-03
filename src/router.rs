@@ -9,10 +9,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/simulation-jobs", post(routes::jobs::create))
         .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
-        .route(
-            "/raids/current/boss",
-            put(routes::raids::update_current_boss),
-        )
+        .route("/current-boss", put(routes::raids::update_current_boss))
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             routes::internal_auth::require_key,
@@ -36,14 +33,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(routes::players::update_stats),
         )
         .route(
-            "/api/players/{player_id}/stats/latest",
-            get(routes::players::latest_stats),
+            "/api/players/{player_id}/stats/current",
+            get(routes::players::current_stats),
         )
         .route(
             "/api/players/{player_id}/auto_sims",
             put(routes::players::update_auto_sims),
         )
-        .route("/api/raids/current/boss", get(routes::raids::current))
+        .route("/api/current-boss", get(routes::raids::current))
         .route(
             "/api/players/{player_id}/recommendations/current",
             get(routes::recommendations::current_for_player),

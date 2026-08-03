@@ -38,7 +38,7 @@ pub async fn create(
     }
     let id = Uuid::new_v4();
     let player = sqlx::query_as(
-        "INSERT INTO players (id, player_id, display_name, auto_sims) VALUES ($1,$2,$3,$4) RETURNING player_id, display_name, auto_sims, NULL::BIGINT AS latest_stats_version, created_at, updated_at",
+        "INSERT INTO players (id, player_id, display_name, auto_sims) VALUES ($1,$2,$3,$4) RETURNING player_id, display_name, auto_sims, NULL::BIGINT AS stats_revision, created_at, updated_at",
     )
     .bind(id)
     .bind(game_player_id)
@@ -63,7 +63,7 @@ pub async fn list(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<PlayerSummary>>, AppError> {
     let players = sqlx::query_as(
-        "SELECT p.player_id, p.display_name, p.auto_sims, MAX(v.version) AS latest_stats_version, p.created_at, p.updated_at FROM players p LEFT JOIN player_stat_versions v ON v.player_id=p.id GROUP BY p.id ORDER BY p.display_name",
+        "SELECT p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.id ORDER BY p.display_name",
     )
     .fetch_all(state.db()?)
     .await?;
@@ -75,7 +75,7 @@ pub async fn get(
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerDetail>, AppError> {
     let player = sqlx::query_as(
-        "SELECT p.player_id, p.display_name, p.auto_sims, latest.version AS latest_stats_version, latest.stats, p.created_at, p.updated_at FROM players p LEFT JOIN LATERAL (SELECT v.version, v.stats FROM player_stat_versions v WHERE v.player_id=p.id ORDER BY v.version DESC LIMIT 1) latest ON TRUE WHERE p.player_id=$1",
+        "SELECT p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, s.stats, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.id WHERE p.player_id=$1",
     )
     .bind(player_id)
     .fetch_optional(state.db()?)
@@ -102,18 +102,10 @@ pub async fn update_stats(
             .await?;
     let internal_id =
         internal_id.ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let version: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(version),0)+1 FROM player_stat_versions WHERE player_id=$1",
-    )
-    .bind(internal_id)
-    .fetch_one(&mut *tx)
-    .await?;
     let stored = sqlx::query_as(
-        "INSERT INTO player_stat_versions (id, player_id, version, stats) VALUES ($1,$2,$3,$4) RETURNING version, stats, created_at",
+        "INSERT INTO player_stats (player_id, revision, stats) VALUES ($1,1,$2) ON CONFLICT (player_id) DO UPDATE SET revision=player_stats.revision+1, stats=EXCLUDED.stats, updated_at=NOW() RETURNING revision, stats, created_at, updated_at",
     )
-    .bind(Uuid::new_v4())
     .bind(internal_id)
-    .bind(version)
     .bind(serde_json::to_value(stats)?)
     .fetch_one(&mut *tx)
     .await?;
@@ -126,15 +118,15 @@ pub async fn update_stats(
     Ok((StatusCode::CREATED, Json(stored)))
 }
 
-pub async fn latest_stats(
+pub async fn current_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerStatsVersion>, AppError> {
-    let stats = sqlx::query_as("SELECT v.version, v.stats, v.created_at FROM player_stat_versions v JOIN players p ON p.id=v.player_id WHERE p.player_id=$1 ORDER BY v.version DESC LIMIT 1")
+    let stats = sqlx::query_as("SELECT s.revision, s.stats, s.created_at, s.updated_at FROM player_stats s JOIN players p ON p.id=s.player_id WHERE p.player_id=$1")
         .bind(&player_id)
         .fetch_optional(state.db()?)
         .await?
-        .ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("Player has no current stats".to_string()))?;
     Ok(Json(stats))
 }
 
@@ -144,7 +136,7 @@ pub async fn update_auto_sims(
     Json(request): Json<UpdateAutoSimsRequest>,
 ) -> Result<Json<PlayerSummary>, AppError> {
     let player = sqlx::query_as(
-        "UPDATE players SET auto_sims=$2, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT MAX(version) FROM player_stat_versions WHERE player_id=players.id) AS latest_stats_version, created_at, updated_at",
+        "UPDATE players SET auto_sims=$2, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.id) AS stats_revision, created_at, updated_at",
     )
     .bind(&player_id)
     .bind(request.auto_sims)
@@ -158,13 +150,13 @@ pub async fn update_auto_sims(
 }
 
 async fn enqueue_for_current_boss(state: &Arc<AppState>, player_id: &str) -> Result<(), AppError> {
-    let boss_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT rb.id FROM raid_bosses rb JOIN players p ON p.player_id=$1 WHERE rb.active=TRUE AND p.auto_sims=TRUE ORDER BY rb.spawned_at DESC LIMIT 1",
+    let can_simulate: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM current_boss cb JOIN players p ON p.player_id=$1 WHERE cb.singleton=TRUE AND p.auto_sims=TRUE)",
     )
     .bind(player_id)
-    .fetch_optional(state.db()?)
+    .fetch_one(state.db()?)
     .await?;
-    if boss_id.is_some() {
+    if can_simulate {
         crate::services::job_service::create_job(
             state,
             CreateSimulationJobRequest {

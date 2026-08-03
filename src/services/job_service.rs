@@ -29,22 +29,21 @@ pub async fn create_job(
         .fetch_optional(state.db()?)
         .await?
         .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let row: Option<(Uuid, i64, serde_json::Value)> = sqlx::query_as(
-        "SELECT id, version, stats FROM player_stat_versions WHERE player_id = $1 ORDER BY version DESC LIMIT 1",
-    )
-    .bind(internal_player_id)
-    .fetch_optional(state.db()?)
-    .await?;
-    let (stats_version_id, stats_version, stats_json) =
+    let row: Option<(i64, serde_json::Value)> =
+        sqlx::query_as("SELECT revision, stats FROM player_stats WHERE player_id = $1")
+            .bind(internal_player_id)
+            .fetch_optional(state.db()?)
+            .await?;
+    let (stats_revision, stats_json) =
         row.ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
     let player_stats: PlayerRaidData = serde_json::from_value(stats_json)?;
 
-    let boss_row: Option<(Uuid, serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
-        "SELECT id, boss_data, attackable_parts, version FROM raid_bosses WHERE active=TRUE LIMIT 1",
+    let boss_row: Option<(serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
+        "SELECT boss_data, attackable_parts, version FROM current_boss WHERE singleton=TRUE",
     )
     .fetch_optional(state.db()?)
     .await?;
-    let (raid_boss_id, boss_json, attackable_json, boss_version) =
+    let (boss_json, attackable_json, boss_version) =
         boss_row.ok_or_else(|| AppError::NotFound("No current raid boss".to_string()))?;
     let boss_data: Boss = serde_json::from_value(boss_json)?;
     let attackable_part: Vec<BossPartName> = serde_json::from_value(attackable_json)?;
@@ -61,17 +60,15 @@ pub async fn create_job(
         usable_card,
     };
     let deduplication_key = format!(
-        "{}:{}:{}:{}:{}",
-        internal_player_id, stats_version, raid_boss_id, boss_version, SIMULATOR_VERSION
+        "{}:{}:{}:{}",
+        internal_player_id, stats_revision, boss_version, SIMULATOR_VERSION
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(
-        "INSERT INTO simulation_jobs (id, player_id, player_stat_version_id, raid_boss_id, deduplication_key, simulator_version, status, payload) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
+        "INSERT INTO simulation_jobs (id, player_id, deduplication_key, simulator_version, status, payload) VALUES ($1,$2,$3,$4,'pending',$5) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
     )
     .bind(job_id)
     .bind(internal_player_id)
-    .bind(stats_version_id)
-    .bind(raid_boss_id)
     .bind(&deduplication_key)
     .bind(SIMULATOR_VERSION)
     .bind(serde_json::to_value(payload)?)

@@ -8,7 +8,7 @@ pub struct PlayerSummary {
     pub player_id: String,
     pub display_name: String,
     pub auto_sims: bool,
-    pub latest_stats_version: Option<i64>,
+    pub stats_revision: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -18,7 +18,7 @@ pub struct PlayerDetail {
     pub player_id: String,
     pub display_name: String,
     pub auto_sims: bool,
-    pub latest_stats_version: Option<i64>,
+    pub stats_revision: Option<i64>,
     pub stats: Option<Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -46,9 +46,10 @@ pub enum UpdatePlayerStatsRequest {
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct PlayerStatsVersion {
-    pub version: i64,
+    pub revision: i64,
     pub stats: Value,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -92,7 +93,7 @@ pub struct RaidEventAccepted {
 pub struct CurrentBossView {
     pub boss_data: Value,
     pub attackable_parts: Value,
-    pub spawned_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 

@@ -51,7 +51,7 @@ pub async fn current_for_player(
         return Err(AppError::NotFound("Player not found".to_string()));
     }
     let recommendation = sqlx::query_as(
-        "SELECT r.id, r.simulation_job_id, r.deck_count, r.total_average_damage::TEXT AS total_average_damage, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'cards', d.cards, 'average_damage', d.average_damage::TEXT, 'result', d.result) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id JOIN players p ON p.id=j.player_id JOIN raid_bosses b ON b.id=j.raid_boss_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE p.player_id=$1 AND j.status='completed' AND b.active=TRUE AND r.deck_count=$2 GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
+        "SELECT r.id, r.simulation_job_id, r.deck_count, r.total_average_damage::TEXT AS total_average_damage, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'cards', d.cards, 'average_damage', d.average_damage::TEXT, 'result', d.result) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id JOIN players p ON p.id=j.player_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE p.player_id=$1 AND j.status='completed' AND r.deck_count=$2 GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(query.deck_count)

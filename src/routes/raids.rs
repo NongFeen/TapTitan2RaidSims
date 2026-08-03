@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use axum::{Json, extract::State, http::StatusCode};
-use uuid::Uuid;
 
 use crate::{
     error::AppError,
@@ -45,24 +44,7 @@ async fn replace_current_boss(
         .execute(&mut *tx)
         .await?
         .rows_affected();
-    sqlx::query("DELETE FROM raid_bosses")
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM raids").execute(&mut *tx).await?;
-
-    let raid_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO raids (id, external_id, name) VALUES ($1,$2,$3)")
-        .bind(raid_id)
-        .bind("current")
-        .bind("Current Raid")
-        .execute(&mut *tx)
-        .await?;
-    let boss_id = Uuid::new_v4();
-    let event_id = format!("current-{}", Uuid::new_v4());
-    sqlx::query("INSERT INTO raid_bosses (id, raid_id, external_event_id, version, boss_data, attackable_parts, active) VALUES ($1,$2,$3,1,$4,$5,TRUE)")
-        .bind(boss_id)
-        .bind(raid_id)
-        .bind(event_id)
+    sqlx::query("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, updated_at=NOW()")
         .bind(serde_json::to_value(boss_data)?)
         .bind(serde_json::to_value(attackable_parts)?)
         .execute(&mut *tx)
@@ -72,7 +54,7 @@ async fn replace_current_boss(
     let mut created_jobs = Vec::new();
     if trigger_simulations {
         let player_ids: Vec<String> = sqlx::query_scalar(
-            "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stat_versions v WHERE v.player_id=p.id)",
+            "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
         )
         .fetch_all(state.db()?)
         .await?;
@@ -125,7 +107,7 @@ pub async fn current(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentBossView>, AppError> {
     let boss = sqlx::query_as(
-        "SELECT b.boss_data, b.attackable_parts, b.spawned_at, b.updated_at FROM raid_bosses b WHERE b.active=TRUE LIMIT 1",
+        "SELECT boss_data, attackable_parts, created_at, updated_at FROM current_boss WHERE singleton=TRUE",
     )
     .fetch_optional(state.db()?)
     .await?

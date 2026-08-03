@@ -31,13 +31,13 @@ docker compose down
 1. Create a player with `POST /api/players`. The optional unique `player_id` holds the Tap Titans player identifier.
 2. Store the player's current stats with `PUT /api/players/{player_id}/stats`. Each update creates an immutable version.
 3. Enable automatic simulations with `PUT /api/players/{player_id}/auto_sims` and `{ "auto_sims": true }`.
-4. Replace the current boss with `PUT /internal/raids/current/boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the boss.
+4. Replace the current boss with `PUT /internal/current-boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the boss.
 5. A persistent simulation job is created for every player with `auto_sims` enabled. Poll `GET /internal/simulation-jobs/{job_id}` or list `GET /api/players/{player_id}/simulation-jobs`.
 6. Read the best set from `GET /api/players/{player_id}/recommendations/current?deck_count=6` (or `9`).
 
 Updating the stats of an auto-sim player, or enabling `auto_sims` while a boss is active, automatically schedules the current boss simulation. Equivalent player/stat/boss/simulator inputs reuse the existing job.
 
-`PUT /api/players/{player_id}/stats` accepts either the raw Tap Titans player export or the cleaned `PlayerRaidData` format. Raw input is cleaned automatically before it is validated and stored.
+`PUT /api/players/{player_id}/stats` accepts either the raw Tap Titans player export or the cleaned `PlayerRaidData` format. Raw input is cleaned automatically before it is validated and stored. Each update overwrites that player's current stats; `GET /api/players/{player_id}/stats/current` reads them.
 
 All individual results are available at `GET /api/simulation-jobs/{job_id}/deck-results?limit=100&offset=0`.
 
@@ -45,7 +45,7 @@ The existing synchronous simulation endpoints remain available for debugging and
 
 ## Raid API boundary
 
-`PUT /internal/raids/current/boss` is the single normalized boss boundary. Its body contains `boss_data`, `attackable_parts`, and `run_sims`. Replacing the singleton current boss deletes all previous simulation jobs, deck results, and recommendations. A future Tap Titans subscriber should call this route with `run_sims: true`; manual setup can use `false`.
+`PUT /internal/current-boss` is the single normalized boss boundary. Its body contains `boss_data`, `attackable_parts`, and `run_sims`. Replacing the singleton current boss deletes all previous simulation jobs, deck results, and recommendations. Read it through `GET /api/current-boss`. A future Tap Titans subscriber should call the update route with `run_sims: true`; manual setup can use `false`.
 
 ## Checks
 
