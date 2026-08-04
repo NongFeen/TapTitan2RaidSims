@@ -46,6 +46,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(routes::recommendations::current_for_player),
         )
         .route(
+            "/api/players/{player_id}/recommendations",
+            post(routes::recommendations::generate_for_player),
+        )
+        .route(
             "/api/simulation-jobs/{job_id}/deck-results",
             get(routes::recommendations::deck_results),
         )

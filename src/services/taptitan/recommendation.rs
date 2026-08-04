@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -79,6 +80,14 @@ pub fn optimize_decks_with_required_cards(
 
     let mut sorted = candidates.to_vec();
     sorted.sort_by_key(|candidate| std::cmp::Reverse(candidate.average_damage));
+    let search_started = Instant::now();
+    tracing::info!(
+        deck_count,
+        ?required_cards,
+        progress_percent = 0,
+        phase = "greedy_seed",
+        "finding top deck recommendation"
+    );
 
     let mut best_total = 0u64;
     let mut best_indices = Vec::new();
@@ -89,17 +98,52 @@ pub fn optimize_decks_with_required_cards(
         &mut best_total,
         &mut best_indices,
     );
-    let mut selected = Vec::with_capacity(deck_count);
-    search(
-        &sorted,
+    tracing::info!(
         deck_count,
-        0,
-        0,
-        0,
-        required_card_mask,
-        &mut selected,
-        &mut best_total,
-        &mut best_indices,
+        ?required_cards,
+        phase = "greedy_seed_complete",
+        elapsed_ms = search_started.elapsed().as_millis(),
+        "top deck recommendation phase complete"
+    );
+    let mut selected = Vec::with_capacity(deck_count);
+    let root_candidate_count = sorted.len().saturating_sub(deck_count.saturating_sub(1));
+    let mut next_progress_percent = 10usize;
+    for index in 0..root_candidate_count {
+        let candidate = &sorted[index];
+        selected.push(index);
+        search(
+            &sorted,
+            deck_count,
+            index + 1,
+            candidate.card_mask,
+            candidate.average_damage,
+            required_card_mask,
+            &mut selected,
+            &mut best_total,
+            &mut best_indices,
+        );
+        selected.pop();
+
+        let progress_percent = (index + 1) * 100 / root_candidate_count.max(1);
+        while progress_percent >= next_progress_percent && next_progress_percent <= 100 {
+            tracing::info!(
+                deck_count,
+                ?required_cards,
+                progress_percent = next_progress_percent,
+                phase = "exact_search",
+                progress_basis = "root_candidates",
+                elapsed_ms = search_started.elapsed().as_millis(),
+                "finding top deck recommendation"
+            );
+            next_progress_percent += 10;
+        }
+    }
+    tracing::info!(
+        deck_count,
+        ?required_cards,
+        phase = "exact_search_complete",
+        elapsed_ms = search_started.elapsed().as_millis(),
+        "top deck recommendation phase complete"
     );
 
     if best_indices.len() != deck_count {

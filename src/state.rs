@@ -9,6 +9,7 @@ use crate::error::AppError;
 pub struct AppState {
     db: Option<PgPool>,
     pub simulation_slots: Arc<Semaphore>,
+    pub recommendation_slots: Arc<Semaphore>,
     pub internal_api_key: Arc<str>,
 }
 
@@ -21,6 +22,7 @@ impl AppState {
         Self {
             db,
             simulation_slots: Arc::new(Semaphore::new(simulation_concurrency)),
+            recommendation_slots: Arc::new(Semaphore::new(1)),
             internal_api_key: Arc::from(internal_api_key),
         }
     }
