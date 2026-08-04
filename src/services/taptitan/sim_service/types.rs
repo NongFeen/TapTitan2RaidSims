@@ -11,21 +11,13 @@ pub(super) const PRINT_PROC_CACHE: bool = false;
 pub(super) const ENABLE_PARALLEL_SIM: bool = true;
 pub(super) const SIM_WORKER_COUNT: usize = 1; // 0 = use available_parallelism()
 
-pub(super) const GLOBAL_RAID_BURST_DAMAGE_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_BURST_DAMAGE_MULT: f64 = 1.3;
-pub(super) const GLOBAL_RAID_BURST_CHANCE_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_BURST_CHANCE_MULT: f64 = 1.3;
-pub(super) const GLOBAL_RAID_SUPPORT_EFFECT_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_SUPPORT_EFFECT_MULT: f64 = 1.15;
-pub(super) const GLOBAL_RAID_AFFLICTION_CHANCE_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_AFFLICTION_CHANCE_MULT: f64 = 1.3;
-pub(super) const GLOBAL_RAID_AFFLICTION_DAMAGE_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_AFFLICTION_DAMAGE_MULT: f64 = 1.3;
-pub(super) const GLOBAL_RAID_ALL_DAMAGE_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_ALL_DAMAGE_MULT: f64 = 1.15;
-pub(super) const GLOBAL_RAID_ATTACK_DURATION_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS: f64 = 3.0;
-pub(super) const GLOBAL_RAID_AFFLICTION_DURATION_ENABLED: bool = false;
 pub(super) const GLOBAL_RAID_AFFLICTION_DURATION_MULT: f64 = 1.5;
 
 pub(super) const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
@@ -66,48 +58,91 @@ pub(super) struct GlobalRaidModifiers {
     pub(super) affliction_duration_mult: f64,
 }
 
-pub(super) fn global_raid_modifiers() -> GlobalRaidModifiers {
+pub(super) fn global_raid_modifiers(selected: GlobalRaidModifier) -> GlobalRaidModifiers {
     GlobalRaidModifiers {
-        burst_damage_mult: if GLOBAL_RAID_BURST_DAMAGE_ENABLED {
+        burst_damage_mult: if selected == GlobalRaidModifier::BurstDamage {
             GLOBAL_RAID_BURST_DAMAGE_MULT
         } else {
             1.0
         },
-        burst_chance_mult: if GLOBAL_RAID_BURST_CHANCE_ENABLED {
+        burst_chance_mult: if selected == GlobalRaidModifier::BurstChance {
             GLOBAL_RAID_BURST_CHANCE_MULT
         } else {
             1.0
         },
-        support_effect_mult: if GLOBAL_RAID_SUPPORT_EFFECT_ENABLED {
+        support_effect_mult: if selected == GlobalRaidModifier::SupportEffect {
             GLOBAL_RAID_SUPPORT_EFFECT_MULT
         } else {
             1.0
         },
-        affliction_chance_mult: if GLOBAL_RAID_AFFLICTION_CHANCE_ENABLED {
+        affliction_chance_mult: if selected == GlobalRaidModifier::AfflictionChance {
             GLOBAL_RAID_AFFLICTION_CHANCE_MULT
         } else {
             1.0
         },
-        affliction_damage_mult: if GLOBAL_RAID_AFFLICTION_DAMAGE_ENABLED {
+        affliction_damage_mult: if selected == GlobalRaidModifier::AfflictionDamage {
             GLOBAL_RAID_AFFLICTION_DAMAGE_MULT
         } else {
             1.0
         },
-        all_damage_mult: if GLOBAL_RAID_ALL_DAMAGE_ENABLED {
+        all_damage_mult: if selected == GlobalRaidModifier::AllDamage {
             GLOBAL_RAID_ALL_DAMAGE_MULT
         } else {
             1.0
         },
-        attack_duration_add_seconds: if GLOBAL_RAID_ATTACK_DURATION_ENABLED {
+        attack_duration_add_seconds: if selected == GlobalRaidModifier::AttackDuration {
             GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS
         } else {
             0.0
         },
-        affliction_duration_mult: if GLOBAL_RAID_AFFLICTION_DURATION_ENABLED {
+        affliction_duration_mult: if selected == GlobalRaidModifier::AfflictionDuration {
             GLOBAL_RAID_AFFLICTION_DURATION_MULT
         } else {
             1.0
         },
+    }
+}
+
+#[cfg(test)]
+mod global_raid_modifier_tests {
+    use super::*;
+
+    #[test]
+    fn each_selection_activates_at_most_one_modifier() {
+        let selections = [
+            GlobalRaidModifier::None,
+            GlobalRaidModifier::BurstDamage,
+            GlobalRaidModifier::BurstChance,
+            GlobalRaidModifier::SupportEffect,
+            GlobalRaidModifier::AfflictionChance,
+            GlobalRaidModifier::AfflictionDamage,
+            GlobalRaidModifier::AllDamage,
+            GlobalRaidModifier::AttackDuration,
+            GlobalRaidModifier::AfflictionDuration,
+        ];
+
+        for selected in selections {
+            let modifiers = global_raid_modifiers(selected);
+            let active_count = [
+                modifiers.burst_damage_mult != 1.0,
+                modifiers.burst_chance_mult != 1.0,
+                modifiers.support_effect_mult != 1.0,
+                modifiers.affliction_chance_mult != 1.0,
+                modifiers.affliction_damage_mult != 1.0,
+                modifiers.all_damage_mult != 1.0,
+                modifiers.attack_duration_add_seconds != 0.0,
+                modifiers.affliction_duration_mult != 1.0,
+            ]
+            .into_iter()
+            .filter(|active| *active)
+            .count();
+
+            assert_eq!(
+                active_count,
+                usize::from(selected != GlobalRaidModifier::None),
+                "unexpected active modifier count for {selected:?}",
+            );
+        }
     }
 }
 

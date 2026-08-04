@@ -86,7 +86,24 @@ pub async fn send_sim_payload(Json(simdata): Json<SimPayLoad>) -> impl IntoRespo
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
 
-    let result = SimService::run_simulation(simdata.clone());
+    let result =
+        match tokio::task::spawn_blocking(move || SimService::run_simulation(simdata)).await {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::error!(?error, "synchronous simulation worker panicked");
+                let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+                    error: ApiError {
+                        code: "SIMULATION_FAILED".to_string(),
+                        message: "Simulation worker failed".to_string(),
+                    },
+                };
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ResponseJson(error_response),
+                )
+                    .into_response();
+            }
+        };
 
     let success_response = ApiResponse::Success { data: result };
     (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
@@ -113,7 +130,25 @@ pub async fn send_sim_deck(Json(simdata): Json<SimPayLoad>) -> impl IntoResponse
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
-    let Some(result) = SimService::run_deck_simulation(simdata.clone()) else {
+    let simulation =
+        tokio::task::spawn_blocking(move || SimService::run_deck_simulation(simdata)).await;
+    let Some(result) = (match simulation {
+        Ok(result) => result,
+        Err(error) => {
+            tracing::error!(?error, "single-deck simulation worker panicked");
+            let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+                error: ApiError {
+                    code: "SIMULATION_FAILED".to_string(),
+                    message: "Simulation worker failed".to_string(),
+                },
+            };
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ResponseJson(error_response),
+            )
+                .into_response();
+        }
+    }) else {
         let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
             error: ApiError {
                 code: "DECK_INVALID".to_string(),

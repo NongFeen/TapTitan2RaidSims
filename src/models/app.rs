@@ -102,6 +102,8 @@ pub struct RecommendationView {
     pub id: Uuid,
     pub simulation_job_id: Uuid,
     pub deck_count: i32,
+    pub must_include_mirror_force: bool,
+    pub must_include_team_tactics: bool,
     pub total_average_damage: String,
     pub decks: Value,
     pub created_at: DateTime<Utc>,

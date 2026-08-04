@@ -43,6 +43,20 @@ pub enum BossName {
     Priker,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum GlobalRaidModifier {
+    #[default]
+    None,
+    BurstDamage,
+    BurstChance,
+    SupportEffect,
+    AfflictionChance,
+    AfflictionDamage,
+    AllDamage,
+    AttackDuration,
+    AfflictionDuration,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageResult {
     pub source: DamageSource,

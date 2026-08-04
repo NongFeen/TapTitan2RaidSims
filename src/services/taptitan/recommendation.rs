@@ -55,8 +55,22 @@ pub fn optimize_decks(
     candidates: &[CandidateDeck],
     deck_count: usize,
 ) -> Option<DeckRecommendation> {
+    optimize_decks_with_required_cards(candidates, deck_count, &[])
+}
+
+pub fn optimize_decks_with_required_cards(
+    candidates: &[CandidateDeck],
+    deck_count: usize,
+    required_cards: &[CardName],
+) -> Option<DeckRecommendation> {
+    let required_card_mask = required_cards.iter().try_fold(0u64, |mask, card| {
+        CardName::iter()
+            .position(|candidate| candidate == *card)
+            .map(|index| mask | (1u64 << index))
+    })?;
+
     if deck_count == 0 {
-        return Some(DeckRecommendation {
+        return (required_card_mask == 0).then_some(DeckRecommendation {
             deck_count,
             total_average_damage: 0,
             decks: Vec::new(),
@@ -68,7 +82,13 @@ pub fn optimize_decks(
 
     let mut best_total = 0u64;
     let mut best_indices = Vec::new();
-    seed_with_greedy(&sorted, deck_count, &mut best_total, &mut best_indices);
+    seed_with_greedy(
+        &sorted,
+        deck_count,
+        required_card_mask,
+        &mut best_total,
+        &mut best_indices,
+    );
     let mut selected = Vec::with_capacity(deck_count);
     search(
         &sorted,
@@ -76,6 +96,7 @@ pub fn optimize_decks(
         0,
         0,
         0,
+        required_card_mask,
         &mut selected,
         &mut best_total,
         &mut best_indices,
@@ -98,6 +119,7 @@ pub fn optimize_decks(
 fn seed_with_greedy(
     candidates: &[CandidateDeck],
     target_count: usize,
+    required_card_mask: u64,
     best_total: &mut u64,
     best_indices: &mut Vec<usize>,
 ) {
@@ -117,7 +139,10 @@ fn seed_with_greedy(
                 selected.push(index);
             }
         }
-        if selected.len() == target_count && (best_indices.is_empty() || total > *best_total) {
+        if selected.len() == target_count
+            && used_cards & required_card_mask == required_card_mask
+            && (best_indices.is_empty() || total > *best_total)
+        {
             *best_total = total;
             best_indices.clone_from(&selected);
         }
@@ -131,12 +156,15 @@ fn search(
     start: usize,
     used_cards: u64,
     total: u64,
+    required_card_mask: u64,
     selected: &mut Vec<usize>,
     best_total: &mut u64,
     best_indices: &mut Vec<usize>,
 ) {
     if selected.len() == target_count {
-        if total > *best_total || best_indices.is_empty() {
+        if used_cards & required_card_mask == required_card_mask
+            && (total > *best_total || best_indices.is_empty())
+        {
             *best_total = total;
             best_indices.clone_from(selected);
         }
@@ -173,6 +201,7 @@ fn search(
             index + 1,
             used_cards | candidate.card_mask,
             total.saturating_add(candidate.average_damage),
+            required_card_mask,
             selected,
             best_total,
             best_indices,
@@ -184,6 +213,15 @@ fn search(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mask(cards: &[CardName]) -> u64 {
+        cards.iter().fold(0u64, |mask, card| {
+            let index = CardName::iter()
+                .position(|candidate| candidate == *card)
+                .expect("test card should have a mask index");
+            mask | (1u64 << index)
+        })
+    }
 
     fn deck(source_index: usize, mask: u64, damage: u64) -> CandidateDeck {
         CandidateDeck {
@@ -214,6 +252,55 @@ mod tests {
     }
 
     #[test]
+    fn required_cards_are_present_in_the_combined_lineup() {
+        let candidates = vec![
+            deck(0, mask(&[CardName::MirrorForce, CardName::MoonBeam]), 100),
+            deck(1, mask(&[CardName::TeamTactics, CardName::Fragmentize]), 90),
+            deck(2, mask(&[CardName::SkullBash, CardName::RazorWind]), 200),
+            deck(
+                3,
+                mask(&[CardName::PsychicShackles, CardName::FlakShot]),
+                180,
+            ),
+        ];
+
+        let mirror_only =
+            optimize_decks_with_required_cards(&candidates, 2, &[CardName::MirrorForce])
+                .expect("Mirror Force should fit into two compatible decks");
+        let mirror_used = mirror_only
+            .decks
+            .iter()
+            .fold(0u64, |used, deck| used | deck.card_mask);
+        assert_ne!(mirror_used & mask(&[CardName::MirrorForce]), 0);
+
+        let team_only =
+            optimize_decks_with_required_cards(&candidates, 2, &[CardName::TeamTactics])
+                .expect("Team Tactics should fit into two compatible decks");
+        let team_used = team_only
+            .decks
+            .iter()
+            .fold(0u64, |used, deck| used | deck.card_mask);
+        assert_ne!(team_used & mask(&[CardName::TeamTactics]), 0);
+
+        let both = optimize_decks_with_required_cards(
+            &candidates,
+            2,
+            &[CardName::MirrorForce, CardName::TeamTactics],
+        )
+        .expect("required cards should fit into two compatible decks");
+        let used_cards = both
+            .decks
+            .iter()
+            .fold(0u64, |used, deck| used | deck.card_mask);
+
+        assert_eq!(both.total_average_damage, 190);
+        assert_eq!(
+            used_cards & mask(&[CardName::MirrorForce, CardName::TeamTactics]),
+            mask(&[CardName::MirrorForce, CardName::TeamTactics]),
+        );
+    }
+
+    #[test]
     fn handles_a_full_card_pool() {
         let mut candidates = Vec::new();
         for first in 0..44 {
@@ -237,5 +324,20 @@ mod tests {
             .iter()
             .fold(0u64, |used, candidate| used | candidate.card_mask);
         assert_eq!(used.count_ones(), 27);
+
+        let required = optimize_decks_with_required_cards(
+            &candidates,
+            9,
+            &[CardName::MirrorForce, CardName::TeamTactics],
+        )
+        .expect("nine compatible decks containing the required cards");
+        let required_used = required
+            .decks
+            .iter()
+            .fold(0u64, |used, candidate| used | candidate.card_mask);
+        assert_eq!(
+            required_used & mask(&[CardName::MirrorForce, CardName::TeamTactics]),
+            mask(&[CardName::MirrorForce, CardName::TeamTactics]),
+        );
     }
 }

@@ -12,7 +12,7 @@ use crate::{
         sim_payload::SimPayLoad,
     },
     services::taptitan::{
-        recommendation::optimize_decks,
+        recommendation::{optimize_decks, optimize_decks_with_required_cards},
         sim_service::{SimRunResult, SimService},
     },
     state::AppState,
@@ -181,25 +181,45 @@ async fn persist_results(
         .await?;
     }
     for deck_count in [6usize, 9usize] {
-        if let Some(recommendation) = optimize_decks(&candidates, deck_count) {
-            let recommendation_id = Uuid::new_v4();
-            sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, total_average_damage) VALUES ($1,$2,$3,CAST($4 AS NUMERIC))")
-                .bind(recommendation_id)
-                .bind(job_id)
-                .bind(deck_count as i32)
+        for (must_include_mirror_force, must_include_team_tactics) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let mut required_cards = Vec::with_capacity(2);
+            if must_include_mirror_force {
+                required_cards.push(CardName::MirrorForce);
+            }
+            if must_include_team_tactics {
+                required_cards.push(CardName::TeamTactics);
+            }
+            let recommendation = if required_cards.is_empty() {
+                optimize_decks(&candidates, deck_count)
+            } else {
+                optimize_decks_with_required_cards(&candidates, deck_count, &required_cards)
+            };
+            if let Some(recommendation) = recommendation {
+                let recommendation_id = Uuid::new_v4();
+                sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, total_average_damage) VALUES ($1,$2,$3,$4,$5,CAST($6 AS NUMERIC))")
+                    .bind(recommendation_id)
+                    .bind(job_id)
+                    .bind(deck_count as i32)
+                    .bind(must_include_mirror_force)
+                    .bind(must_include_team_tactics)
                 .bind(recommendation.total_average_damage.to_string())
                 .execute(&mut *tx)
                 .await?;
-            for (position, deck) in recommendation.decks.iter().enumerate() {
-                let result_id = result_ids[deck.source_index].ok_or_else(|| {
-                    AppError::Internal("Recommendation references missing deck result".to_string())
-                })?;
-                sqlx::query("INSERT INTO deck_recommendation_items (recommendation_id, position, simulation_deck_result_id) VALUES ($1,$2,$3)")
+                for (position, deck) in recommendation.decks.iter().enumerate() {
+                    let result_id = result_ids[deck.source_index].ok_or_else(|| {
+                        AppError::Internal(
+                            "Recommendation references missing deck result".to_string(),
+                        )
+                    })?;
+                    sqlx::query("INSERT INTO deck_recommendation_items (recommendation_id, position, simulation_deck_result_id) VALUES ($1,$2,$3)")
                     .bind(recommendation_id)
                     .bind(position as i32)
                     .bind(result_id)
                     .execute(&mut *tx)
-                    .await?;
+                .await?;
+                }
             }
         }
     }

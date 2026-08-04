@@ -217,7 +217,7 @@ impl SimService {
         progress: Option<&SimProgress>,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
-        prepare_deck_for_sim(&mut select_deck);
+        prepare_deck_for_sim(&mut select_deck, &sim_stats.boss_stat);
         cache_deck_proc_chances(&mut select_deck, &sim_stats.boss_stat);
 
         let deck = select_deck

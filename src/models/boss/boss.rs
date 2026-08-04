@@ -3,6 +3,8 @@ use super::*;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Boss {
     pub boss_name: BossName,
+    #[serde(default)]
+    pub global_raid_modifier: GlobalRaidModifier,
     pub head: BossPart,
     pub torso: BossPart,
     pub left_shoulder: BossPart,

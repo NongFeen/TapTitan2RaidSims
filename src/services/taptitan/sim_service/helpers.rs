@@ -134,16 +134,16 @@ pub(super) fn burst_roll_counts_as_proc(
     }
 }
 
-pub(super) fn prepare_deck_for_sim(deck: &mut [Card]) {
+pub(super) fn prepare_deck_for_sim(deck: &mut [Card], boss: &Boss) {
     ensure_deck_card_skills(deck);
     if apply_amplify_level_sharing(deck) {
         ensure_deck_card_skills(deck);
     }
-    apply_global_raid_card_modifiers(deck);
+    apply_global_raid_card_modifiers(deck, boss.global_raid_modifier);
 }
 
-pub(super) fn apply_global_raid_card_modifiers(deck: &mut [Card]) {
-    let global = global_raid_modifiers();
+pub(super) fn apply_global_raid_card_modifiers(deck: &mut [Card], selected: GlobalRaidModifier) {
+    let global = global_raid_modifiers(selected);
 
     if (global.affliction_duration_mult - 1.0).abs() <= f64::EPSILON {
         return;
@@ -232,7 +232,7 @@ pub(super) fn support_modifiers_for_deck(deck: &[Card], boss: &Boss) -> SupportM
 
 pub(super) fn combined_support_modifiers(deck: &mut [Card], boss: &Boss) -> SupportModifiers {
     let deck_snapshot = deck.to_vec();
-    let global = global_raid_modifiers();
+    let global = global_raid_modifiers(boss.global_raid_modifier);
     let mut support = SupportModifiers::default();
 
     for card in deck

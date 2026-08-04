@@ -19,4 +19,6 @@ pub use afflictions::BossAfflictions;
 pub use boss::Boss;
 pub(crate) use damage_cache::BossDamageMultiplierCache;
 use damage_cache::*;
-pub use parts::{BossName, BossPart, BossPartName, BossTickView, DamageResult, PartState};
+pub use parts::{
+    BossName, BossPart, BossPartName, BossTickView, DamageResult, GlobalRaidModifier, PartState,
+};
