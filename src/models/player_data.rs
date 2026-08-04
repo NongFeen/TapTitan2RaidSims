@@ -19,6 +19,9 @@ pub struct PlayerData {
     #[serde(rename = "raidCards")]
     pub raid_cards: HashMap<String, Card>,
 
+    #[serde(rename = "boostedCards", default)]
+    pub boosted_cards: Vec<BoostedCard>,
+
     pub raid_card_research: HashMap<String, String>,
 
     #[serde(rename = "titanCards")]
@@ -116,6 +119,15 @@ pub struct RaidStats {
 pub struct Card {
     pub lv: u16,
     pub num: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BoostedCard {
+    #[serde(rename = "boostLevel")]
+    pub boost_level: u16,
+
+    #[serde(rename = "skillName")]
+    pub skill_name: String,
 }
 
 // ── Artifact ───────────────────────────────────────────────────────

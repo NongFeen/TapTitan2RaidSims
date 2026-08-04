@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashMap;
 
 fn parse_scientific(s: &str) -> f64 {
     s.parse::<f64>().unwrap_or(0.0)
@@ -10,6 +11,18 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
     // ── Build card_list from raw raidCards ─────────────────────────
     // ── Build card_list from raw raidCards ─────────────────────────
     let mut card_list: Vec<Card> = Vec::new();
+    let boosted_levels = player_data.boosted_cards.iter().fold(
+        HashMap::<CardName, u16>::new(),
+        |mut levels, boosted| {
+            if let Ok(card_name) = CardName::from_str(&boosted.skill_name) {
+                levels
+                    .entry(card_name)
+                    .and_modify(|level| *level = (*level).max(boosted.boost_level))
+                    .or_insert(boosted.boost_level);
+            }
+            levels
+        },
+    );
 
     for (raw_name, raw_card) in &player_data.raid_cards {
         match CardName::from_str(raw_name.as_str()) {
@@ -17,7 +30,10 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                 card_list.push(Card {
                     card_id: parsed_enum_id, // <-- Updated field assignment matching your rename
                     cardtype: parsed_enum_id.card_type(),
-                    level: raw_card.lv as u16, // cast u32 raw level safely if u16 target
+                    level: boosted_levels
+                        .get(&parsed_enum_id)
+                        .copied()
+                        .unwrap_or(raw_card.lv),
                     tap_count: 0,
                     chained_parts: Default::default(),
                     celestial_stacks: Default::default(),
