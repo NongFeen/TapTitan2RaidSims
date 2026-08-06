@@ -275,27 +275,6 @@ impl SimService {
 
         let raw_damage =
             scratch_card.on_proc(&mut scratch_boss, target_part, card_base_damage, 0, 0);
-        let source = DamageSource::Card(card.card_id);
-        let mut final_damage = boss.preview_damage_with_source(target_part, raw_damage, &source);
-
-        if card.card_id == CardName::FlakShot
-            && matches!(
-                boss.get_state_from_part(target_part),
-                PartState::Armor | PartState::Cursed
-            )
-        {
-            if let Some(body_part) = boss
-                .parts()
-                .iter()
-                .find(|part| part.part_state == PartState::Body)
-                .map(|part| part.part_name)
-            {
-                final_damage = final_damage.saturating_add(
-                    boss.preview_damage_with_source(body_part, raw_damage, &source),
-                );
-            }
-        }
-
-        final_damage
+        boss.preview_damage_with_source(target_part, raw_damage, &DamageSource::Card(card.card_id))
     }
 }

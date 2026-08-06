@@ -31,10 +31,12 @@ pub async fn update_current_boss(
 
 async fn replace_current_boss(
     state: &Arc<AppState>,
-    boss_data: Boss,
+    mut boss_data: Boss,
     attackable_parts: Vec<BossPartName>,
     trigger_simulations: bool,
 ) -> Result<(StatusCode, Json<RaidEventAccepted>), AppError> {
+    boss_data.sync_part_states_from_current_values();
+
     let mut tx = state.db()?.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(721934761)")
         .execute(&mut *tx)

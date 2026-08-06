@@ -258,6 +258,7 @@ impl SimService {
 
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
+                boss.set_result_target_part(None);
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
                 boss.prepare_card_damage_tracking(&deck_card_names);
                 let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
@@ -277,12 +278,15 @@ impl SimService {
                 let prepared_pattern = pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
 
                 for i in 0..tap_count {
-                    if let Some(current_target) = prepared_pattern.next_target(
+                    let current_target = prepared_pattern.next_target(
                         &boss,
                         last_target,
                         &deck,
                         &sim_stats.attackable_part,
-                    ) {
+                    );
+                    boss.set_result_target_part(current_target);
+
+                    if let Some(current_target) = current_target {
                         last_target = Some(current_target);
 
                         if let Some(totem_card) = &totem_card {

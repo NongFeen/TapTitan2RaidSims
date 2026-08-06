@@ -107,6 +107,16 @@ impl BossTickView<'_> {
 }
 
 impl BossPart {
+    pub fn sync_state_from_current_values(&mut self) {
+        self.part_state = if self.current_armor > 0 {
+            PartState::Armor
+        } else if self.current_health > 0 {
+            PartState::Body
+        } else {
+            PartState::Skeleton
+        };
+    }
+
     pub fn on_hit(&mut self, damage: u64) {
         match self.part_state {
             PartState::Armor | PartState::Cursed => {

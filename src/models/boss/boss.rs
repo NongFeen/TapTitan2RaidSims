@@ -32,6 +32,8 @@ pub struct Boss {
     #[serde(skip, default)]
     pub(crate) tracked_card_damage_totals: [u64; 3],
     #[serde(skip, default)]
+    pub(crate) result_target_mask: Option<u8>,
+    #[serde(skip, default)]
     pub player_raid_data: Option<Arc<PlayerRaidData>>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
@@ -40,10 +42,37 @@ pub struct Boss {
 }
 
 impl Boss {
+    pub fn sync_part_states_from_current_values(&mut self) {
+        self.head.sync_state_from_current_values();
+        self.torso.sync_state_from_current_values();
+        self.left_shoulder.sync_state_from_current_values();
+        self.right_shoulder.sync_state_from_current_values();
+        self.left_hand.sync_state_from_current_values();
+        self.right_hand.sync_state_from_current_values();
+        self.left_leg.sync_state_from_current_values();
+        self.right_leg.sync_state_from_current_values();
+    }
+
     pub fn set_player_raid_data(&mut self, player_raid_data: Arc<PlayerRaidData>) {
         self.damage_multiplier_cache =
             BossDamageMultiplierCache::from_player(&player_raid_data, self.boss_name);
         self.player_raid_data = Some(player_raid_data);
+    }
+
+    pub fn set_result_target_part(&mut self, target_part: Option<BossPartName>) {
+        if self.result_target_mask.is_none() {
+            self.damage_results.clear();
+        }
+        self.result_target_mask = Some(
+            target_part
+                .map(|part_name| 1u8 << part_name_index(part_name))
+                .unwrap_or(0),
+        );
+    }
+
+    fn damage_counts_toward_result(&self, part_name: BossPartName) -> bool {
+        self.result_target_mask
+            .map_or(true, |mask| mask & (1u8 << part_name_index(part_name)) != 0)
     }
 
     pub fn set_support_modifiers(&mut self, support_modifiers: SupportModifiers) {
@@ -240,7 +269,9 @@ impl Boss {
         //     );
         // }
         // }
-        self.record_damage(source, final_damage);
+        if self.damage_counts_toward_result(part_name) {
+            self.record_damage(source, final_damage);
+        }
         self.on_hit(part_name, final_damage);
     }
 
@@ -366,5 +397,111 @@ impl Boss {
                 _ => 0.0,
             })
             .sum()
+    }
+}
+
+#[cfg(test)]
+mod state_sync_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn part(part_name: &str, current_armor: u64, current_health: u64) -> serde_json::Value {
+        json!({
+            "part_name": part_name,
+            "part_state": "Cursed",
+            "max_armor": 100,
+            "max_health": 100,
+            "current_armor": current_armor,
+            "current_health": current_health
+        })
+    }
+
+    #[test]
+    fn syncs_all_part_states_from_current_durability() {
+        let mut boss: Boss = serde_json::from_value(json!({
+            "boss_name": "Jukk",
+            "head": part("Head", 10, 20),
+            "torso": part("Torso", 1, 0),
+            "left_shoulder": part("LeftShoulder", 0, 5),
+            "right_shoulder": part("RightShoulder", 0, 1),
+            "left_hand": part("LeftHand", 0, 0),
+            "right_hand": part("RightHand", 0, 0),
+            "left_leg": part("LeftLeg", 99, 0),
+            "right_leg": part("RightLeg", 0, 99)
+        }))
+        .expect("test boss should deserialize");
+
+        boss.sync_part_states_from_current_values();
+
+        let actual = boss.parts().map(|part| part.part_state);
+        assert_eq!(
+            actual,
+            [
+                PartState::Armor,
+                PartState::Armor,
+                PartState::Body,
+                PartState::Body,
+                PartState::Skeleton,
+                PartState::Skeleton,
+                PartState::Armor,
+                PartState::Body,
+            ]
+        );
+    }
+
+    #[test]
+    fn only_damage_on_the_current_result_target_is_accumulated() {
+        let mut boss: Boss = serde_json::from_value(json!({
+            "boss_name": "Jukk",
+            "head": part("Head", 100, 100),
+            "torso": part("Torso", 100, 100),
+            "left_shoulder": part("LeftShoulder", 100, 100),
+            "right_shoulder": part("RightShoulder", 100, 100),
+            "left_hand": part("LeftHand", 100, 100),
+            "right_hand": part("RightHand", 100, 100),
+            "left_leg": part("LeftLeg", 100, 100),
+            "right_leg": part("RightLeg", 100, 100)
+        }))
+        .expect("test boss should deserialize");
+        boss.sync_part_states_from_current_values();
+        boss.set_result_target_part(Some(BossPartName::Head));
+
+        boss.on_hit_with_source(
+            BossPartName::Torso,
+            10,
+            DamageSource::Card(CardName::FlakShot),
+        );
+        assert_eq!(
+            boss.torso.current_armor, 90,
+            "off-target damage still applies"
+        );
+        assert_eq!(boss.get_total_damage(), 0);
+        assert_eq!(boss.card_damage_total(CardName::FlakShot), 0);
+
+        boss.on_hit_with_source(
+            BossPartName::Head,
+            20,
+            DamageSource::Card(CardName::FlakShot),
+        );
+        assert_eq!(boss.get_total_damage(), 20);
+        assert_eq!(boss.card_damage_total(CardName::FlakShot), 20);
+
+        boss.set_result_target_part(Some(BossPartName::Torso));
+        boss.on_hit_with_source(
+            BossPartName::Torso,
+            15,
+            DamageSource::Card(CardName::FlakShot),
+        );
+        assert_eq!(boss.get_total_damage(), 35);
+        assert_eq!(boss.card_damage_total(CardName::FlakShot), 35);
+
+        boss.set_result_target_part(None);
+        boss.on_hit_with_source(BossPartName::Head, 5, DamageSource::Tap);
+        assert_eq!(
+            boss.head.current_armor, 75,
+            "damage still applies without a target"
+        );
+        assert_eq!(boss.get_total_damage(), 35);
     }
 }
