@@ -14,12 +14,27 @@ mod services;
 mod state;
 use state::AppState;
 
-#[tokio::main]
-async fn main() {
-    // ← init logging first before anything else
+fn main() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .max_blocking_threads(1)
+        .thread_name("calculation-worker")
+        .build()
+        .expect("failed to build the API runtime");
+
+    runtime.block_on(run());
+}
+
+async fn run() {
+    // Initialize logging before connecting to external services.
     tracing_subscriber::fmt()
         .with_env_filter("backend=debug,tower_http=debug")
         .init();
+    tracing::info!(
+        api_worker_threads = 1,
+        calculation_worker_threads = 1,
+        "runtime thread allocation configured"
+    );
 
     dotenvy::dotenv().ok();
 
@@ -55,7 +70,7 @@ async fn main() {
         .allow_headers(cors::Any);
 
     let app = router::create_router(Arc::clone(&state))
-        .layer(TraceLayer::new_for_http()) // ← log every request
+        .layer(TraceLayer::new_for_http())
         .layer(cors);
 
     state.recover_pending_jobs().await;

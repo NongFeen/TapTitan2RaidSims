@@ -393,11 +393,8 @@ impl CardName {
         }
     }
 
-    /// 3. Safely format image URLs using whichever casing your files use.
-    /// If your files are snake_case (e.g. flak_shot.webp), you can swap this function to utilize a lowercase helper or write them out.
+    /// Returns the static image URL. Card image filenames use the exact raw card ID.
     pub fn image_url(&self) -> String {
-        // Example assumes images are titled matching variant names (e.g., FlakShot.webp)
-        // If your image names are lowercased snake_case (flak_shot.webp), change self.id() to whatever matches your files.
         format!("/assets/taptitan/cards/{}.webp", self.id())
     }
 
@@ -450,5 +447,32 @@ impl CardName {
             | CardName::RadiantKaleidoscope
             | CardName::BattleDrums => CardType::Support,
         }
+    }
+}
+
+#[cfg(test)]
+mod card_image_tests {
+    use std::path::Path;
+
+    use strum::IntoEnumIterator;
+
+    use super::CardName;
+
+    #[test]
+    fn every_card_definition_has_its_static_image() {
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let missing = CardName::iter()
+            .filter_map(|card| {
+                let image_url = card.image_url();
+                let image_path = project_root.join(image_url.trim_start_matches('/'));
+                (!image_path.is_file()).then_some(image_url)
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            missing.is_empty(),
+            "card definitions reference missing images: {}",
+            missing.join(", ")
+        );
     }
 }
