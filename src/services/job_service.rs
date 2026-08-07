@@ -21,6 +21,8 @@ use crate::{
 };
 
 const SIMULATOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
+pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
 
 struct PreparedRecommendation {
     deck_count: usize,
@@ -113,7 +115,8 @@ fn prepare_results(result: SimRunResult) -> Result<PreparedResults, serde_json::
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let recommendations = prepare_recommendations(&candidates, &[6]);
+    let recommendations =
+        prepare_recommendations(&candidates, &[DEFAULT_RECOMMENDATION_DECK_COUNT]);
 
     Ok(PreparedResults {
         deck_result_count: result.decks.len(),
@@ -338,10 +341,17 @@ async fn persist_results(
     Ok(())
 }
 
-pub async fn generate_nine_deck_recommendations(
+pub async fn generate_deck_recommendations(
     state: &Arc<AppState>,
     player_id: &str,
+    deck_count: usize,
 ) -> Result<bool, AppError> {
+    if !(1..=MAX_RECOMMENDATION_DECK_COUNT).contains(&deck_count) {
+        return Err(AppError::BadRequest(format!(
+            "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
+        )));
+    }
+
     let _permit = state
         .recommendation_slots
         .clone()
@@ -358,9 +368,10 @@ pub async fn generate_nine_deck_recommendations(
     .ok_or_else(|| AppError::NotFound("Player has no completed simulation".to_string()))?;
 
     let already_generated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=9)",
+        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2)",
     )
     .bind(job_id)
+    .bind(deck_count as i32)
     .fetch_one(state.db()?)
     .await?;
     if already_generated {
@@ -388,7 +399,7 @@ pub async fn generate_nine_deck_recommendations(
         }
         let candidates =
             crate::services::taptitan::recommendation::candidates_from_results(&results);
-        let recommendations = prepare_recommendations(&candidates, &[9]);
+        let recommendations = prepare_recommendations(&candidates, &[deck_count]);
         Ok::<_, serde_json::Error>((ids, recommendations))
     })
     .await
@@ -397,8 +408,9 @@ pub async fn generate_nine_deck_recommendations(
     })??;
 
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=9")
+    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2")
         .bind(job_id)
+        .bind(deck_count as i32)
         .execute(&mut *tx)
         .await?;
     for prepared in recommendations {

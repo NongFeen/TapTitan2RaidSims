@@ -8,7 +8,12 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{error::AppError, models::app::RecommendationView, state::AppState};
+use crate::{
+    error::AppError,
+    models::app::RecommendationView,
+    services::job_service::{DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_RECOMMENDATION_DECK_COUNT},
+    state::AppState,
+};
 
 #[derive(Deserialize)]
 pub struct RecommendationQuery {
@@ -33,11 +38,21 @@ fn default_limit() -> i64 {
 }
 
 fn default_deck_count() -> i32 {
-    6
+    DEFAULT_RECOMMENDATION_DECK_COUNT as i32
+}
+
+fn validate_deck_count(deck_count: i32) -> Result<usize, AppError> {
+    if !(1..=MAX_RECOMMENDATION_DECK_COUNT as i32).contains(&deck_count) {
+        return Err(AppError::BadRequest(format!(
+            "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
+        )));
+    }
+    Ok(deck_count as usize)
 }
 
 #[derive(Deserialize)]
 pub struct GenerateRecommendationRequest {
+    #[serde(default = "default_deck_count")]
     deck_count: i32,
 }
 
@@ -52,14 +67,9 @@ pub async fn generate_for_player(
     Path(player_id): Path<String>,
     Json(request): Json<GenerateRecommendationRequest>,
 ) -> Result<Json<GenerateRecommendationResponse>, AppError> {
-    if request.deck_count != 9 {
-        return Err(AppError::BadRequest(
-            "On-demand generation currently supports only deck_count 9".to_string(),
-        ));
-    }
-
+    let deck_count = validate_deck_count(request.deck_count)?;
     let created =
-        crate::services::job_service::generate_nine_deck_recommendations(&state, &player_id)
+        crate::services::job_service::generate_deck_recommendations(&state, &player_id, deck_count)
             .await?;
     Ok(Json(GenerateRecommendationResponse {
         deck_count: request.deck_count,
@@ -72,11 +82,7 @@ pub async fn current_for_player(
     Path(player_id): Path<String>,
     Query(query): Query<RecommendationQuery>,
 ) -> Result<Json<RecommendationView>, AppError> {
-    if !matches!(query.deck_count, 6 | 9) {
-        return Err(AppError::BadRequest(
-            "deck_count must be 6 or 9".to_string(),
-        ));
-    }
+    validate_deck_count(query.deck_count)?;
     let player_exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
             .bind(&player_id)
@@ -125,4 +131,33 @@ pub async fn deck_results(
     .fetch_all(state.db()?)
     .await?;
     Ok(Json(results))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_every_physical_deck_count() {
+        for deck_count in 1..=MAX_RECOMMENDATION_DECK_COUNT as i32 {
+            assert_eq!(
+                validate_deck_count(deck_count).expect("valid count should pass"),
+                deck_count as usize
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_deck_counts_outside_the_card_pool_limit() {
+        assert!(validate_deck_count(0).is_err());
+        assert!(validate_deck_count(-1).is_err());
+        assert!(validate_deck_count(15).is_err());
+    }
+
+    #[test]
+    fn generation_request_defaults_to_six_decks() {
+        let request: GenerateRecommendationRequest =
+            serde_json::from_str("{}").expect("empty generation request should be valid");
+        assert_eq!(request.deck_count, DEFAULT_RECOMMENDATION_DECK_COUNT as i32);
+    }
 }

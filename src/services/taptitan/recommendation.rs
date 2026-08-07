@@ -296,6 +296,29 @@ mod tests {
     }
 
     #[test]
+    fn supports_the_maximum_deck_count() {
+        let candidates = (0..14)
+            .map(|index| {
+                let first_card = index * 3;
+                deck(
+                    index,
+                    (1u64 << first_card) | (1u64 << (first_card + 1)) | (1u64 << (first_card + 2)),
+                    1_000 - index as u64,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let result = optimize_decks(&candidates, 14).expect("fourteen compatible decks");
+        let used_cards = result
+            .decks
+            .iter()
+            .fold(0u64, |used, candidate| used | candidate.card_mask);
+
+        assert_eq!(result.decks.len(), 14);
+        assert_eq!(used_cards.count_ones(), 42);
+    }
+
+    #[test]
     fn required_cards_are_present_in_the_combined_lineup() {
         let candidates = vec![
             deck(0, mask(&[CardName::MirrorForce, CardName::MoonBeam]), 100),
