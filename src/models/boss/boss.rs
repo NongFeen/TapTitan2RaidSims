@@ -59,15 +59,11 @@ impl Boss {
         self.player_raid_data = Some(player_raid_data);
     }
 
-    pub fn set_result_target_part(&mut self, target_part: Option<BossPartName>) {
-        if self.result_target_mask.is_none() {
-            self.damage_results.clear();
-        }
-        self.result_target_mask = Some(
-            target_part
-                .map(|part_name| 1u8 << part_name_index(part_name))
-                .unwrap_or(0),
-        );
+    pub fn set_result_target_parts(&mut self, target_parts: &[BossPartName]) {
+        self.damage_results.clear();
+        self.result_target_mask = Some(target_parts.iter().fold(0u8, |mask, part_name| {
+            mask | (1u8 << part_name_index(*part_name))
+        }));
     }
 
     fn damage_counts_toward_result(&self, part_name: BossPartName) -> bool {
@@ -451,7 +447,7 @@ mod state_sync_tests {
     }
 
     #[test]
-    fn only_damage_on_the_current_result_target_is_accumulated() {
+    fn damage_on_any_configured_result_target_is_accumulated() {
         let mut boss: Boss = serde_json::from_value(json!({
             "boss_name": "Jukk",
             "head": part("Head", 100, 100),
@@ -465,38 +461,37 @@ mod state_sync_tests {
         }))
         .expect("test boss should deserialize");
         boss.sync_part_states_from_current_values();
-        boss.set_result_target_part(Some(BossPartName::Head));
+        boss.set_result_target_parts(&[BossPartName::Head, BossPartName::Torso]);
 
         boss.on_hit_with_source(
-            BossPartName::Torso,
+            BossPartName::LeftShoulder,
             10,
-            DamageSource::Card(CardName::FlakShot),
+            DamageSource::Card(CardName::ThrivingPlague),
         );
         assert_eq!(
-            boss.torso.current_armor, 90,
+            boss.left_shoulder.current_armor, 90,
             "off-target damage still applies"
         );
         assert_eq!(boss.get_total_damage(), 0);
-        assert_eq!(boss.card_damage_total(CardName::FlakShot), 0);
+        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 0);
 
         boss.on_hit_with_source(
             BossPartName::Head,
             20,
-            DamageSource::Card(CardName::FlakShot),
+            DamageSource::Card(CardName::ThrivingPlague),
         );
         assert_eq!(boss.get_total_damage(), 20);
-        assert_eq!(boss.card_damage_total(CardName::FlakShot), 20);
+        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 20);
 
-        boss.set_result_target_part(Some(BossPartName::Torso));
         boss.on_hit_with_source(
             BossPartName::Torso,
             15,
-            DamageSource::Card(CardName::FlakShot),
+            DamageSource::Card(CardName::ThrivingPlague),
         );
         assert_eq!(boss.get_total_damage(), 35);
-        assert_eq!(boss.card_damage_total(CardName::FlakShot), 35);
+        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 35);
 
-        boss.set_result_target_part(None);
+        boss.set_result_target_parts(&[]);
         boss.on_hit_with_source(BossPartName::Head, 5, DamageSource::Tap);
         assert_eq!(
             boss.head.current_armor, 75,

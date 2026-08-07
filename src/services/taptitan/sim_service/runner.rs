@@ -258,7 +258,7 @@ impl SimService {
 
             for _ in 1..=sim_rounds {
                 let mut boss = sim_stats.boss_stat.clone();
-                boss.set_result_target_part(None);
+                boss.set_result_target_parts(&sim_stats.attackable_part);
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
                 boss.prepare_card_damage_tracking(&deck_card_names);
                 let damage_context = SimDamageContext::new(&sim_stats.player_stat, &boss);
@@ -284,7 +284,6 @@ impl SimService {
                         &deck,
                         &sim_stats.attackable_part,
                     );
-                    boss.set_result_target_part(current_target);
 
                     if let Some(current_target) = current_target {
                         last_target = Some(current_target);
