@@ -6,6 +6,16 @@ pub struct Config {
     pub port: u16,
     pub simulation_concurrency: usize,
     pub internal_api_key: String,
+    pub tt2: Option<Tt2Config>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Tt2Config {
+    pub socket_url: String,
+    pub socket_handshake_path: String,
+    pub rest_base_url: String,
+    pub application_token: String,
+    pub player_token_encryption_key: String,
 }
 
 impl Config {
@@ -30,11 +40,40 @@ impl Config {
             return Err("INTERNAL_API_KEY must contain at least 16 characters".to_string());
         }
 
+        let tt2_values = [
+            env::var("TT2_SOCKET_URL").ok(),
+            env::var("TT2_SOCKET_HANDSHAKE_PATH").ok(),
+            env::var("TT2_REST_BASE_URL").ok(),
+            env::var("TT2_APPLICATION_TOKEN").ok(),
+            env::var("TT2_PLAYER_TOKEN_ENCRYPTION_KEY").ok(),
+        ];
+        let tt2 = if tt2_values
+            .iter()
+            .all(|value| value.as_ref().is_some_and(|value| !value.trim().is_empty()))
+        {
+            Some(Tt2Config {
+                socket_url: tt2_values[0].clone().unwrap(),
+                socket_handshake_path: tt2_values[1].clone().unwrap(),
+                rest_base_url: tt2_values[2].clone().unwrap(),
+                application_token: tt2_values[3].clone().unwrap(),
+                player_token_encryption_key: tt2_values[4].clone().unwrap(),
+            })
+        } else {
+            if tt2_values.iter().any(|value| value.is_some()) {
+                return Err(
+                    "TT2 configuration must provide all TT2_* variables or none of them"
+                        .to_string(),
+                );
+            }
+            None
+        };
+
         Ok(Self {
             database_url,
             port,
             simulation_concurrency,
             internal_api_key,
+            tt2,
         })
     }
 }

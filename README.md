@@ -20,6 +20,27 @@ Docker publishes PostgreSQL on host port `5433` to avoid conflicting with a loca
 
 Requests to `/internal/*` must include `x-internal-api-key` matching `INTERNAL_API_KEY`.
 
+### TT2 player API
+
+Player fetching requires all five `TT2_*` values from `.env`. The Socket.IO client registers its handlers before explicitly connecting, uses only WebSocket transport, and does not automatically reconnect in development. If it cannot connect, the rest of the backend continues in degraded mode and fetch requests return `503`.
+
+Generate the AES-256-GCM token-encryption key once and keep it stable:
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+Store that output as `TT2_PLAYER_TOKEN_ENCRYPTION_KEY`. Losing or changing it makes existing encrypted player tokens unreadable. The application token and encryption key are backend secrets and must never use `VITE_*` frontend variables.
+
+Protected admin workflow:
+
+1. `PUT /internal/players/{player_id}/token` stores `{ "player_token": "..." }` encrypted.
+2. `POST /internal/players/{player_id}/fetch-stats` fetches, converts, validates, and saves the latest GameHive player data.
+3. `DELETE /internal/players/{player_id}/token` removes the token.
+4. `GET /internal/tt2/player-status` reports whether the integration is configured and connected.
+
 To stop the local database without deleting its data:
 
 ```powershell

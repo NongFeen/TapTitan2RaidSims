@@ -16,6 +16,10 @@ pub enum AppError {
     Conflict(String),
     #[error("{0}")]
     Unauthorized(String),
+    #[error("{0}")]
+    TooManyRequests(String),
+    #[error("{0}")]
+    ServiceUnavailable(String),
     #[error("database is unavailable")]
     DatabaseUnavailable,
     #[error("database operation failed")]
@@ -39,6 +43,14 @@ impl IntoResponse for AppError {
             Self::NotFound(message) => (StatusCode::NOT_FOUND, "NOT_FOUND", message),
             Self::Conflict(message) => (StatusCode::CONFLICT, "CONFLICT", message),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", message),
+            Self::TooManyRequests(message) => {
+                (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", message)
+            }
+            Self::ServiceUnavailable(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SERVICE_UNAVAILABLE",
+                message,
+            ),
             Self::DatabaseUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "DATABASE_UNAVAILABLE",

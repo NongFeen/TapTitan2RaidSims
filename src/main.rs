@@ -39,6 +39,10 @@ async fn run() {
     dotenvy::dotenv().ok();
 
     let config = config::Config::from_env().expect("invalid application configuration");
+    let tt2_player = config.tt2.clone().map(|tt2_config| {
+        services::tt2_player_client::Tt2PlayerClient::new(tt2_config)
+            .expect("invalid TT2 player-token encryption configuration")
+    });
     let pool = match config.database_url.as_deref() {
         Some(database_url) => match database::connect(database_url).await {
             Ok(pool) => {
@@ -59,7 +63,16 @@ async fn run() {
         pool,
         config.simulation_concurrency,
         config.internal_api_key,
+        tt2_player.clone(),
     ));
+
+    if let Some(tt2_player) = tt2_player {
+        tokio::spawn(async move {
+            tt2_player.connect().await;
+        });
+    } else {
+        tracing::warn!("TT2 integration is not configured; player fetching is unavailable");
+    }
 
     let cors = CorsLayer::new()
         .allow_origin([

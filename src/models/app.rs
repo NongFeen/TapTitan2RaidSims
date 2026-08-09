@@ -9,6 +9,9 @@ pub struct PlayerSummary {
     pub display_name: String,
     pub auto_sims: bool,
     pub stats_revision: Option<i64>,
+    pub has_player_token: bool,
+    pub player_token_status: String,
+    pub tt2_last_fetched_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -20,6 +23,9 @@ pub struct PlayerDetail {
     pub auto_sims: bool,
     pub stats_revision: Option<i64>,
     pub stats: Option<Value>,
+    pub has_player_token: bool,
+    pub player_token_status: String,
+    pub tt2_last_fetched_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -35,6 +41,17 @@ pub struct CreatePlayerRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateAutoSimsRequest {
     pub auto_sims: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePlayerTokenRequest {
+    pub player_token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Tt2PlayerStatus {
+    pub configured: bool,
+    pub connected: bool,
 }
 
 #[derive(Debug, Deserialize)]

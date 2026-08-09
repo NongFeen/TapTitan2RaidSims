@@ -33,6 +33,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                     level: boosted_levels
                         .get(&parsed_enum_id)
                         .copied()
+                        .map(|boosted| boosted.max(raw_card.lv))
                         .unwrap_or(raw_card.lv),
                     tap_count: 0,
                     chained_parts: Default::default(),
@@ -43,16 +44,17 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
             }
             Err(_) => {
                 // Log unknown card — should never happen (expected exactly 42)
-                println!("[WARN] Unknown card in raw data: '{}'", raw_name);
+                tracing::warn!(card = %raw_name, "Ignoring unknown card in player data");
             }
         }
     }
-    card_list.sort_by(|a, b| a.card_id.cmp(&b.card_id));
+    card_list.sort_by_key(|card| card.card_id);
     // Warn if card count is off
-    if card_list.len() != 42 {
-        println!(
-            "[WARN] Expected 42 cards, got {}. Check card_name_map.",
-            card_list.len()
+    if card_list.len() != 44 {
+        tracing::warn!(
+            cards = card_list.len(),
+            expected = 44,
+            "Player data has an unexpected known-card count"
         );
     }
 

@@ -16,6 +16,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
         .route("/current-boss", put(routes::raids::update_current_boss))
+        .route(
+            "/players/{player_id}/token",
+            put(routes::players::update_token).delete(routes::players::clear_token),
+        )
+        .route(
+            "/players/{player_id}/fetch-stats",
+            post(routes::players::fetch_tt2_stats),
+        )
+        .route("/tt2/player-status", get(routes::players::tt2_status))
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             routes::internal_auth::require_key,
