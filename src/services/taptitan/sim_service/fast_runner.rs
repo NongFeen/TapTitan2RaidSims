@@ -273,8 +273,17 @@ impl SimService {
             scratch_card.tap_count = COSMIC_HAYMAKER_TAPS_PER_PROC.saturating_sub(1);
         }
 
-        let raw_damage =
-            scratch_card.on_proc(&mut scratch_boss, target_part, card_base_damage, 0, 0);
+        // Fast-calculation cards do not consume randomness. A fixed seed keeps
+        // that contract explicit while sharing the normal proc dispatch API.
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let raw_damage = scratch_card.on_proc(
+            &mut scratch_boss,
+            target_part,
+            card_base_damage,
+            0,
+            0,
+            &mut rng,
+        );
         boss.preview_damage_with_source(target_part, raw_damage, &DamageSource::Card(card.card_id))
     }
 }

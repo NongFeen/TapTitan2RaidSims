@@ -30,6 +30,9 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     }
 
     dedupe_generic_attack_patterns(&mut pattern_infos);
+    if sim_stats.boss_stat.recommend_1_to_2_part_patterns_only {
+        pattern_infos.retain(|info| (1..=2).contains(&attacked_part_count(info)));
+    }
     keep_max_coverage_spread_affliction_patterns(deck, &mut pattern_infos);
     keep_top_attack_patterns(&mut pattern_infos);
 
@@ -55,6 +58,9 @@ pub(super) fn pattern_has_candidates(info: &AttackPatternInfo) -> bool {
 
 pub(super) fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Card]) -> bool {
     match pattern {
+        AttackPattern::SingleCursed | AttackPattern::CycleCursed => {
+            deck_has_card(deck, CardName::Fragmentize) || deck_has_card(deck, CardName::RuinousRain)
+        }
         AttackPattern::FusionBombSpread => deck_has_card(deck, CardName::FusionBomb),
         AttackPattern::ThrivingPlagueSpread => deck_has_card(deck, CardName::ThrivingPlague),
         AttackPattern::RadioactivitySpread => deck_has_card(deck, CardName::Radioactivity),
@@ -66,6 +72,17 @@ pub(super) fn pattern_is_available_for_deck(pattern: &AttackPattern, deck: &[Car
                 && deck_has_card(deck, CardName::RuinousRain)
         }
         _ => true,
+    }
+}
+
+/// Candidate count is the number cycled across for multi-target patterns. A
+/// single-target pattern chooses one candidate and stays there, even when it
+/// has several possible candidates.
+pub(super) fn attacked_part_count(info: &AttackPatternInfo) -> usize {
+    if pattern_is_single_target(&info.pattern) {
+        usize::from(!info.candidates.is_empty())
+    } else {
+        info.candidates.len()
     }
 }
 
@@ -548,4 +565,55 @@ pub(super) fn pattern_is_single_target(pattern: &AttackPattern) -> bool {
 
 pub(super) fn deck_has_card(deck: &[Card], card_name: CardName) -> bool {
     deck.iter().any(|card| card.card_id == card_name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card(card_id: CardName) -> Card {
+        Card {
+            card_id,
+            cardtype: card_id.card_type(),
+            level: 1,
+            tap_count: 0,
+            chained_parts: Vec::new(),
+            celestial_stacks: 0,
+            skill: Default::default(),
+            proc_chance_cache: 0.0,
+        }
+    }
+
+    #[test]
+    fn cursed_patterns_require_a_curse_target_card() {
+        let ordinary_deck = [card(CardName::MoonBeam)];
+        let fragmentize_deck = [card(CardName::Fragmentize)];
+        let ruinous_rain_deck = [card(CardName::RuinousRain)];
+
+        for pattern in [AttackPattern::SingleCursed, AttackPattern::CycleCursed] {
+            assert!(!pattern_is_available_for_deck(&pattern, &ordinary_deck));
+            assert!(pattern_is_available_for_deck(&pattern, &fragmentize_deck));
+            assert!(pattern_is_available_for_deck(&pattern, &ruinous_rain_deck));
+        }
+    }
+
+    #[test]
+    fn narrow_filter_counts_single_patterns_as_one_attacked_part() {
+        let candidates = vec![BossPartName::Head, BossPartName::Torso];
+        let single = AttackPatternInfo {
+            pattern: AttackPattern::SingleAny,
+            candidates: candidates.clone(),
+            source_count: candidates.len(),
+            priority: (0, 0, 0),
+        };
+        let cycle = AttackPatternInfo {
+            pattern: AttackPattern::CycleAllActive,
+            candidates,
+            source_count: 2,
+            priority: (0, 0, 0),
+        };
+
+        assert_eq!(attacked_part_count(&single), 1);
+        assert_eq!(attacked_part_count(&cycle), 2);
+    }
 }

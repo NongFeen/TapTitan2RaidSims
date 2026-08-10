@@ -3,6 +3,7 @@ use crate::models::{
     card_skill_data::card_skill_row,
     support_modifier::SupportModifiers,
 };
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
@@ -277,6 +278,7 @@ impl Card {
         damage: f64,
         mirror_force_boost: u32,
         burst_trigger_count: u32,
+        rng: &mut impl Rng,
     ) -> u64 {
         crate::services::taptitan::card_function::on_proc(
             self,
@@ -285,6 +287,7 @@ impl Card {
             damage,
             mirror_force_boost,
             burst_trigger_count,
+            rng,
         )
     }
     pub fn support_modifiers(&mut self, boss: &Boss, deck: &[Card]) -> SupportModifiers {

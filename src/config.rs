@@ -5,6 +5,7 @@ pub struct Config {
     pub database_url: Option<String>,
     pub port: u16,
     pub simulation_concurrency: usize,
+    pub simulation_worker_count: usize,
     pub internal_api_key: String,
     pub tt2: Option<Tt2Config>,
 }
@@ -34,6 +35,13 @@ impl Config {
         if simulation_concurrency == 0 {
             return Err("SIMULATION_CONCURRENCY must be greater than zero".to_string());
         }
+        let simulation_worker_count = env::var("SIM_WORKER_COUNT")
+            .unwrap_or_else(|_| "1".to_string())
+            .parse::<usize>()
+            .map_err(|_| {
+                "SIM_WORKER_COUNT must be a non-negative integer (0 uses all available CPUs)"
+                    .to_string()
+            })?;
         let internal_api_key = env::var("INTERNAL_API_KEY")
             .map_err(|_| "INTERNAL_API_KEY must be configured".to_string())?;
         if internal_api_key.trim().len() < 16 {
@@ -72,6 +80,7 @@ impl Config {
             database_url,
             port,
             simulation_concurrency,
+            simulation_worker_count,
             internal_api_key,
             tt2,
         })

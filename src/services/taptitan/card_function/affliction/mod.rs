@@ -6,6 +6,7 @@ use crate::models::{
 };
 
 use super::AfflictionDamageEvent;
+use rand::Rng;
 
 mod acid_drench;
 mod amplify;
@@ -50,7 +51,13 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     }
 }
 
-pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> u64 {
+pub fn on_proc(
+    card: &Card,
+    boss: &mut Boss,
+    target_part: BossPartName,
+    damage: f64,
+    rng: &mut impl Rng,
+) -> u64 {
     match card.card_id {
         CardName::BlazingInferno => blazing_inferno::on_proc(card, boss, target_part, damage),
         CardName::AcidDrench => acid_drench::on_proc(card, boss, target_part, damage),
@@ -59,7 +66,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
         CardName::GrimShadow => grim_shadow::on_proc(card, boss, target_part, damage),
         CardName::ThrivingPlague => thriving_plague::on_proc(card, boss, target_part, damage),
         CardName::Radioactivity => radioactivity::on_proc(card, boss, target_part, damage),
-        CardName::RavenousSwarm => ravenous_swarm::on_proc(card, boss, target_part, damage),
+        CardName::RavenousSwarm => ravenous_swarm::on_proc(card, boss, target_part, damage, rng),
         CardName::RuinousRain => ruinous_rain::on_proc(card, boss, target_part, damage),
         CardName::CorrosiveBubbles => corrosive_bubbles::on_proc(card, boss, target_part, damage),
         CardName::Maelstrom => maelstrom::on_proc(card, boss, target_part, damage),

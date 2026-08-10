@@ -8,7 +8,7 @@ use crate::models::player_raid_data::PlayerRaidData;
 use crate::models::sim_payload::SimPayLoad;
 use crate::models::support_modifier::SupportModifiers;
 use itertools::Itertools;
-use rand::random;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{
@@ -27,7 +27,7 @@ mod types;
 use deck_rules::*;
 use helpers::*;
 use proc_cache::*;
-pub use proc_cache::{PreDeterminedProc, ProcScenario};
+pub use proc_cache::{PreDeterminedProc, ProcScenario, configure_sim_worker_count};
 use types::*;
 pub use types::{
     SimCardDamageResult, SimDeckResult, SimPatternResult, SimProgress, SimRunResult, SimStats,

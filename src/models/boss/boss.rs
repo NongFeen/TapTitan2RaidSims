@@ -7,6 +7,10 @@ pub struct Boss {
     pub global_raid_modifier: GlobalRaidModifier,
     #[serde(default)]
     pub curse_type: CurseType,
+    /// When enabled, simulations retain only attack patterns that actually
+    /// attack one or two parts, so recommendations cannot select wider plans.
+    #[serde(default)]
+    pub recommend_1_to_2_part_patterns_only: bool,
     pub head: BossPart,
     pub torso: BossPart,
     pub left_shoulder: BossPart,
@@ -509,6 +513,4 @@ mod state_sync_tests {
                 < f32::EPSILON
         );
     }
-
-
 }

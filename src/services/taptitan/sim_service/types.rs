@@ -9,7 +9,6 @@ pub(super) const PRINT_EVERY_SIM_PATTERN: bool = false;
 // const PRINT_EVERY_SIM_PATTERN: bool = true;
 pub(super) const PRINT_PROC_CACHE: bool = false;
 pub(super) const ENABLE_PARALLEL_SIM: bool = true;
-pub(super) const SIM_WORKER_COUNT: usize = 1; // 0 = use available_parallelism()
 
 pub(super) const GLOBAL_RAID_BURST_DAMAGE_MULT: f64 = 1.3;
 pub(super) const GLOBAL_RAID_BURST_CHANCE_MULT: f64 = 1.3;

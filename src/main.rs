@@ -32,13 +32,18 @@ async fn run() {
         .init();
     tracing::info!(
         api_worker_threads = 1,
-        calculation_worker_threads = 1,
+        blocking_worker_threads = 1,
         "runtime thread allocation configured"
     );
 
     dotenvy::dotenv().ok();
 
     let config = config::Config::from_env().expect("invalid application configuration");
+    services::taptitan::sim_service::configure_sim_worker_count(config.simulation_worker_count);
+    tracing::info!(
+        simulation_worker_count = config.simulation_worker_count,
+        "simulation worker allocation configured (0 uses all available CPUs)"
+    );
     let tt2_player = config.tt2.clone().map(|tt2_config| {
         services::tt2_player_client::Tt2PlayerClient::new(tt2_config)
             .expect("invalid TT2 player-token encryption configuration")

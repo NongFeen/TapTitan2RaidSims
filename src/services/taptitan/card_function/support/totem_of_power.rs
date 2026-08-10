@@ -30,6 +30,7 @@ pub fn try_spawn(
     target_part: BossPartName,
     current_tick: u32,
     next_spawn_tick: &mut f64,
+    rng: &mut impl Rng,
 ) {
     if totem_card.card_id != CardName::TotemOfPower {
         return;
@@ -45,8 +46,7 @@ pub fn try_spawn(
         return;
     }
 
-    let mut rng = rand::rng();
-    let travel_ticks = travel_ticks_for_part(target_part, &mut rng);
+    let travel_ticks = travel_ticks_for_part(target_part, rng);
     let land_tick = current_tick.saturating_add(travel_ticks);
 
     pending_totems.push(PendingTotem {

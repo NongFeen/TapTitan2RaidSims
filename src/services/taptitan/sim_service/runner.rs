@@ -259,6 +259,10 @@ impl SimService {
             let mut card_proc_totals = vec![0u64; select_deck.len()];
 
             for _ in 1..=sim_rounds {
+                // Keep one RNG for the whole round so the hot loop does not repeatedly
+                // acquire the thread-local generator. Tests can pass a seeded RNG through
+                // the same call chain.
+                let mut rng = rand::rng();
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_result_target_parts(&sim_stats.attackable_part);
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
@@ -308,6 +312,7 @@ impl SimService {
                             1.0,
                             &mut card_proc_totals,
                             &mut support_cache,
+                            &mut rng,
                         );
 
                         if trigger_astral_echo_extra_tap(&mut deck) {
@@ -322,6 +327,7 @@ impl SimService {
                                 astral_proc_chance_scale,
                                 &mut card_proc_totals,
                                 &mut support_cache,
+                                &mut rng,
                             );
                         }
 
@@ -333,6 +339,7 @@ impl SimService {
                                 current_target,
                                 i,
                                 &mut next_totem_spawn_tick,
+                                &mut rng,
                             );
                         }
                     }
@@ -444,6 +451,7 @@ impl SimService {
         proc_chance_scale: f64,
         card_proc_totals: &mut [u64],
         support_cache: &mut RoundSupportCache,
+        rng: &mut impl Rng,
     ) {
         if boss.get_state_from_part(attack_part) == PartState::Skeleton {
             return;
@@ -484,7 +492,7 @@ impl SimService {
                 card_proc_chance * chance_mult * proc_chance_scale
             };
             // println!("Proc Chance {} {} {} {} {}",proc_chance,card_proc_chance,chance_mult, proc_chance_scale, combined_support.burst_chance_mult);
-            let roll: f64 = random(); // Assuming random() yields an f64 from rand crate
+            let roll: f64 = rng.random();
             if roll <= proc_chance {
                 let counts_as_card_proc = card_roll_counts_as_proc(card, boss, attack_part);
 
@@ -497,7 +505,14 @@ impl SimService {
                     }
                 }
 
-                card.on_proc(boss, attack_part, card_base_damage, 0, *total_burst_proc);
+                card.on_proc(
+                    boss,
+                    attack_part,
+                    card_base_damage,
+                    0,
+                    *total_burst_proc,
+                    rng,
+                );
             }
         }
 

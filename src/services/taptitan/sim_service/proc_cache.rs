@@ -174,13 +174,21 @@ pub(super) fn sim_worker_count(work_items: usize) -> usize {
     let available = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(1);
-    let requested = if SIM_WORKER_COUNT == 0 {
+    let configured = CONFIGURED_SIM_WORKER_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    let requested = if configured == 0 {
         available
     } else {
-        SIM_WORKER_COUNT
+        configured
     };
 
     requested.clamp(1, work_items)
+}
+
+static CONFIGURED_SIM_WORKER_COUNT: AtomicUsize = AtomicUsize::new(1);
+
+/// Sets the number of native simulation workers. Zero selects all available CPUs.
+pub fn configure_sim_worker_count(worker_count: usize) {
+    CONFIGURED_SIM_WORKER_COUNT.store(worker_count, AtomicOrdering::Relaxed);
 }
 
 pub(super) fn split_deck_pattern_work(
