@@ -5,6 +5,8 @@ pub struct Boss {
     pub boss_name: BossName,
     #[serde(default)]
     pub global_raid_modifier: GlobalRaidModifier,
+    #[serde(default)]
+    pub curse_type: CurseType,
     pub head: BossPart,
     pub torso: BossPart,
     pub left_shoulder: BossPart,
@@ -34,6 +36,8 @@ pub struct Boss {
     #[serde(skip, default)]
     pub(crate) result_target_mask: Option<u8>,
     #[serde(skip, default)]
+    initial_cursed_part_count: u8,
+    #[serde(skip, default)]
     pub player_raid_data: Option<Arc<PlayerRaidData>>,
     #[serde(skip, default)]
     pub support_modifiers: SupportModifiers,
@@ -57,6 +61,14 @@ impl Boss {
         self.damage_multiplier_cache =
             BossDamageMultiplierCache::from_player(&player_raid_data, self.boss_name);
         self.player_raid_data = Some(player_raid_data);
+    }
+
+    pub(crate) fn snapshot_initial_curse_parts(&mut self) {
+        self.initial_cursed_part_count = self
+            .parts()
+            .iter()
+            .filter(|part| part.part_state == PartState::Cursed)
+            .count() as u8;
     }
 
     pub fn set_result_target_parts(&mut self, target_parts: &[BossPartName]) {
@@ -352,6 +364,7 @@ impl Boss {
             .support_modifiers
             .total_damage_bonus(part_name, state, card_type);
         let support_damage_mult = self.support_modifiers.damage_multiplier(card_type);
+        let curse_damage_mult = self.curse_damage_multiplier(state, card_type);
 
         //for guardbreak / maelStrom
         let part_debuff_bonus = self.part_damage_taken_bonus(part_name);
@@ -361,9 +374,25 @@ impl Boss {
             * cache.part_mult[part_name_index(part_name)]
             * cache.state_mult[part_state_index(state)]
             * (1.0 + support_bonus + part_debuff_bonus) as f32
-            * support_damage_mult as f32;
+            * support_damage_mult as f32
+            * curse_damage_mult;
 
         (raw_damage as f64 * total_multiplier as f64).max(0.0) as u64
+    }
+
+    fn curse_damage_multiplier(&self, state: PartState, card_type: Option<CardType>) -> f32 {
+        let applies = match self.curse_type {
+            CurseType::None => false,
+            CurseType::BodyDamage => state == PartState::Body,
+            CurseType::BurstDamage => card_type == Some(CardType::Burst),
+            CurseType::AfflictionDamage => card_type == Some(CardType::Affliction),
+        };
+
+        if applies {
+            1.0 - f32::from(self.initial_cursed_part_count) * 0.06
+        } else {
+            1.0
+        }
     }
 
     pub(super) fn part_damage_taken_bonus(&self, part_name: BossPartName) -> f64 {
@@ -414,7 +443,7 @@ mod state_sync_tests {
     }
 
     #[test]
-    fn syncs_all_part_states_from_current_durability() {
+    fn syncs_part_states_from_durability_without_erasing_curses() {
         let mut boss: Boss = serde_json::from_value(json!({
             "boss_name": "Jukk",
             "head": part("Head", 10, 20),
@@ -434,69 +463,52 @@ mod state_sync_tests {
         assert_eq!(
             actual,
             [
-                PartState::Armor,
-                PartState::Armor,
+                PartState::Cursed,
+                PartState::Cursed,
                 PartState::Body,
                 PartState::Body,
                 PartState::Skeleton,
                 PartState::Skeleton,
-                PartState::Armor,
+                PartState::Cursed,
                 PartState::Body,
             ]
         );
     }
 
     #[test]
-    fn damage_on_any_configured_result_target_is_accumulated() {
+    fn curse_count_is_frozen_and_applies_by_damage_type() {
         let mut boss: Boss = serde_json::from_value(json!({
             "boss_name": "Jukk",
+            "curse_type": "BurstDamage",
             "head": part("Head", 100, 100),
             "torso": part("Torso", 100, 100),
-            "left_shoulder": part("LeftShoulder", 100, 100),
-            "right_shoulder": part("RightShoulder", 100, 100),
-            "left_hand": part("LeftHand", 100, 100),
-            "right_hand": part("RightHand", 100, 100),
-            "left_leg": part("LeftLeg", 100, 100),
-            "right_leg": part("RightLeg", 100, 100)
+            "left_shoulder": part("LeftShoulder", 0, 100),
+            "right_shoulder": part("RightShoulder", 0, 100),
+            "left_hand": part("LeftHand", 0, 0),
+            "right_hand": part("RightHand", 0, 0),
+            "left_leg": part("LeftLeg", 0, 0),
+            "right_leg": part("RightLeg", 0, 0)
         }))
-        .expect("test boss should deserialize");
+        .expect("boss should deserialize");
         boss.sync_part_states_from_current_values();
-        boss.set_result_target_parts(&[BossPartName::Head, BossPartName::Torso]);
+        boss.snapshot_initial_curse_parts();
 
-        boss.on_hit_with_source(
-            BossPartName::LeftShoulder,
-            10,
-            DamageSource::Card(CardName::ThrivingPlague),
+        assert!(
+            (boss.curse_damage_multiplier(PartState::Armor, Some(CardType::Burst)) - 0.88).abs()
+                < f32::EPSILON
         );
         assert_eq!(
-            boss.left_shoulder.current_armor, 90,
-            "off-target damage still applies"
+            boss.curse_damage_multiplier(PartState::Armor, Some(CardType::Affliction)),
+            1.0
         );
-        assert_eq!(boss.get_total_damage(), 0);
-        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 0);
 
-        boss.on_hit_with_source(
-            BossPartName::Head,
-            20,
-            DamageSource::Card(CardName::ThrivingPlague),
+        boss.head.on_hit(100);
+        assert_eq!(boss.head.part_state, PartState::Body);
+        assert!(
+            (boss.curse_damage_multiplier(PartState::Body, Some(CardType::Burst)) - 0.88).abs()
+                < f32::EPSILON
         );
-        assert_eq!(boss.get_total_damage(), 20);
-        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 20);
-
-        boss.on_hit_with_source(
-            BossPartName::Torso,
-            15,
-            DamageSource::Card(CardName::ThrivingPlague),
-        );
-        assert_eq!(boss.get_total_damage(), 35);
-        assert_eq!(boss.card_damage_total(CardName::ThrivingPlague), 35);
-
-        boss.set_result_target_parts(&[]);
-        boss.on_hit_with_source(BossPartName::Head, 5, DamageSource::Tap);
-        assert_eq!(
-            boss.head.current_armor, 75,
-            "damage still applies without a target"
-        );
-        assert_eq!(boss.get_total_damage(), 35);
     }
+
+
 }

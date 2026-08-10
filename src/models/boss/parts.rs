@@ -31,6 +31,14 @@ pub enum PartState {
     Body,
     Skeleton,
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum CurseType {
+    #[default]
+    None,
+    BodyDamage,
+    BurstDamage,
+    AfflictionDamage,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum BossName {
     Lojak,
@@ -109,7 +117,11 @@ impl BossTickView<'_> {
 impl BossPart {
     pub fn sync_state_from_current_values(&mut self) {
         self.part_state = if self.current_armor > 0 {
-            PartState::Armor
+            if self.part_state == PartState::Cursed {
+                PartState::Cursed
+            } else {
+                PartState::Armor
+            }
         } else if self.current_health > 0 {
             PartState::Body
         } else {

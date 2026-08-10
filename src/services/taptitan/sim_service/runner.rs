@@ -17,7 +17,8 @@ impl SimService {
         (duration_seconds * TICKS_PER_SECOND).round() as u32
     }
 
-    pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
+    pub fn run_simulation(mut payload: SimPayLoad) -> SimRunResult {
+        payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
             player_stat: Arc::new(payload.player_raid_data),
             boss_stat: payload.boss_data,
@@ -170,7 +171,8 @@ impl SimService {
         }
     }
 
-    pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
+    pub fn run_deck_simulation(mut payload: SimPayLoad) -> Option<SimDeckResult> {
+        payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
             player_stat: Arc::new(payload.player_raid_data),
             boss_stat: payload.boss_data,
