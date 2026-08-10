@@ -23,7 +23,7 @@ pub(super) const GLOBAL_RAID_AFFLICTION_DURATION_MULT: f64 = 1.5;
 pub(super) const COSMIC_HAYMAKER_TAPS_PER_PROC: u16 = 70;
 pub(super) const CELESTIAL_STATIC_STACKS_PER_PROC: usize = 8;
 pub(super) const COSMIC_HAYMAKER_FAST_PROC_KEY: u16 = 20000;
-pub(super) const FAST_CALC_CARDS: [CardName; 20] = [
+pub(super) const FAST_CALC_CARDS: [CardName; 21] = [
     CardName::MoonBeam,
     CardName::Fragmentize,
     CardName::SkullBash,
@@ -44,6 +44,7 @@ pub(super) const FAST_CALC_CARDS: [CardName; 20] = [
     CardName::SkeletalSmash,
     CardName::AstralEcho,
     CardName::BattleDrums,
+    CardName::MirrorForce,
 ];
 
 #[derive(Debug, Clone, Copy)]
