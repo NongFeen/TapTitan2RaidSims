@@ -244,6 +244,8 @@ pub struct Card {
     pub card_id: CardName,
     pub cardtype: CardType,
     pub level: u16,
+    #[serde(default = "default_card_enabled")]
+    pub enabled: bool,
     #[serde(default)]
     pub tap_count: u16,
     #[serde(default)]
@@ -254,6 +256,10 @@ pub struct Card {
     pub skill: CardSkillCache,
     #[serde(skip, default)]
     pub proc_chance_cache: f64,
+}
+
+const fn default_card_enabled() -> bool {
+    true
 }
 
 impl Card {
@@ -460,6 +466,22 @@ mod card_image_tests {
     use strum::IntoEnumIterator;
 
     use super::CardName;
+
+    #[test]
+    fn missing_enabled_flag_defaults_to_true_and_false_is_persisted() {
+        let card: super::Card = serde_json::from_value(serde_json::json!({
+            "card_id": "MoonBeam",
+            "cardtype": "Burst",
+            "level": 10
+        }))
+        .expect("legacy stored card should deserialize");
+        assert!(card.enabled);
+
+        let mut disabled = card;
+        disabled.enabled = false;
+        let stored = serde_json::to_value(disabled).expect("card should serialize");
+        assert_eq!(stored["enabled"], false);
+    }
 
     #[test]
     fn every_card_definition_has_its_static_image() {

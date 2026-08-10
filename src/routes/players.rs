@@ -263,10 +263,20 @@ pub async fn fetch_tt2_stats(
             public.player_code, player_id
         )));
     }
-    let title: Option<f32> = sqlx::query_scalar(
-        "SELECT COALESCE((stats->>'title')::REAL, 0) FROM player_stats s JOIN players p ON p.id=s.player_id WHERE p.player_id=$1",
-    ).bind(&player_id).fetch_optional(state.db()?).await?;
-    let stats = public.into_raid_data(title.unwrap_or(0.0))?;
+    let existing_stats_json: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT stats FROM player_stats s JOIN players p ON p.id=s.player_id WHERE p.player_id=$1",
+    )
+    .bind(&player_id)
+    .fetch_optional(state.db()?)
+    .await?;
+    let existing_stats = existing_stats_json
+        .map(serde_json::from_value::<PlayerRaidData>)
+        .transpose()?;
+    let title = existing_stats.as_ref().map_or(0.0, |stats| stats.title);
+    let mut stats = public.into_raid_data(title)?;
+    if let Some(existing_stats) = &existing_stats {
+        preserve_card_preferences(&mut stats, existing_stats);
+    }
     validate_stats(&stats)?;
     let stored = store_stats(&state, &player_id, stats).await?;
     sqlx::query("UPDATE players SET tt2_token_status='configured' WHERE player_id=$1")
@@ -275,6 +285,20 @@ pub async fn fetch_tt2_stats(
         .await?;
     enqueue_for_current_boss(&state, &player_id).await?;
     Ok((StatusCode::CREATED, Json(stored)))
+}
+
+fn preserve_card_preferences(refreshed: &mut PlayerRaidData, existing: &PlayerRaidData) {
+    let enabled_by_card = existing
+        .card_list
+        .iter()
+        .map(|card| (card.card_id, card.enabled))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    for card in &mut refreshed.card_list {
+        if let Some(enabled) = enabled_by_card.get(&card.card_id) {
+            card.enabled = *enabled;
+        }
+    }
 }
 
 async fn enqueue_for_current_boss(state: &Arc<AppState>, player_id: &str) -> Result<(), AppError> {
@@ -365,5 +389,37 @@ mod tests {
         let raw: crate::models::player_data::PlayerData =
             serde_json::from_value(value).expect("older raw export should still deserialize");
         assert!(raw.boosted_cards.is_empty());
+    }
+
+    #[test]
+    fn tt2_refresh_preserves_existing_card_preferences() {
+        let request: UpdatePlayerStatsRequest =
+            serde_json::from_str(include_str!("../../playerDataSample.json"))
+                .expect("raw player sample should deserialize");
+        let UpdatePlayerStatsRequest::Raw(raw) = request else {
+            panic!("raw sample was mistaken for cleaned stats");
+        };
+        let mut existing = clean_data(&raw);
+        let mut refreshed = existing.clone();
+        let disabled_card = existing.card_list[0].card_id;
+        existing.card_list[0].enabled = false;
+
+        preserve_card_preferences(&mut refreshed, &existing);
+
+        assert!(
+            !refreshed
+                .card_list
+                .iter()
+                .find(|card| card.card_id == disabled_card)
+                .expect("disabled card should still exist")
+                .enabled
+        );
+        assert!(
+            refreshed
+                .card_list
+                .iter()
+                .filter(|card| card.card_id != disabled_card)
+                .all(|card| card.enabled)
+        );
     }
 }

@@ -156,6 +156,7 @@ pub async fn create_job(
     let usable_card: Vec<CardName> = player_stats
         .card_list
         .iter()
+        .filter(|card| card.enabled)
         .map(|card| card.card_id)
         .collect();
 

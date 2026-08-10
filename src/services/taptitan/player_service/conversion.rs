@@ -35,6 +35,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
                         .copied()
                         .map(|boosted| boosted.max(raw_card.lv))
                         .unwrap_or(raw_card.lv),
+                    enabled: true,
                     tap_count: 0,
                     chained_parts: Default::default(),
                     celestial_stacks: Default::default(),

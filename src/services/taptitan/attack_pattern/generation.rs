@@ -576,6 +576,7 @@ mod tests {
             card_id,
             cardtype: card_id.card_type(),
             level: 1,
+            enabled: true,
             tap_count: 0,
             chained_parts: Vec::new(),
             celestial_stacks: 0,
