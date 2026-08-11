@@ -23,6 +23,7 @@ pub struct RecommendationQuery {
     must_include_mirror_force: bool,
     #[serde(default)]
     must_include_team_tactics: bool,
+    include_body_phase: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +55,8 @@ fn validate_deck_count(deck_count: i32) -> Result<usize, AppError> {
 pub struct GenerateRecommendationRequest {
     #[serde(default = "default_deck_count")]
     deck_count: i32,
+    #[serde(default)]
+    include_body_phase: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -68,9 +71,13 @@ pub async fn generate_for_player(
     Json(request): Json<GenerateRecommendationRequest>,
 ) -> Result<Json<GenerateRecommendationResponse>, AppError> {
     let deck_count = validate_deck_count(request.deck_count)?;
-    let created =
-        crate::services::job_service::generate_deck_recommendations(&state, &player_id, deck_count)
-            .await?;
+    let created = crate::services::job_service::generate_deck_recommendations(
+        &state,
+        &player_id,
+        deck_count,
+        request.include_body_phase,
+    )
+    .await?;
     Ok(Json(GenerateRecommendationResponse {
         deck_count: request.deck_count,
         created,
@@ -92,12 +99,13 @@ pub async fn current_for_player(
         return Err(AppError::NotFound("Player not found".to_string()));
     }
     let recommendation = sqlx::query_as(
-        "SELECT r.id, r.simulation_job_id, r.deck_count, r.must_include_mirror_force, r.must_include_team_tactics, r.total_average_damage::TEXT AS total_average_damage, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'cards', d.cards, 'average_damage', d.average_damage::TEXT, 'result', d.result) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id JOIN players p ON p.id=j.player_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE p.player_id=$1 AND j.status='completed' AND j.id=(SELECT latest.id FROM simulation_jobs latest WHERE latest.player_id=p.id AND latest.status='completed' ORDER BY latest.completed_at DESC LIMIT 1) AND r.deck_count=$2 AND r.must_include_mirror_force=$3 AND r.must_include_team_tactics=$4 GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
+        "SELECT r.id, r.simulation_job_id, r.deck_count, r.must_include_mirror_force, r.must_include_team_tactics, r.total_average_damage::TEXT AS total_average_damage, (r.recommendation_phase='void') AS body_phase_ran, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'cards', d.cards, 'average_damage', d.average_damage::TEXT, 'result', d.result) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id JOIN players p ON p.id=j.player_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE p.player_id=$1 AND j.status='completed' AND r.deck_count=$2 AND r.must_include_mirror_force=$3 AND r.must_include_team_tactics=$4 AND r.recommendation_phase=CASE WHEN COALESCE($5::BOOLEAN, FALSE) THEN 'void' ELSE 'current' END GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(query.deck_count)
     .bind(query.must_include_mirror_force)
     .bind(query.must_include_team_tactics)
+    .bind(query.include_body_phase)
     .fetch_optional(state.db()?)
     .await?
     .ok_or_else(|| AppError::NotFound("No completed recommendation found".to_string()))?;
@@ -159,5 +167,6 @@ mod tests {
         let request: GenerateRecommendationRequest =
             serde_json::from_str("{}").expect("empty generation request should be valid");
         assert_eq!(request.deck_count, DEFAULT_RECOMMENDATION_DECK_COUNT as i32);
+        assert!(!request.include_body_phase);
     }
 }

@@ -460,13 +460,7 @@ impl CardName {
 }
 
 #[cfg(test)]
-mod card_image_tests {
-    use std::path::Path;
-
-    use strum::IntoEnumIterator;
-
-    use super::CardName;
-
+mod card_serialization_tests {
     #[test]
     fn missing_enabled_flag_defaults_to_true_and_false_is_persisted() {
         let card: super::Card = serde_json::from_value(serde_json::json!({
@@ -481,23 +475,5 @@ mod card_image_tests {
         disabled.enabled = false;
         let stored = serde_json::to_value(disabled).expect("card should serialize");
         assert_eq!(stored["enabled"], false);
-    }
-
-    #[test]
-    fn every_card_definition_has_its_static_image() {
-        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let missing = CardName::iter()
-            .filter_map(|card| {
-                let image_url = card.image_url();
-                let image_path = project_root.join(image_url.trim_start_matches('/'));
-                (!image_path.is_file()).then_some(image_url)
-            })
-            .collect::<Vec<_>>();
-
-        assert!(
-            missing.is_empty(),
-            "card definitions reference missing images: {}",
-            missing.join(", ")
-        );
     }
 }

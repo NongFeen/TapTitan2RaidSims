@@ -108,6 +108,8 @@ pub struct SimulationJobView {
 #[derive(Debug, Deserialize)]
 pub struct CreateSimulationJobRequest {
     pub player_id: String,
+    #[serde(default)]
+    pub include_body_phase: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,6 +145,7 @@ pub struct RecommendationView {
     pub must_include_mirror_force: bool,
     pub must_include_team_tactics: bool,
     pub total_average_damage: String,
+    pub body_phase_ran: bool,
     pub decks: Value,
     pub created_at: DateTime<Utc>,
 }

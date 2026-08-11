@@ -2,15 +2,8 @@ use crate::routes;
 use crate::state::AppState;
 use axum::{Router, middleware, routing::get, routing::post, routing::put};
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
-    let assets = Router::new()
-        .fallback_service(ServeDir::new("assets"))
-        .layer(middleware::from_fn(
-            routes::asset_security::prevent_hotlinking,
-        ));
-
     let internal = Router::new()
         .route("/simulation-jobs", post(routes::jobs::create))
         .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
@@ -92,6 +85,5 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/taptitan/sim_deck",
             post(routes::taptitan::send_sim_deck),
         )
-        .nest("/assets", assets)
         .with_state(state)
 }

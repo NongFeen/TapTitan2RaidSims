@@ -20,7 +20,9 @@ use crate::{
     state::AppState,
 };
 
-const SIMULATOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-recommendation-phases-v1");
+const CURRENT_RECOMMENDATION_PHASE: &str = "current";
+const VOID_RECOMMENDATION_PHASE: &str = "void";
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
 
@@ -28,6 +30,7 @@ struct PreparedRecommendation {
     deck_count: usize,
     must_include_mirror_force: bool,
     must_include_team_tactics: bool,
+    recommendation_phase: &'static str,
     recommendation: DeckRecommendation,
 }
 
@@ -41,6 +44,7 @@ struct PreparedResults {
 fn prepare_recommendations(
     candidates: &[CandidateDeck],
     deck_counts: &[usize],
+    recommendation_phase: &'static str,
 ) -> Vec<PreparedRecommendation> {
     let mut recommendations = Vec::with_capacity(deck_counts.len() * 4);
     for &deck_count in deck_counts {
@@ -79,6 +83,7 @@ fn prepare_recommendations(
                     deck_count,
                     must_include_mirror_force,
                     must_include_team_tactics,
+                    recommendation_phase,
                     recommendation,
                 });
             } else {
@@ -94,7 +99,10 @@ fn prepare_recommendations(
     recommendations
 }
 
-fn prepare_results(result: SimRunResult) -> Result<PreparedResults, serde_json::Error> {
+fn prepare_results(
+    result: SimRunResult,
+    recommendation_phase: &'static str,
+) -> Result<PreparedResults, serde_json::Error> {
     let candidates =
         crate::services::taptitan::recommendation::candidates_from_results(&result.decks);
     let mut result_ids = vec![None; result.decks.len()];
@@ -107,6 +115,7 @@ fn prepare_results(result: SimRunResult) -> Result<PreparedResults, serde_json::
             "cards": candidate.cards,
             "card_mask": candidate.card_mask as i64,
             "average_damage": candidate.average_damage.to_string(),
+            "recommendation_phase": recommendation_phase,
             "result": result.decks[candidate.source_index],
         }));
     }
@@ -115,8 +124,11 @@ fn prepare_results(result: SimRunResult) -> Result<PreparedResults, serde_json::
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let recommendations =
-        prepare_recommendations(&candidates, &[DEFAULT_RECOMMENDATION_DECK_COUNT]);
+    let recommendations = prepare_recommendations(
+        &candidates,
+        &[DEFAULT_RECOMMENDATION_DECK_COUNT],
+        recommendation_phase,
+    );
 
     Ok(PreparedResults {
         deck_result_count: result.decks.len(),
@@ -124,6 +136,25 @@ fn prepare_results(result: SimRunResult) -> Result<PreparedResults, serde_json::
         result_ids,
         recommendations,
     })
+}
+
+fn combine_prepared_results(
+    mut current: PreparedResults,
+    mut void_phase: PreparedResults,
+) -> PreparedResults {
+    let source_index_offset = current.result_ids.len();
+    for prepared in &mut void_phase.recommendations {
+        for deck in &mut prepared.recommendation.decks {
+            deck.source_index += source_index_offset;
+        }
+    }
+    current.deck_result_count += void_phase.deck_result_count;
+    current.row_chunks.append(&mut void_phase.row_chunks);
+    current.result_ids.append(&mut void_phase.result_ids);
+    current
+        .recommendations
+        .append(&mut void_phase.recommendations);
+    current
 }
 
 pub async fn create_job(
@@ -165,10 +196,15 @@ pub async fn create_job(
         boss_data,
         attackable_part,
         usable_card,
+        include_body_phase: request.include_body_phase,
     };
     let deduplication_key = format!(
-        "{}:{}:{}:{}",
-        internal_player_id, stats_revision, boss_version, SIMULATOR_VERSION
+        "{}:{}:{}:{}:{}",
+        internal_player_id,
+        stats_revision,
+        boss_version,
+        SIMULATOR_VERSION,
+        request.include_body_phase
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(
@@ -231,15 +267,28 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         return Ok(());
     };
     let payload: SimPayLoad = serde_json::from_value(payload_json)?;
-    let result = tokio::task::spawn_blocking(move || SimService::run_simulation(payload))
-        .await
-        .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
+    let (current_result, void_result) = tokio::task::spawn_blocking(move || {
+        SimService::run_simulation_with_optional_body_phase(payload)
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
 
     sqlx::query("UPDATE simulation_jobs SET status='optimizing', updated_at=NOW() WHERE id=$1")
         .bind(job_id)
         .execute(state.db()?)
         .await?;
-    let prepared = tokio::task::spawn_blocking(move || prepare_results(result))
+    let body_phase_ran = void_result.is_some();
+    let prepared =
+        tokio::task::spawn_blocking(move || -> Result<PreparedResults, serde_json::Error> {
+            let current = prepare_results(current_result, CURRENT_RECOMMENDATION_PHASE)?;
+            match void_result {
+                Some(result) => Ok(combine_prepared_results(
+                    current,
+                    prepare_results(result, VOID_RECOMMENDATION_PHASE)?,
+                )),
+                None => Ok(current),
+            }
+        })
         .await
         .map_err(|error| {
             AppError::Internal(format!("Recommendation optimizer panicked: {error}"))
@@ -248,7 +297,10 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     persist_results(state.db()?, job_id, prepared).await?;
     sqlx::query("UPDATE simulation_jobs SET status='completed', result=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1")
         .bind(job_id)
-        .bind(serde_json::json!({ "deck_result_count": deck_result_count }))
+        .bind(serde_json::json!({
+            "deck_result_count": deck_result_count,
+            "body_phase_ran": body_phase_ran
+        }))
         .execute(state.db()?)
         .await?;
     Ok(())
@@ -286,7 +338,7 @@ async fn persist_results(
     );
     for (index, chunk) in row_chunks.into_iter().enumerate() {
         sqlx::query(
-            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
+            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, row->>'recommendation_phase', row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
         )
         .bind(job_id)
         .bind(chunk)
@@ -309,15 +361,17 @@ async fn persist_results(
             deck_count,
             must_include_mirror_force,
             must_include_team_tactics,
+            recommendation_phase,
             recommendation,
         } = prepared_recommendation;
         let recommendation_id = Uuid::new_v4();
-        sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, total_average_damage) VALUES ($1,$2,$3,$4,$5,CAST($6 AS NUMERIC))")
+        sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, recommendation_phase, total_average_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC))")
                     .bind(recommendation_id)
                     .bind(job_id)
                     .bind(deck_count as i32)
                     .bind(must_include_mirror_force)
                     .bind(must_include_team_tactics)
+                    .bind(recommendation_phase)
                 .bind(recommendation.total_average_damage.to_string())
                     .execute(&mut *tx)
                     .await?;
@@ -346,6 +400,7 @@ pub async fn generate_deck_recommendations(
     state: &Arc<AppState>,
     player_id: &str,
     deck_count: usize,
+    include_body_phase: bool,
 ) -> Result<bool, AppError> {
     if !(1..=MAX_RECOMMENDATION_DECK_COUNT).contains(&deck_count) {
         return Err(AppError::BadRequest(format!(
@@ -360,19 +415,26 @@ pub async fn generate_deck_recommendations(
         .await
         .map_err(|_| AppError::Internal("Recommendation worker is shutting down".to_string()))?;
 
+    let recommendation_phase = if include_body_phase {
+        VOID_RECOMMENDATION_PHASE
+    } else {
+        CURRENT_RECOMMENDATION_PHASE
+    };
     let job_id: Uuid = sqlx::query_scalar(
-        "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' ORDER BY j.completed_at DESC LIMIT 1",
+        "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
     )
     .bind(player_id)
+    .bind(recommendation_phase)
     .fetch_optional(state.db()?)
     .await?
     .ok_or_else(|| AppError::NotFound("Player has no completed simulation".to_string()))?;
 
     let already_generated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2)",
+        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3)",
     )
     .bind(job_id)
     .bind(deck_count as i32)
+    .bind(recommendation_phase)
     .fetch_one(state.db()?)
     .await?;
     if already_generated {
@@ -380,9 +442,10 @@ pub async fn generate_deck_recommendations(
     }
 
     let stored_results: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
-        "SELECT id, result FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY average_damage DESC",
+        "SELECT id, result FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2 ORDER BY average_damage DESC",
     )
     .bind(job_id)
+    .bind(recommendation_phase)
     .fetch_all(state.db()?)
     .await?;
     if stored_results.is_empty() {
@@ -400,7 +463,8 @@ pub async fn generate_deck_recommendations(
         }
         let candidates =
             crate::services::taptitan::recommendation::candidates_from_results(&results);
-        let recommendations = prepare_recommendations(&candidates, &[deck_count]);
+        let recommendations =
+            prepare_recommendations(&candidates, &[deck_count], recommendation_phase);
         Ok::<_, serde_json::Error>((ids, recommendations))
     })
     .await
@@ -409,19 +473,21 @@ pub async fn generate_deck_recommendations(
     })??;
 
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2")
+    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3")
         .bind(job_id)
         .bind(deck_count as i32)
+        .bind(recommendation_phase)
         .execute(&mut *tx)
         .await?;
     for prepared in recommendations {
         let recommendation_id = Uuid::new_v4();
-        sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, total_average_damage) VALUES ($1,$2,$3,$4,$5,CAST($6 AS NUMERIC))")
+        sqlx::query("INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, recommendation_phase, total_average_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC))")
             .bind(recommendation_id)
             .bind(job_id)
             .bind(prepared.deck_count as i32)
             .bind(prepared.must_include_mirror_force)
             .bind(prepared.must_include_team_tactics)
+            .bind(prepared.recommendation_phase)
             .bind(prepared.recommendation.total_average_damage.to_string())
             .execute(&mut *tx)
             .await?;

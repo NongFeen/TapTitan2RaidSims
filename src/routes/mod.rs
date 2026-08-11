@@ -1,4 +1,3 @@
-pub mod asset_security;
 pub mod health;
 pub mod internal_auth;
 pub mod jobs;

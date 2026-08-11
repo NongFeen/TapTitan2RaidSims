@@ -101,6 +101,7 @@ pub async fn run(
         boss_data,
         attackable_part: request.attackable_parts,
         usable_card: request.deck,
+        include_body_phase: false,
     };
     let total_taps = request.total_taps;
     let rounds_per_pattern = request.rounds_per_pattern;

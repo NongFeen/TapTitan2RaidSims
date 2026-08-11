@@ -477,6 +477,7 @@ async fn enqueue_for_current_boss(state: &Arc<AppState>, player_id: &str) -> Res
             state,
             CreateSimulationJobRequest {
                 player_id: player_id.to_string(),
+                include_body_phase: false,
             },
         )
         .await?;

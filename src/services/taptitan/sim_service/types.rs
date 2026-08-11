@@ -163,12 +163,22 @@ pub struct SimRunResult {
     pub decks: Vec<SimDeckResult>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SimulationPhase {
+    #[default]
+    Current,
+    TargetedBody,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimDeckResult {
     pub deck: Vec<CardName>,
     pub deck_names: Vec<String>,
     pub total_attack_patterns: usize,
     pub best_pattern: Option<SimPatternResult>,
+    #[serde(default)]
+    pub simulation_phase: SimulationPhase,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patterns: Vec<SimPatternResult>,
 }

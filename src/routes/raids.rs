@@ -61,8 +61,14 @@ async fn replace_current_boss(
         .fetch_all(state.db()?)
         .await?;
         for player_id in player_ids {
-            let (job_id, _) =
-                job_service::create_job(state, CreateSimulationJobRequest { player_id }).await?;
+            let (job_id, _) = job_service::create_job(
+                state,
+                CreateSimulationJobRequest {
+                    player_id,
+                    include_body_phase: false,
+                },
+            )
+            .await?;
             created_jobs.push(job_id);
         }
     }

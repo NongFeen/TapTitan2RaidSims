@@ -14,4 +14,6 @@ pub struct SimPayLoad {
     pub boss_data: Boss,
     pub attackable_part: Vec<BossPartName>,
     pub usable_card: Vec<CardName>,
+    #[serde(default)]
+    pub include_body_phase: bool,
 }
