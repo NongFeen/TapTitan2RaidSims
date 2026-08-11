@@ -1,10 +1,14 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
+use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use crate::{
@@ -12,8 +16,8 @@ use crate::{
     models::{
         app::{
             CreatePlayerRequest, CreateSimulationJobRequest, PlayerDetail, PlayerStatsVersion,
-            PlayerSummary, Tt2PlayerStatus, UpdateAutoSimsRequest, UpdatePlayerStatsRequest,
-            UpdatePlayerTokenRequest,
+            PlayerSummary, Tt2ClanFetchResult, Tt2ClanStatus, Tt2PlayerStatus,
+            UpdateAutoSimsRequest, UpdatePlayerStatsRequest, UpdatePlayerTokenRequest,
         },
         player_raid_data::PlayerRaidData,
     },
@@ -170,7 +174,7 @@ pub async fn update_token(
             "player_token cannot be empty".to_string(),
         ));
     }
-    let tt2 = state.tt2_player.as_ref().ok_or_else(|| {
+    let tt2 = state.gamehive_api.as_ref().ok_or_else(|| {
         AppError::ServiceUnavailable("TT2 integration is not configured".to_string())
     })?;
     let (ciphertext, nonce) = tt2.cipher().encrypt(token)?;
@@ -197,19 +201,181 @@ pub async fn clear_token(
 
 pub async fn tt2_status(State(state): State<Arc<AppState>>) -> Json<Tt2PlayerStatus> {
     Json(Tt2PlayerStatus {
-        configured: state.tt2_player.is_some(),
+        configured: state.gamehive_api.is_some(),
         connected: state
-            .tt2_player
+            .gamehive_api
             .as_ref()
             .is_some_and(|client| client.is_connected()),
+        raid_connected: state
+            .gamehive_api
+            .as_ref()
+            .is_some_and(|client| client.is_raid_connected()),
     })
+}
+
+pub async fn tt2_clan_status(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Tt2ClanStatus>, AppError> {
+    let row: (Option<String>, Option<String>, Option<DateTime<Utc>>, i32) = sqlx::query_as(
+        "SELECT clan_code, clan_name, last_fetched_at, last_player_count FROM tt2_clan_sync_state WHERE singleton=TRUE",
+    )
+    .fetch_one(state.db()?)
+    .await?;
+    Ok(Json(Tt2ClanStatus {
+        clan_code: row.0,
+        clan_name: row.1,
+        last_fetched_at: row.2,
+        next_fetch_at: row.2.map(|value| value + Duration::hours(12)),
+        last_player_count: row.3,
+    }))
+}
+
+pub async fn fetch_tt2_clan_stats(
+    State(state): State<Arc<AppState>>,
+    Path(player_id): Path<String>,
+) -> Result<(StatusCode, Json<Tt2ClanFetchResult>), AppError> {
+    let _fetch_guard = state.clan_fetch_lock.lock().await;
+    let tt2 = state.gamehive_api.as_ref().ok_or_else(|| {
+        AppError::ServiceUnavailable("TT2 integration is not configured".to_string())
+    })?;
+    if !tt2.is_raid_connected() {
+        return Err(AppError::ServiceUnavailable(
+            "TT2 /raid socket is not connected".to_string(),
+        ));
+    }
+
+    let last_fetched_at: Option<DateTime<Utc>> =
+        sqlx::query_scalar("SELECT last_fetched_at FROM tt2_clan_sync_state WHERE singleton=TRUE")
+            .fetch_one(state.db()?)
+            .await?;
+    if let Some(last_fetched_at) = last_fetched_at {
+        let next_fetch_at = last_fetched_at + Duration::hours(12);
+        if Utc::now() < next_fetch_at {
+            return Err(AppError::TooManyRequests(format!(
+                "Clan player data can be fetched again at {}",
+                next_fetch_at.to_rfc3339()
+            )));
+        }
+    }
+
+    let token_row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
+        "SELECT player_token_ciphertext, player_token_nonce FROM players WHERE player_id=$1 AND player_token_ciphertext IS NOT NULL AND player_token_nonce IS NOT NULL",
+    )
+    .bind(&player_id)
+    .fetch_optional(state.db()?)
+    .await?;
+    let (ciphertext, nonce) = token_row.ok_or_else(|| {
+        AppError::BadRequest(
+            "The selected player needs a configured Master or Grand Master TT2 token".to_string(),
+        )
+    })?;
+    let player_token = tt2.cipher().decrypt(&ciphertext, &nonce)?;
+    let clan = tt2.fetch_clan(&player_token).await?;
+    if clan.clan_code.trim().is_empty() || clan.clan_name.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "TT2 returned clan data without a clan code or name".to_string(),
+        ));
+    }
+
+    let existing_rows: Vec<(String, Option<serde_json::Value>)> = sqlx::query_as(
+        "SELECT p.player_id, s.stats FROM players p LEFT JOIN player_stats s ON s.player_id=p.id",
+    )
+    .fetch_all(state.db()?)
+    .await?;
+    let existing_codes = existing_rows
+        .iter()
+        .map(|(player_code, _)| player_code.clone())
+        .collect::<HashSet<_>>();
+    let existing_stats = existing_rows
+        .into_iter()
+        .filter_map(|(player_code, stats)| stats.map(|stats| (player_code, stats)))
+        .map(|(player_code, stats)| {
+            serde_json::from_value::<PlayerRaidData>(stats).map(|stats| (player_code, stats))
+        })
+        .collect::<Result<HashMap<_, _>, _>>()?;
+
+    let mut seen_codes = HashSet::new();
+    let mut prepared_players = Vec::with_capacity(clan.players_data.len());
+    for clan_player in clan.players_data {
+        let player_code = clan_player.player_code.trim().to_string();
+        let display_name = clan_player.name.trim().to_string();
+        if player_code.is_empty() || display_name.is_empty() {
+            return Err(AppError::BadRequest(
+                "TT2 returned a clan player without a player code or name".to_string(),
+            ));
+        }
+        if !seen_codes.insert(player_code.clone()) {
+            return Err(AppError::BadRequest(format!(
+                "TT2 returned duplicate clan player {player_code}"
+            )));
+        }
+        let previous = existing_stats.get(&player_code);
+        let title = previous.map_or(0.0, |stats| stats.title);
+        let mut stats = clan_player.into_raid_data(title)?;
+        if let Some(previous) = previous {
+            preserve_card_preferences(&mut stats, previous);
+        }
+        validate_stats(&stats)?;
+        prepared_players.push((player_code, display_name, stats));
+    }
+
+    let player_count = prepared_players.len();
+    let created_players = prepared_players
+        .iter()
+        .filter(|(player_code, _, _)| !existing_codes.contains(player_code))
+        .count();
+    let updated_players = player_count - created_players;
+    let fetched_at = Utc::now();
+    let clan_code = clan.clan_code.trim().to_string();
+    let clan_name = clan.clan_name.trim().to_string();
+    let mut tx = state.db()?.begin().await?;
+    for (player_code, display_name, stats) in prepared_players {
+        let internal_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO players (id, player_id, display_name, auto_sims) VALUES ($1,$2,$3,FALSE) ON CONFLICT (player_id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=NOW() RETURNING id",
+        )
+        .bind(Uuid::new_v4())
+        .bind(&player_code)
+        .bind(display_name)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO player_stats (player_id, revision, stats) VALUES ($1,1,$2) ON CONFLICT (player_id) DO UPDATE SET revision=player_stats.revision+1, stats=EXCLUDED.stats, updated_at=NOW()",
+        )
+        .bind(internal_id)
+        .bind(serde_json::to_value(stats)?)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE tt2_clan_sync_state SET clan_code=$1, clan_name=$2, last_fetched_at=$3, last_player_count=$4, updated_at=NOW() WHERE singleton=TRUE",
+    )
+    .bind(&clan_code)
+    .bind(&clan_name)
+    .bind(fetched_at)
+    .bind(player_count as i32)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(Tt2ClanFetchResult {
+            clan_code,
+            clan_name,
+            created_players,
+            updated_players,
+            player_count,
+            last_fetched_at: fetched_at,
+            next_fetch_at: fetched_at + Duration::hours(12),
+        }),
+    ))
 }
 
 pub async fn fetch_tt2_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
 ) -> Result<(StatusCode, Json<PlayerStatsVersion>), AppError> {
-    let tt2 = state.tt2_player.as_ref().ok_or_else(|| {
+    let tt2 = state.gamehive_api.as_ref().ok_or_else(|| {
         AppError::ServiceUnavailable("TT2 integration is not configured".to_string())
     })?;
     if !tt2.is_connected() {

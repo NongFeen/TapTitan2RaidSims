@@ -1,10 +1,10 @@
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::services::tt2_player_client::Tt2PlayerClient;
+use crate::services::gamehive_api_client::GameHiveApiClient;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,7 +12,8 @@ pub struct AppState {
     pub simulation_slots: Arc<Semaphore>,
     pub recommendation_slots: Arc<Semaphore>,
     pub internal_api_key: Arc<str>,
-    pub tt2_player: Option<Arc<Tt2PlayerClient>>,
+    pub gamehive_api: Option<Arc<GameHiveApiClient>>,
+    pub clan_fetch_lock: Arc<Mutex<()>>,
 }
 
 impl AppState {
@@ -20,14 +21,15 @@ impl AppState {
         db: Option<PgPool>,
         simulation_concurrency: usize,
         internal_api_key: String,
-        tt2_player: Option<Arc<Tt2PlayerClient>>,
+        gamehive_api: Option<Arc<GameHiveApiClient>>,
     ) -> Self {
         Self {
             db,
             simulation_slots: Arc::new(Semaphore::new(simulation_concurrency)),
             recommendation_slots: Arc::new(Semaphore::new(1)),
             internal_api_key: Arc::from(internal_api_key),
-            tt2_player,
+            gamehive_api,
+            clan_fetch_lock: Arc::new(Mutex::new(())),
         }
     }
 

@@ -41,6 +41,17 @@ pub const PLAYER_PROPERTIES: [&str; 8] = [
     "equipment_set",
     "cards",
 ];
+pub const CLAN_PROPERTIES: [&str; 9] = [
+    "name",
+    "player_code",
+    "player_raid_level",
+    "boosted_cards",
+    "raid_research_tree",
+    "raid_research_bonuses",
+    "gemstone_research_tree_raid_bonuses",
+    "equipment_set",
+    "cards",
+];
 
 #[derive(Clone)]
 pub struct TokenCipher(Aes256Gcm);
@@ -86,14 +97,15 @@ impl TokenCipher {
     }
 }
 
-pub struct Tt2PlayerClient {
+pub struct GameHiveApiClient {
     config: Tt2Config,
     cipher: TokenCipher,
     http: reqwest::Client,
     connected: AtomicBool,
+    raid_connected: AtomicBool,
 }
 
-impl Tt2PlayerClient {
+impl GameHiveApiClient {
     pub fn new(config: Tt2Config) -> Result<Arc<Self>, String> {
         let cipher = TokenCipher::from_base64(&config.player_token_encryption_key)?;
         Ok(Arc::new(Self {
@@ -101,6 +113,7 @@ impl Tt2PlayerClient {
             cipher,
             http: reqwest::Client::new(),
             connected: AtomicBool::new(false),
+            raid_connected: AtomicBool::new(false),
         }))
     }
 
@@ -109,6 +122,9 @@ impl Tt2PlayerClient {
     }
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Acquire)
+    }
+    pub fn is_raid_connected(&self) -> bool {
+        self.raid_connected.load(Ordering::Acquire)
     }
 
     pub async fn connect(self: &Arc<Self>) {
@@ -122,7 +138,7 @@ impl Tt2PlayerClient {
         tracing::info!(
             socket_url = %self.config.socket_url,
             handshake_path = %self.config.socket_handshake_path,
-            namespace = "/player",
+            namespaces = "/player,/raid",
             "Connecting to TT2 Socket.IO"
         );
         let mut request = match engine_url.into_client_request() {
@@ -159,15 +175,22 @@ impl Tt2PlayerClient {
                     let packet = text.as_str();
                     if packet.starts_with('0') {
                         tracing::debug!(
-                            "TT2 Engine.IO handshake received; joining /player namespace"
+                            "TT2 Engine.IO handshake received; joining /player and /raid namespaces"
                         );
                         if let Err(error) = socket.send(Message::Text("40/player,".into())).await {
                             tracing::error!(?error, "Could not join TT2 /player namespace");
                             break;
                         }
+                        if let Err(error) = socket.send(Message::Text("40/raid,".into())).await {
+                            tracing::error!(?error, "Could not join TT2 /raid namespace");
+                            break;
+                        }
                     } else if packet.starts_with("40/player") {
                         self.connected.store(true, Ordering::Release);
                         tracing::info!("TT2 /player Socket.IO namespace connected");
+                    } else if packet.starts_with("40/raid") {
+                        self.raid_connected.store(true, Ordering::Release);
+                        tracing::info!("TT2 /raid Socket.IO namespace connected");
                     } else if packet == "2" {
                         if let Err(error) = socket.send(Message::Text("3".into())).await {
                             tracing::error!(?error, "Could not send TT2 Engine.IO pong");
@@ -176,11 +199,19 @@ impl Tt2PlayerClient {
                     } else if packet.starts_with("41/player") {
                         self.connected.store(false, Ordering::Release);
                         tracing::warn!(packet, "TT2 /player disconnect event");
+                    } else if packet.starts_with("41/raid") {
+                        self.raid_connected.store(false, Ordering::Release);
+                        tracing::warn!(packet, "TT2 /raid disconnect event");
                     } else if let Some(payload) = packet.strip_prefix("42/player,") {
-                        log_socket_event(payload, &self.connected);
+                        log_socket_event(payload, "/player", &self.connected);
+                    } else if let Some(payload) = packet.strip_prefix("42/raid,") {
+                        log_socket_event(payload, "/raid", &self.raid_connected);
                     } else if let Some(payload) = packet.strip_prefix("44/player,") {
                         self.connected.store(false, Ordering::Release);
                         tracing::error!(payload, "TT2 /player connect_error event");
+                    } else if let Some(payload) = packet.strip_prefix("44/raid,") {
+                        self.raid_connected.store(false, Ordering::Release);
+                        tracing::error!(payload, "TT2 /raid connect_error event");
                     } else {
                         tracing::debug!(packet, "TT2 Socket.IO packet received");
                     }
@@ -203,7 +234,8 @@ impl Tt2PlayerClient {
             }
         }
         self.connected.store(false, Ordering::Release);
-        tracing::warn!("TT2 /player socket stopped; automatic reconnect is disabled");
+        self.raid_connected.store(false, Ordering::Release);
+        tracing::warn!("TT2 socket stopped; automatic reconnect is disabled");
     }
 
     pub async fn fetch_player(&self, player_token: &str) -> Result<PublicPlayerData, AppError> {
@@ -255,6 +287,56 @@ impl Tt2PlayerClient {
             AppError::BadRequest(format!("TT2 returned malformed player data: {error}"))
         })
     }
+
+    pub async fn fetch_clan(&self, player_token: &str) -> Result<PublicClanData, AppError> {
+        if !self.is_raid_connected() {
+            return Err(AppError::ServiceUnavailable(
+                "TT2 /raid socket is not connected; restart the backend after checking TT2 configuration".to_string(),
+            ));
+        }
+        let url = format!(
+            "{}/raid/clan_data",
+            self.config.rest_base_url.trim_end_matches('/')
+        );
+        let response = self
+            .http
+            .post(url)
+            .header("API-Authenticate", &self.config.application_token)
+            .json(&PlayerDataRequest {
+                player_token,
+                properties: &CLAN_PROPERTIES,
+            })
+            .send()
+            .await
+            .map_err(|error| {
+                AppError::ServiceUnavailable(format!("Could not reach TT2 clan API: {error}"))
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(%status, "TT2 clan API rejected a request");
+            let message = match status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                    "TT2 rejected the application token or the player token is not a clan Master/Grand Master".to_string()
+                }
+                StatusCode::TOO_MANY_REQUESTS => {
+                    "TT2 clan data can only be fetched once per clan every 12 hours".to_string()
+                }
+                _ => format!(
+                    "TT2 clan API returned {status}: {}",
+                    sanitize_upstream_message(&body)
+                ),
+            };
+            return if status == StatusCode::TOO_MANY_REQUESTS {
+                Err(AppError::TooManyRequests(message))
+            } else {
+                Err(AppError::BadRequest(message))
+            };
+        }
+        response.json::<PublicClanData>().await.map_err(|error| {
+            AppError::BadRequest(format!("TT2 returned malformed clan data: {error}"))
+        })
+    }
 }
 
 fn engine_url(config: &Tt2Config) -> Result<String, String> {
@@ -267,7 +349,7 @@ fn engine_url(config: &Tt2Config) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-fn log_socket_event(payload: &str, connected: &AtomicBool) {
+fn log_socket_event(payload: &str, namespace: &str, connected: &AtomicBool) {
     let parsed: Value = match serde_json::from_str(payload) {
         Ok(value) => value,
         Err(error) => {
@@ -284,18 +366,18 @@ fn log_socket_event(payload: &str, connected: &AtomicBool) {
     match event {
         "connected" => {
             connected.store(true, Ordering::Release);
-            tracing::info!("TT2 /player connected event received");
+            tracing::info!(namespace, "TT2 connected event received");
         }
         "disconnect" => {
             connected.store(false, Ordering::Release);
-            tracing::warn!(?data, "TT2 /player disconnect event received");
+            tracing::warn!(namespace, ?data, "TT2 disconnect event received");
         }
-        "error" => tracing::error!(?data, "TT2 /player error event received"),
+        "error" => tracing::error!(namespace, ?data, "TT2 error event received"),
         "connect_error" => {
             connected.store(false, Ordering::Release);
-            tracing::error!(?data, "TT2 /player connect_error event received");
+            tracing::error!(namespace, ?data, "TT2 connect_error event received");
         }
-        _ => tracing::debug!(event, ?data, "Ignoring unexpected TT2 /player event"),
+        _ => tracing::debug!(namespace, event, ?data, "Ignoring unexpected TT2 event"),
     }
 }
 
@@ -314,6 +396,31 @@ struct PlayerDataRequest<'a> {
 pub struct PublicPlayerData {
     pub player_code: String,
     pub player_raid_level: String,
+    #[serde(default)]
+    pub boosted_cards: Vec<PublicBoostedCard>,
+    #[serde(default)]
+    pub raid_research_tree: HashMap<String, Value>,
+    #[serde(default)]
+    pub raid_research_bonuses: HashMap<String, Value>,
+    #[serde(default)]
+    pub gemstone_research_tree_raid_bonuses: HashMap<String, Value>,
+    #[serde(default)]
+    pub equipment_set: Vec<String>,
+    pub cards: Vec<PublicCard>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PublicClanData {
+    pub clan_code: String,
+    pub clan_name: String,
+    pub players_data: Vec<PublicClanPlayerData>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PublicClanPlayerData {
+    pub name: String,
+    pub player_code: String,
+    pub player_raid_level: Value,
     #[serde(default)]
     pub boosted_cards: Vec<PublicBoostedCard>,
     #[serde(default)]
@@ -388,6 +495,32 @@ impl PublicPlayerData {
         let mut cleaned = clean_data(&raw);
         cleaned.title = title;
         Ok(cleaned)
+    }
+}
+
+impl PublicClanPlayerData {
+    pub fn into_raid_data(self, title: f32) -> Result<PlayerRaidData, AppError> {
+        let player_raid_level = match self.player_raid_level {
+            Value::String(value) => value,
+            Value::Number(value) => value.to_string(),
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "TT2 clan player {} has an invalid player_raid_level",
+                    self.player_code
+                )));
+            }
+        };
+        PublicPlayerData {
+            player_code: self.player_code,
+            player_raid_level,
+            boosted_cards: self.boosted_cards,
+            raid_research_tree: self.raid_research_tree,
+            raid_research_bonuses: self.raid_research_bonuses,
+            gemstone_research_tree_raid_bonuses: self.gemstone_research_tree_raid_bonuses,
+            equipment_set: self.equipment_set,
+            cards: self.cards,
+        }
+        .into_raid_data(title)
     }
 }
 

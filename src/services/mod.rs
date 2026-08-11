@@ -1,3 +1,3 @@
+pub mod gamehive_api_client;
 pub mod job_service;
 pub mod taptitan;
-pub mod tt2_player_client;

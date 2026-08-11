@@ -25,6 +25,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(routes::players::fetch_tt2_stats),
         )
         .route("/tt2/player-status", get(routes::players::tt2_status))
+        .route("/tt2/clan-status", get(routes::players::tt2_clan_status))
+        .route(
+            "/players/{player_id}/fetch-clan-stats",
+            post(routes::players::fetch_tt2_clan_stats),
+        )
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             routes::internal_auth::require_key,

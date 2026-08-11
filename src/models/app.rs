@@ -52,6 +52,27 @@ pub struct UpdatePlayerTokenRequest {
 pub struct Tt2PlayerStatus {
     pub configured: bool,
     pub connected: bool,
+    pub raid_connected: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Tt2ClanStatus {
+    pub clan_code: Option<String>,
+    pub clan_name: Option<String>,
+    pub last_fetched_at: Option<DateTime<Utc>>,
+    pub next_fetch_at: Option<DateTime<Utc>>,
+    pub last_player_count: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Tt2ClanFetchResult {
+    pub clan_code: String,
+    pub clan_name: String,
+    pub created_players: usize,
+    pub updated_players: usize,
+    pub player_count: usize,
+    pub last_fetched_at: DateTime<Utc>,
+    pub next_fetch_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]

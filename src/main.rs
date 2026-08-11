@@ -44,8 +44,8 @@ async fn run() {
         simulation_worker_count = config.simulation_worker_count,
         "simulation worker allocation configured (0 uses all available CPUs)"
     );
-    let tt2_player = config.tt2.clone().map(|tt2_config| {
-        services::tt2_player_client::Tt2PlayerClient::new(tt2_config)
+    let gamehive_api = config.tt2.clone().map(|tt2_config| {
+        services::gamehive_api_client::GameHiveApiClient::new(tt2_config)
             .expect("invalid TT2 player-token encryption configuration")
     });
     let pool = match config.database_url.as_deref() {
@@ -68,12 +68,12 @@ async fn run() {
         pool,
         config.simulation_concurrency,
         config.internal_api_key,
-        tt2_player.clone(),
+        gamehive_api.clone(),
     ));
 
-    if let Some(tt2_player) = tt2_player {
+    if let Some(gamehive_api) = gamehive_api {
         tokio::spawn(async move {
-            tt2_player.connect().await;
+            gamehive_api.connect().await;
         });
     } else {
         tracing::warn!("TT2 integration is not configured; player fetching is unavailable");
