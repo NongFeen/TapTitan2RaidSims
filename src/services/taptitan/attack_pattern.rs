@@ -176,6 +176,6 @@ mod behavior;
 mod generation;
 mod targeting;
 
-pub use generation::generate_attack_patterns;
 use generation::*;
+pub use generation::{generate_all_attack_patterns, generate_attack_patterns};
 use targeting::*;

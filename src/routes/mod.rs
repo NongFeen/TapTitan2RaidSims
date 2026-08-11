@@ -5,4 +5,5 @@ pub mod jobs;
 pub mod players;
 pub mod raids;
 pub mod recommendations;
+pub mod simulation_debug;
 pub mod taptitan;

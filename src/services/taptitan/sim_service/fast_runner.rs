@@ -27,6 +27,7 @@ impl SimService {
                 deck_names,
                 total_attack_patterns,
                 best_pattern: None,
+                patterns: Vec::new(),
             };
         }
 
@@ -182,6 +183,7 @@ impl SimService {
             deck_names,
             total_attack_patterns,
             best_pattern,
+            patterns: Vec::new(),
         }
     }
 

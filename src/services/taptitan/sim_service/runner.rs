@@ -167,7 +167,17 @@ impl SimService {
         if Self::is_fast_calc_deck(&deck) {
             Self::run_fast_calc_deck_sim(sim_stats, deck, attack_patterns, proc_cache, progress)
         } else {
-            Self::run_deck_sim(sim_stats, deck, attack_patterns, SIMS_ROUNDS, progress)
+            Self::run_deck_sim(
+                sim_stats,
+                deck,
+                attack_patterns,
+                SIMS_ROUNDS,
+                progress,
+                1,
+                None,
+                None,
+                false,
+            )
         }
     }
 
@@ -208,6 +218,55 @@ impl SimService {
             attack_patterns,
             10,
             None,
+            1,
+            None,
+            None,
+            false,
+        ))
+    }
+
+    pub fn run_deck_debug_simulation(
+        mut payload: SimPayLoad,
+        total_taps: u32,
+        rounds_per_pattern: u64,
+    ) -> Option<SimDeckResult> {
+        payload.boss_data.snapshot_initial_curse_parts();
+        let sim_stats = SimStats {
+            player_stat: Arc::new(payload.player_raid_data),
+            boss_stat: payload.boss_data,
+            attackable_part: payload.attackable_part,
+            usable_card: payload.usable_card,
+        };
+        let select_deck = sim_stats
+            .usable_card
+            .iter()
+            .filter_map(|card_name| {
+                sim_stats
+                    .player_stat
+                    .card_list
+                    .iter()
+                    .find(|card| card.card_id == *card_name)
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        if select_deck.len() != 3 {
+            return None;
+        }
+        let attack_patterns = generate_all_attack_patterns(&sim_stats, &select_deck);
+        if attack_patterns.is_empty() {
+            return None;
+        }
+
+        Some(Self::run_deck_sim(
+            &sim_stats,
+            select_deck,
+            attack_patterns,
+            rounds_per_pattern,
+            None,
+            1,
+            Some(TICKS_PER_ROUND),
+            Some(total_taps),
+            true,
         ))
     }
 
@@ -217,6 +276,10 @@ impl SimService {
         attack_patterns: Vec<AttackPattern>,
         round: u64,
         progress: Option<&SimProgress>,
+        taps_per_tick: u32,
+        fixed_tick_count: Option<u32>,
+        total_tap_limit: Option<u32>,
+        include_all_patterns: bool,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck, &sim_stats.boss_stat);
@@ -238,17 +301,20 @@ impl SimService {
                 deck_names,
                 total_attack_patterns,
                 best_pattern: None,
+                patterns: Vec::new(),
             };
         }
 
         let sim_rounds = round;
-        let tap_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
+        let tap_count = fixed_tick_count
+            .unwrap_or_else(|| Self::deck_tick_count(&select_deck, &sim_stats.boss_stat));
         let should_update_boss = deck_creates_timed_boss_effect(&select_deck);
         let deck_card_names = select_deck
             .iter()
             .map(|card| card.card_id)
             .collect::<Vec<_>>();
         let mut best_pattern: Option<SimPatternResult> = None;
+        let mut pattern_results = Vec::new();
 
         for (pattern_index, pattern) in attack_patterns.into_iter().enumerate() {
             let pattern_name = pattern.describe();
@@ -284,12 +350,17 @@ impl SimService {
                 let prepared_pattern = pattern.prepare(&boss, &deck, &sim_stats.attackable_part);
 
                 for i in 0..tap_count {
-                    let current_target = prepared_pattern.next_target(
-                        &boss,
-                        last_target,
-                        &deck,
-                        &sim_stats.attackable_part,
-                    );
+                    let current_target = total_tap_limit
+                        .is_none_or(|tap_limit| i < tap_limit)
+                        .then(|| {
+                            prepared_pattern.next_target(
+                                &boss,
+                                last_target,
+                                &deck,
+                                &sim_stats.attackable_part,
+                            )
+                        })
+                        .flatten();
 
                     if let Some(current_target) = current_target {
                         last_target = Some(current_target);
@@ -303,32 +374,34 @@ impl SimService {
                                 i,
                             );
                         }
-                        Self::tap_boss(
-                            &mut boss,
-                            current_target,
-                            &mut deck,
-                            &damage_context,
-                            &mut total_burst_proc,
-                            1.0,
-                            &mut card_proc_totals,
-                            &mut support_cache,
-                            &mut rng,
-                        );
-
-                        if trigger_astral_echo_extra_tap(&mut deck) {
-                            let astral_proc_chance_scale =
-                                support_cache.bonus_tap_proc_chance_mult();
+                        for _ in 0..taps_per_tick {
                             Self::tap_boss(
                                 &mut boss,
                                 current_target,
                                 &mut deck,
                                 &damage_context,
                                 &mut total_burst_proc,
-                                astral_proc_chance_scale,
+                                1.0,
                                 &mut card_proc_totals,
                                 &mut support_cache,
                                 &mut rng,
                             );
+
+                            if trigger_astral_echo_extra_tap(&mut deck) {
+                                let astral_proc_chance_scale =
+                                    support_cache.bonus_tap_proc_chance_mult();
+                                Self::tap_boss(
+                                    &mut boss,
+                                    current_target,
+                                    &mut deck,
+                                    &damage_context,
+                                    &mut total_burst_proc,
+                                    astral_proc_chance_scale,
+                                    &mut card_proc_totals,
+                                    &mut support_cache,
+                                    &mut rng,
+                                );
+                            }
                         }
 
                         if let Some(totem_card) = &totem_card {
@@ -398,7 +471,10 @@ impl SimService {
             if best_pattern.as_ref().map_or(true, |best| {
                 pattern_result.average_damage > best.average_damage
             }) {
-                best_pattern = Some(pattern_result);
+                best_pattern = Some(pattern_result.clone());
+            }
+            if include_all_patterns {
+                pattern_results.push(pattern_result);
             }
 
             let (current_progress, total_progress) =
@@ -440,6 +516,7 @@ impl SimService {
             deck_names,
             total_attack_patterns,
             best_pattern,
+            patterns: pattern_results,
         }
     }
     pub(super) fn tap_boss(

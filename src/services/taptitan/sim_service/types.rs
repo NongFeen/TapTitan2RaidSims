@@ -169,6 +169,8 @@ pub struct SimDeckResult {
     pub deck_names: Vec<String>,
     pub total_attack_patterns: usize,
     pub best_pattern: Option<SimPatternResult>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patterns: Vec<SimPatternResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

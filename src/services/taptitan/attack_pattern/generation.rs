@@ -1,6 +1,18 @@
 use super::*;
 
 pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
+    generate_attack_patterns_with_mode(sim_stats, deck, false)
+}
+
+pub fn generate_all_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<AttackPattern> {
+    generate_attack_patterns_with_mode(sim_stats, deck, true)
+}
+
+fn generate_attack_patterns_with_mode(
+    sim_stats: &SimStats,
+    deck: &[Card],
+    include_all_valid_patterns: bool,
+) -> Vec<AttackPattern> {
     if deck_is_target_insensitive(deck) {
         let pattern = AttackPattern::SingleAny;
         let info = AttackPatternInfo::new(pattern, sim_stats, deck);
@@ -30,11 +42,13 @@ pub fn generate_attack_patterns(sim_stats: &SimStats, deck: &[Card]) -> Vec<Atta
     }
 
     dedupe_generic_attack_patterns(&mut pattern_infos);
-    if sim_stats.boss_stat.recommend_1_to_2_part_patterns_only {
-        pattern_infos.retain(|info| (1..=2).contains(&attacked_part_count(info)));
+    if !include_all_valid_patterns {
+        if sim_stats.boss_stat.recommend_1_to_2_part_patterns_only {
+            pattern_infos.retain(|info| (1..=2).contains(&attacked_part_count(info)));
+        }
+        keep_max_coverage_spread_affliction_patterns(deck, &mut pattern_infos);
+        keep_top_attack_patterns(&mut pattern_infos);
     }
-    keep_max_coverage_spread_affliction_patterns(deck, &mut pattern_infos);
-    keep_top_attack_patterns(&mut pattern_infos);
 
     let patterns = pattern_infos
         .into_iter()

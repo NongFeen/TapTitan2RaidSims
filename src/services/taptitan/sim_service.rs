@@ -1,4 +1,6 @@
-use super::attack_pattern::{AttackPattern, generate_attack_patterns};
+use super::attack_pattern::{
+    AttackPattern, generate_all_attack_patterns, generate_attack_patterns,
+};
 use super::card_function::support::totem_of_power::{self, PendingTotem};
 use super::csv::deck_pair_rules;
 use crate::models::boss::{Boss, BossPartName, GlobalRaidModifier, PartState};
