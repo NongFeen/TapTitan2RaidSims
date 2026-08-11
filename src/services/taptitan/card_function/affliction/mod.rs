@@ -57,7 +57,7 @@ pub fn on_proc(
     target_part: BossPartName,
     damage: f64,
     rng: &mut impl Rng,
-) -> u64 {
+) -> f64 {
     match card.card_id {
         CardName::BlazingInferno => blazing_inferno::on_proc(card, boss, target_part, damage),
         CardName::AcidDrench => acid_drench::on_proc(card, boss, target_part, damage),
@@ -75,7 +75,7 @@ pub fn on_proc(
         CardName::ElectroZap => electro_zap::on_proc(card, boss, target_part, damage),
         _ => {}
     }
-    return 0;
+    0.0
 }
 
 pub fn on_tick(
@@ -116,9 +116,9 @@ pub fn on_tick(
                     tick_interval_seconds,
                 )
             })
-            .fold(0u64, u64::saturating_add);
+            .sum::<f64>();
 
-        if tick_damage > 0 {
+        if tick_damage > 0.0 {
             let _lowest_remaining = affliction
                 .stacks
                 .iter()
@@ -159,7 +159,7 @@ pub fn on_tick(
                 _ => stack.attached_duration,
             };
             let remove_damage = remove_damage_for(&remove_view, remove_duration);
-            if remove_damage > 0 {
+            if remove_damage > 0.0 {
                 // println!(
                 //     "[AFF REMOVE] card={:?} part={:?} damage={} attached={:.2}s total_attached={:.2}s elapsed={:.3}s stacks_before_remove={}",
                 //     affliction.source_card,
@@ -189,7 +189,7 @@ fn tick_damage_for(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     match affliction.source_card {
         CardName::BlazingInferno => blazing_inferno::on_tick(
             affliction,
@@ -289,11 +289,11 @@ fn tick_damage_for(
             stack_multiplier,
             elapsed_seconds,
         ),
-        _ => 0,
+        _ => 0.0,
     }
 }
 
-fn remove_damage_for(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+fn remove_damage_for(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     match affliction.source_card {
         CardName::BlazingInferno => blazing_inferno::on_remove(affliction, attached_duration),
         CardName::AcidDrench => acid_drench::on_remove(affliction, attached_duration),
@@ -309,6 +309,6 @@ fn remove_damage_for(affliction: &AfflictionRemoveView, attached_duration: f64) 
         CardName::Amplify => amplify::on_remove(affliction, attached_duration),
         CardName::SandsOfTime => sands_of_time::on_remove(affliction, attached_duration),
         CardName::ElectroZap => electro_zap::on_remove(affliction, attached_duration),
-        _ => 0,
+        _ => 0.0,
     }
 }

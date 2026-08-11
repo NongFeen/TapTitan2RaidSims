@@ -36,7 +36,7 @@ pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: 
     };
 
     if should_pop {
-        let pop_damage = (affliction_tick_damage * pop_multiplier * max_stacks as f64) as u64;
+        let pop_damage = (affliction_tick_damage * pop_multiplier * max_stacks as f64).max(0.0);
         // println!(
         //     "[AFF POP] card={:?} part={:?} damage={} affliction_tick_damage={:.2} proc_base_damage={:.2} pop_multiplier={:.4} max_stacks={}",
         //     card.card_id,
@@ -60,7 +60,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     shared::on_tick(
         affliction,
         boss,
@@ -69,7 +69,7 @@ pub fn on_tick(
         elapsed_seconds,
     )
 }
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }
 

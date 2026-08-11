@@ -594,7 +594,7 @@ impl SimService {
         }
 
         // tap damage on boss
-        let tap_damage = true_base_tap as u64;
+        let tap_damage = true_base_tap as f64;
         boss.on_hit_with_source(attack_part, tap_damage, DamageSource::Tap);
     }
 }

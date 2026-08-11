@@ -268,7 +268,7 @@ impl Boss {
     pub fn on_hit_with_source(
         &mut self,
         part_name: BossPartName,
-        damage: u64,
+        damage: f64,
         source: DamageSource,
     ) {
         let final_damage = self.final_damage_for(part_name, damage, &source);
@@ -290,7 +290,7 @@ impl Boss {
     pub fn preview_damage_with_source(
         &self,
         part_name: BossPartName,
-        damage: u64,
+        damage: f64,
         source: &DamageSource,
     ) -> u64 {
         self.final_damage_for(part_name, damage, source)
@@ -350,12 +350,12 @@ impl Boss {
     pub(super) fn final_damage_for(
         &self,
         part_name: BossPartName,
-        raw_damage: u64,
+        raw_damage: f64,
         source: &DamageSource,
     ) -> u64 {
         let cache = &self.damage_multiplier_cache;
         if !cache.ready {
-            return raw_damage;
+            return raw_damage.max(0.0) as u64;
         }
 
         let state = self.get_state_from_part(part_name);
@@ -381,7 +381,7 @@ impl Boss {
             * support_damage_mult as f32
             * curse_damage_mult;
 
-        (raw_damage as f64 * total_multiplier as f64).max(0.0) as u64
+        (raw_damage * total_multiplier as f64).max(0.0) as u64
     }
 
     fn curse_damage_multiplier(&self, state: PartState, card_type: Option<CardType>) -> f32 {
@@ -511,6 +511,29 @@ mod state_sync_tests {
         assert!(
             (boss.curse_damage_multiplier(PartState::Body, Some(CardType::Burst)) - 0.88).abs()
                 < f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn final_damage_preserves_fractional_raw_damage_until_boss_conversion() {
+        let mut boss: Boss = serde_json::from_value(json!({
+            "boss_name": "Jukk",
+            "head": part("Head", 100, 100),
+            "torso": part("Torso", 100, 100),
+            "left_shoulder": part("LeftShoulder", 100, 100),
+            "right_shoulder": part("RightShoulder", 100, 100),
+            "left_hand": part("LeftHand", 100, 100),
+            "right_hand": part("RightHand", 100, 100),
+            "left_leg": part("LeftLeg", 100, 100),
+            "right_leg": part("RightLeg", 100, 100)
+        }))
+        .expect("boss should deserialize");
+        boss.damage_multiplier_cache.ready = true;
+        boss.damage_multiplier_cache.raid_all_mult = 2.0;
+
+        assert_eq!(
+            boss.final_damage_for(BossPartName::Head, 1.75, &DamageSource::Tap),
+            3
         );
     }
 }

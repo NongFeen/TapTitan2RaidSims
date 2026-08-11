@@ -29,7 +29,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     let bonus_per_second = affliction.source_skill.bonus_c.unwrap_or(0.0);
     let afflicted_seconds = boss.part(part_name).radioactivity_afflicted_seconds;
     let ramp_multiplier = 1.0 + (bonus_per_second * afflicted_seconds);
@@ -42,6 +42,6 @@ pub fn on_tick(
         elapsed_seconds,
     )
 }
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }

@@ -25,7 +25,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     let part = boss.part(part_name);
     let resource_left = match part.part_state {
         PartState::Armor | PartState::Cursed => {
@@ -50,9 +50,9 @@ pub fn on_tick(
 
     let tick_damage = tick_damage.max(MIN_TICK_DAMAGE);
 
-    tick_damage as u64
+    tick_damage
 }
 
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }

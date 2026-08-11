@@ -14,7 +14,7 @@ pub mod support;
 #[derive(Debug, Clone)]
 pub struct AfflictionDamageEvent {
     pub part_name: BossPartName,
-    pub damage: u64,
+    pub damage: f64,
     pub source: DamageSource,
 }
 
@@ -34,7 +34,7 @@ pub fn on_proc(
     mirror_force_boost: u32,
     burst_trigger_count: u32,
     rng: &mut impl Rng,
-) -> u64 {
+) -> f64 {
     match card.cardtype {
         CardType::Burst => burst::on_proc(
             card,
@@ -45,7 +45,7 @@ pub fn on_proc(
             burst_trigger_count,
         ),
         CardType::Affliction => affliction::on_proc(card, boss, target_part, damage, rng),
-        CardType::Support => 0,
+        CardType::Support => 0.0,
     }
 }
 

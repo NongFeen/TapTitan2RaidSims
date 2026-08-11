@@ -33,13 +33,13 @@ pub fn on_tick(
     _part_name: BossPartName,
     _stack_multiplier: f64,
     _elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     // 0
     // println!("Current if remove damage :{} ", affliction.remove_damage * 0.5 * affliction.stacks[0].elapsed_attached_duration);
-    0
+    0.0
 }
 
-pub fn on_remove(affliction: &AfflictionRemoveView, total_attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, total_attached_duration: f64) -> f64 {
     remove_damage(
         affliction.bonus_c,
         affliction.remove_damage,
@@ -51,12 +51,12 @@ pub fn remove_damage(
     bonus_c: Option<f64>,
     base_remove_damage: f64,
     total_attached_duration: f64,
-) -> u64 {
+) -> f64 {
     let per_second_bonus = bonus_c.unwrap_or(0.5);
     // println!(
     //     "per_second_bonus {} total_attached_duration {}",
     //     per_second_bonus, total_attached_duration
     // );
 
-    (base_remove_damage * (per_second_bonus * total_attached_duration)).max(0.0) as u64
+    (base_remove_damage * (per_second_bonus * total_attached_duration)).max(0.0)
 }

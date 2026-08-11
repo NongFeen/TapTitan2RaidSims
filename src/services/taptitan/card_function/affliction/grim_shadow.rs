@@ -22,13 +22,13 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     let stack_mult = affliction.source_skill.bonus_c.unwrap_or(1.2);
     let multiplier = stack_multiplier * stack_mult.powf(affliction.stack_count() as f64);
 
     shared::on_tick(affliction, boss, part_name, multiplier, elapsed_seconds)
 } //3.16 / 7.59
 
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }

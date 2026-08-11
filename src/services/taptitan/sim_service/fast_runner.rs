@@ -58,7 +58,7 @@ impl SimService {
 
             for (target_part, tap_count) in &target_tap_counts {
                 let current_state = boss.get_state_from_part(*target_part);
-                let tap_damage = damage_context.true_base_tap(*target_part, current_state) as u64;
+                let tap_damage = damage_context.true_base_tap(*target_part, current_state) as f64;
                 let final_tap_damage =
                     boss.preview_damage_with_source(*target_part, tap_damage, &DamageSource::Tap);
 

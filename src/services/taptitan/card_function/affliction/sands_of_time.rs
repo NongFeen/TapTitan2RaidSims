@@ -49,7 +49,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     shared::on_tick(
         affliction,
         boss,
@@ -58,6 +58,6 @@ pub fn on_tick(
         elapsed_seconds,
     )
 }
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }
