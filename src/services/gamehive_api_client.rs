@@ -53,6 +53,8 @@ pub const CLAN_PROPERTIES: [&str; 9] = [
     "cards",
 ];
 
+const RAID_LEVEL_BASE_DAMAGE_OFFSET: u16 = 101;
+
 #[derive(Clone)]
 pub struct TokenCipher(Aes256Gcm);
 
@@ -472,7 +474,9 @@ impl PublicPlayerData {
             player_stats: Default::default(),
             raid_stats: RaidStats {
                 raid_level: raid_level.to_string(),
-                raid_level_base_damage: raid_level.saturating_add(100).to_string(),
+                raid_level_base_damage: raid_level
+                    .saturating_add(RAID_LEVEL_BASE_DAMAGE_OFFSET)
+                    .to_string(),
                 ..Default::default()
             },
             artifacts: HashMap::new(),
@@ -607,7 +611,7 @@ mod tests {
         };
         let cleaned = data.into_raid_data(1.5).unwrap();
         assert_eq!(cleaned.player_raid_level, 1395);
-        assert_eq!(cleaned.player_raid_base_damage, 1495);
+        assert_eq!(cleaned.player_raid_base_damage, 1496);
         assert_eq!(cleaned.card_list.len(), 44);
         assert_eq!(cleaned.title, 1.5);
         assert!(cleaned.raid_set.jade_anniversary);
