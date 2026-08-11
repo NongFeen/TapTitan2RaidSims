@@ -248,6 +248,11 @@ impl SimService {
                     .iter()
                     .find(|card| card.card_id == *card_name)
                     .cloned()
+                    .map(|mut card| {
+                        crate::models::seasonal_card_boosts::apply_seasonal_level_boost(&mut card);
+                        card.ensure_skill_cache();
+                        card
+                    })
             })
             .collect();
 
@@ -295,6 +300,11 @@ impl SimService {
                     .iter()
                     .find(|card| card.card_id == *card_name)
                     .cloned()
+                    .map(|mut card| {
+                        crate::models::seasonal_card_boosts::apply_seasonal_level_boost(&mut card);
+                        card.ensure_skill_cache();
+                        card
+                    })
             })
             .collect::<Vec<_>>();
         if select_deck.len() != 3 {

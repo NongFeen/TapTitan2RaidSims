@@ -1,5 +1,6 @@
 use crate::dtos::cards::CardDefinitionDto;
 use crate::models::responses::{ApiError, ApiResponse};
+use crate::models::seasonal_card_boosts::seasonal_level_boost;
 use crate::{
     models::{cards::CardName, player_data::PlayerData, sim_payload::SimPayLoad},
     services::taptitan::{player_service::clean_data, sim_service::SimService},
@@ -38,6 +39,7 @@ pub async fn get_all_card_definitions() -> impl IntoResponse {
             name: v.display_name(), // Will be "Moon Beam"
             r#type: v.card_type(),
             image: v.image_url(),
+            seasonal_level_boost: seasonal_level_boost(v),
         })
         .collect();
 

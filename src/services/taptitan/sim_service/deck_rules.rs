@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::seasonal_card_boosts::apply_seasonal_level_boost;
 
 pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
     // 1. Only pick cards that are in the user's explicit usable list
@@ -10,6 +11,7 @@ pub fn generate_deck(sim_stats: &SimStats) -> Vec<Vec<Card>> {
         .filter(|card| sim_stats.usable_card.contains(&card.card_id))
         .map(|card| {
             let mut card = card.clone();
+            apply_seasonal_level_boost(&mut card);
             card.ensure_skill_cache();
             card
         })

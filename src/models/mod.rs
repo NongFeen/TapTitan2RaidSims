@@ -7,5 +7,6 @@ pub mod damage_source;
 pub mod player_data;
 pub mod player_raid_data;
 pub mod responses;
+pub mod seasonal_card_boosts;
 pub mod sim_payload;
 pub mod support_modifier;

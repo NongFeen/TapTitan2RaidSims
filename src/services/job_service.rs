@@ -20,7 +20,7 @@ use crate::{
     state::AppState,
 };
 
-const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-recommendation-phases-v1");
+const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-seasonal-boosts-v1");
 const CURRENT_RECOMMENDATION_PHASE: &str = "current";
 const VOID_RECOMMENDATION_PHASE: &str = "void";
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;

@@ -7,4 +7,5 @@ pub struct CardDefinitionDto {
     pub name: &'static str, // Will output "Flak Shot"
     pub r#type: CardType,
     pub image: String,
+    pub seasonal_level_boost: u16,
 }
