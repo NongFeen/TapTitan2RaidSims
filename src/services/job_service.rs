@@ -208,10 +208,11 @@ pub async fn create_job(
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(
-        "INSERT INTO simulation_jobs (id, player_id, deduplication_key, simulator_version, status, payload) VALUES ($1,$2,$3,$4,'pending',$5) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
+        "INSERT INTO simulation_jobs (id, player_id, boss_version, deduplication_key, simulator_version, status, payload) VALUES ($1,$2,$3,$4,$5,'pending',$6) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
     )
     .bind(job_id)
     .bind(internal_player_id)
+    .bind(boss_version)
     .bind(&deduplication_key)
     .bind(SIMULATOR_VERSION)
     .bind(serde_json::to_value(payload)?)
@@ -232,6 +233,56 @@ pub async fn create_job(
         spawn_job(Arc::clone(state), id);
     }
     Ok((id, created))
+}
+
+pub fn spawn_old_job_cleanup(state: Arc<AppState>, current_boss_version: i64) {
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let Ok(db) = state.db() else {
+            return;
+        };
+        let mut deleted_total = 0u64;
+        loop {
+            let result = sqlx::query(
+                "DELETE FROM simulation_jobs WHERE id IN (SELECT id FROM simulation_jobs WHERE boss_version < $1 ORDER BY created_at LIMIT 10)",
+            )
+            .bind(current_boss_version)
+            .execute(db)
+            .await;
+            match result {
+                Ok(result) => {
+                    let deleted = result.rows_affected();
+                    deleted_total += deleted;
+                    if deleted == 0 {
+                        tracing::info!(
+                            current_boss_version,
+                            deleted_jobs = deleted_total,
+                            "old simulation job cleanup complete"
+                        );
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+                Err(error) => {
+                    tracing::error!(
+                        current_boss_version,
+                        deleted_jobs = deleted_total,
+                        ?error,
+                        "old simulation job cleanup failed"
+                    );
+                    break;
+                }
+            }
+        }
+        if let Err(error) = sqlx::query(
+            "DELETE FROM simulation_batches b WHERE NOT EXISTS (SELECT 1 FROM simulation_batch_jobs bj WHERE bj.batch_id=b.id)",
+        )
+        .execute(db)
+        .await
+        {
+            tracing::warn!(?error, "empty simulation batch cleanup failed");
+        }
+    });
 }
 
 pub fn spawn_job(state: Arc<AppState>, job_id: Uuid) {
@@ -267,17 +318,21 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         return Ok(());
     };
     let payload: SimPayLoad = serde_json::from_value(payload_json)?;
+    let total_processing_started = Instant::now();
+    let simulation_started = Instant::now();
     let (current_result, void_result) = tokio::task::spawn_blocking(move || {
         SimService::run_simulation_with_optional_body_phase(payload)
     })
     .await
     .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
+    let simulation_duration_ms = simulation_started.elapsed().as_millis() as u64;
 
     sqlx::query("UPDATE simulation_jobs SET status='optimizing', updated_at=NOW() WHERE id=$1")
         .bind(job_id)
         .execute(state.db()?)
         .await?;
     let body_phase_ran = void_result.is_some();
+    let recommendation_started = Instant::now();
     let prepared =
         tokio::task::spawn_blocking(move || -> Result<PreparedResults, serde_json::Error> {
             let current = prepare_results(current_result, CURRENT_RECOMMENDATION_PHASE)?;
@@ -293,13 +348,18 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         .map_err(|error| {
             AppError::Internal(format!("Recommendation optimizer panicked: {error}"))
         })??;
+    let recommendation_duration_ms = recommendation_started.elapsed().as_millis() as u64;
     let deck_result_count = prepared.deck_result_count;
     persist_results(state.db()?, job_id, prepared).await?;
+    let total_duration_ms = total_processing_started.elapsed().as_millis() as u64;
     sqlx::query("UPDATE simulation_jobs SET status='completed', result=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1")
         .bind(job_id)
         .bind(serde_json::json!({
             "deck_result_count": deck_result_count,
-            "body_phase_ran": body_phase_ran
+            "body_phase_ran": body_phase_ran,
+            "simulation_duration_ms": simulation_duration_ms,
+            "recommendation_duration_ms": recommendation_duration_ms,
+            "total_duration_ms": total_duration_ms
         }))
         .execute(state.db()?)
         .await?;
@@ -421,7 +481,7 @@ pub async fn generate_deck_recommendations(
         CURRENT_RECOMMENDATION_PHASE
     };
     let job_id: Uuid = sqlx::query_scalar(
-        "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
+        "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(recommendation_phase)

@@ -6,6 +6,11 @@ use std::sync::Arc;
 pub fn create_router(state: Arc<AppState>) -> Router {
     let internal = Router::new()
         .route("/simulation-jobs", post(routes::jobs::create))
+        .route("/simulation-jobs/batch", post(routes::jobs::create_batch))
+        .route(
+            "/simulation-jobs/batch/{batch_id}",
+            get(routes::jobs::get_batch),
+        )
         .route("/simulation-jobs/{job_id}", get(routes::jobs::get))
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
         .route("/simulation-debug", post(routes::simulation_debug::run))

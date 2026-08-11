@@ -42,16 +42,14 @@ async fn replace_current_boss(
         .execute(&mut *tx)
         .await?;
 
-    let deleted_jobs = sqlx::query("DELETE FROM simulation_jobs")
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-    sqlx::query("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, updated_at=NOW()")
+    let current_boss_version: i64 = sqlx::query_scalar("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, updated_at=NOW() RETURNING version")
         .bind(serde_json::to_value(boss_data)?)
         .bind(serde_json::to_value(attackable_parts)?)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
     tx.commit().await?;
+
+    job_service::spawn_old_job_cleanup(Arc::clone(state), current_boss_version);
 
     let mut created_jobs = Vec::new();
     if trigger_simulations {
@@ -79,16 +77,14 @@ async fn replace_current_boss(
             status: "accepted",
             message: if trigger_simulations {
                 format!(
-                    "Current boss was replaced, {deleted_jobs} old job(s) were deleted, and {} new job(s) were queued",
+                    "Current boss was replaced, old simulations were scheduled for background cleanup, and {} new job(s) were queued",
                     created_jobs.len()
                 )
             } else {
-                format!(
-                    "Current boss was replaced and {deleted_jobs} old simulation job(s) were deleted; no simulations were started"
-                )
+                "Current boss was replaced and old simulations were scheduled for background cleanup; no simulations were started".to_string()
             },
             simulations_triggered: trigger_simulations,
-            deleted_jobs,
+            deleted_jobs: 0,
             created_jobs,
         }),
     ))

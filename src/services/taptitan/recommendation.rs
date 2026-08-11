@@ -124,19 +124,19 @@ pub fn optimize_decks_with_required_cards(
         );
         selected.pop();
 
-        let progress_percent = (index + 1) * 100 / root_candidate_count.max(1);
-        while progress_percent >= next_progress_percent && next_progress_percent <= 100 {
-            tracing::info!(
-                deck_count,
-                ?required_cards,
-                progress_percent = next_progress_percent,
-                phase = "exact_search",
-                progress_basis = "root_candidates",
-                elapsed_ms = search_started.elapsed().as_millis(),
-                "finding top deck recommendation"
-            );
-            next_progress_percent += 10;
-        }
+        // let progress_percent = (index + 1) * 100 / root_candidate_count.max(1);
+        // while progress_percent >= next_progress_percent && next_progress_percent <= 100 {
+        //     tracing::info!(
+        //         deck_count,
+        //         ?required_cards,
+        //         progress_percent = next_progress_percent,
+        //         phase = "exact_search",
+        //         progress_basis = "root_candidates",
+        //         elapsed_ms = search_started.elapsed().as_millis(),
+        //         "finding top deck recommendation"
+        //     );
+        //     next_progress_percent += 10;
+        // }
     }
     tracing::info!(
         deck_count,
