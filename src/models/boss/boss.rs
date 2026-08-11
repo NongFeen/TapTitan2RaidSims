@@ -24,11 +24,11 @@ pub struct Boss {
     #[serde(default)]
     pub damage_results: Vec<DamageResult>,
     #[serde(skip, default)]
-    pub total_damage: u64,
+    pub total_damage: f64,
     #[serde(skip, default)]
-    pub tap_damage_total: u64,
+    pub tap_damage_total: f64,
     #[serde(skip, default)]
-    pub card_damage_totals: HashMap<CardName, u64>,
+    pub card_damage_totals: HashMap<CardName, f64>,
     #[serde(skip, default)]
     pub(crate) part_damage_taken_debuffs_present: bool,
     #[serde(skip, default)]
@@ -36,7 +36,9 @@ pub struct Boss {
     #[serde(skip, default)]
     pub(crate) tracked_card_names: [Option<CardName>; 3],
     #[serde(skip, default)]
-    pub(crate) tracked_card_damage_totals: [u64; 3],
+    pub(crate) tracked_card_damage_totals: [f64; 3],
+    #[serde(skip, default)]
+    pub(crate) part_damage_carry: [f64; 8],
     #[serde(skip, default)]
     pub(crate) result_target_mask: Option<u8>,
     #[serde(skip, default)]
@@ -93,7 +95,7 @@ impl Boss {
 
     pub fn prepare_card_damage_tracking(&mut self, card_names: &[CardName]) {
         self.tracked_card_names = [None; 3];
-        self.tracked_card_damage_totals = [0; 3];
+        self.tracked_card_damage_totals = [0.0; 3];
 
         for (index, card_name) in card_names.iter().take(3).enumerate() {
             self.tracked_card_names[index] = Some(*card_name);
@@ -222,29 +224,28 @@ impl Boss {
             self.right_leg.radioactivity_afflicted_seconds += elapsed_seconds;
         }
     }
-    pub fn record_damage(&mut self, source: DamageSource, damage: u64) {
-        self.total_damage = self.total_damage.saturating_add(damage);
+    pub fn record_damage(&mut self, source: DamageSource, damage: f64) {
+        self.total_damage += damage;
 
         match source {
             DamageSource::Tap => {
-                self.tap_damage_total = self.tap_damage_total.saturating_add(damage);
+                self.tap_damage_total += damage;
             }
             DamageSource::Card(card_name) => {
                 if self.record_tracked_card_damage(card_name, damage) {
                     return;
                 }
 
-                let total = self.card_damage_totals.entry(card_name).or_insert(0);
-                *total = total.saturating_add(damage);
+                let total = self.card_damage_totals.entry(card_name).or_insert(0.0);
+                *total += damage;
             }
         }
     }
 
-    pub(super) fn record_tracked_card_damage(&mut self, card_name: CardName, damage: u64) -> bool {
+    pub(super) fn record_tracked_card_damage(&mut self, card_name: CardName, damage: f64) -> bool {
         for (index, tracked_name) in self.tracked_card_names.iter().enumerate() {
             if *tracked_name == Some(card_name) {
-                self.tracked_card_damage_totals[index] =
-                    self.tracked_card_damage_totals[index].saturating_add(damage);
+                self.tracked_card_damage_totals[index] += damage;
                 return true;
             }
         }
@@ -255,14 +256,15 @@ impl Boss {
     pub fn card_damage_total(&self, card_name: CardName) -> u64 {
         for (index, tracked_name) in self.tracked_card_names.iter().enumerate() {
             if *tracked_name == Some(card_name) {
-                return self.tracked_card_damage_totals[index];
+                return self.tracked_card_damage_totals[index].max(0.0) as u64;
             }
         }
 
         self.card_damage_totals
             .get(&card_name)
             .copied()
-            .unwrap_or(0)
+            .unwrap_or(0.0)
+            .max(0.0) as u64
     }
 
     pub fn on_hit_with_source(
@@ -292,20 +294,30 @@ impl Boss {
         part_name: BossPartName,
         damage: f64,
         source: &DamageSource,
-    ) -> u64 {
+    ) -> f64 {
         self.final_damage_for(part_name, damage, source)
     }
 
-    pub fn on_hit(&mut self, part_name: BossPartName, damage: u64) {
+    pub fn on_hit(&mut self, part_name: BossPartName, damage: f64) {
+        let index = part_name_index(part_name);
+        let damage_with_carry = (damage + self.part_damage_carry[index]).max(0.0);
+        let whole_damage = damage_with_carry as u64;
+        self.part_damage_carry[index] = damage_with_carry.fract();
+        let previous_state = self.get_state_from_part(part_name);
+
         match part_name {
-            BossPartName::Head => self.head.on_hit(damage),
-            BossPartName::Torso => self.torso.on_hit(damage),
-            BossPartName::LeftShoulder => self.left_shoulder.on_hit(damage),
-            BossPartName::RightShoulder => self.right_shoulder.on_hit(damage),
-            BossPartName::LeftHand => self.left_hand.on_hit(damage),
-            BossPartName::RightHand => self.right_hand.on_hit(damage),
-            BossPartName::LeftLeg => self.left_leg.on_hit(damage),
-            BossPartName::RightLeg => self.right_leg.on_hit(damage),
+            BossPartName::Head => self.head.on_hit(whole_damage),
+            BossPartName::Torso => self.torso.on_hit(whole_damage),
+            BossPartName::LeftShoulder => self.left_shoulder.on_hit(whole_damage),
+            BossPartName::RightShoulder => self.right_shoulder.on_hit(whole_damage),
+            BossPartName::LeftHand => self.left_hand.on_hit(whole_damage),
+            BossPartName::RightHand => self.right_hand.on_hit(whole_damage),
+            BossPartName::LeftLeg => self.left_leg.on_hit(whole_damage),
+            BossPartName::RightLeg => self.right_leg.on_hit(whole_damage),
+        }
+
+        if self.get_state_from_part(part_name) != previous_state {
+            self.part_damage_carry[index] = 0.0;
         }
     }
     pub fn get_state_from_part(&self, part_name: BossPartName) -> PartState {
@@ -324,11 +336,11 @@ impl Boss {
     }
 
     pub fn get_total_damage(&self) -> u64 {
-        if self.total_damage == 0 && !self.damage_results.is_empty() {
+        if self.total_damage == 0.0 && !self.damage_results.is_empty() {
             return self.damage_results.iter().map(|entry| entry.damage).sum();
         }
 
-        self.total_damage
+        self.total_damage.max(0.0) as u64
     }
     pub fn get_random_body_part(&self) -> Option<BossPart> {
         let mut rng = rand::rng();
@@ -352,10 +364,10 @@ impl Boss {
         part_name: BossPartName,
         raw_damage: f64,
         source: &DamageSource,
-    ) -> u64 {
+    ) -> f64 {
         let cache = &self.damage_multiplier_cache;
         if !cache.ready {
-            return raw_damage.max(0.0) as u64;
+            return raw_damage.max(0.0);
         }
 
         let state = self.get_state_from_part(part_name);
@@ -381,7 +393,7 @@ impl Boss {
             * support_damage_mult as f32
             * curse_damage_mult;
 
-        (raw_damage * total_multiplier as f64).max(0.0) as u64
+        (raw_damage * total_multiplier as f64).max(0.0)
     }
 
     fn curse_damage_multiplier(&self, state: PartState, card_type: Option<CardType>) -> f32 {
@@ -515,7 +527,7 @@ mod state_sync_tests {
     }
 
     #[test]
-    fn final_damage_preserves_fractional_raw_damage_until_boss_conversion() {
+    fn boss_accumulates_fractional_damage_before_integer_reporting() {
         let mut boss: Boss = serde_json::from_value(json!({
             "boss_name": "Jukk",
             "head": part("Head", 100, 100),
@@ -528,12 +540,14 @@ mod state_sync_tests {
             "right_leg": part("RightLeg", 100, 100)
         }))
         .expect("boss should deserialize");
-        boss.damage_multiplier_cache.ready = true;
-        boss.damage_multiplier_cache.raid_all_mult = 2.0;
+        boss.head.max_armor = 100_000;
+        boss.head.current_armor = 100_000;
 
-        assert_eq!(
-            boss.final_damage_for(BossPartName::Head, 1.75, &DamageSource::Tap),
-            3
-        );
+        boss.on_hit_with_source(BossPartName::Head, 4_993.5, DamageSource::Tap);
+        assert_eq!(boss.get_total_damage(), 4_993);
+
+        boss.on_hit_with_source(BossPartName::Head, 4_993.5, DamageSource::Tap);
+        assert_eq!(boss.get_total_damage(), 9_987);
+        assert_eq!(boss.head.current_armor, 90_013);
     }
 }

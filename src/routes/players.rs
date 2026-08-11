@@ -100,7 +100,6 @@ pub async fn update_stats(
     };
     validate_stats(&stats)?;
     let stored = store_stats(&state, &player_id, stats).await?;
-    enqueue_for_current_boss(&state, &player_id).await?;
     Ok((StatusCode::CREATED, Json(stored)))
 }
 
@@ -449,7 +448,6 @@ pub async fn fetch_tt2_stats(
         .bind(&player_id)
         .execute(state.db()?)
         .await?;
-    enqueue_for_current_boss(&state, &player_id).await?;
     Ok((StatusCode::CREATED, Json(stored)))
 }
 

@@ -52,8 +52,8 @@ impl SimService {
                 .map(|(_, tap_count)| *tap_count)
                 .sum::<u32>();
 
-            let mut total_damage = 0u64;
-            let mut card_damage_totals: HashMap<CardName, u64> = HashMap::new();
+            let mut total_damage = 0.0f64;
+            let mut card_damage_totals: HashMap<CardName, f64> = HashMap::new();
             let mut card_proc_totals: HashMap<CardName, f32> = HashMap::new();
 
             for (target_part, tap_count) in &target_tap_counts {
@@ -62,8 +62,7 @@ impl SimService {
                 let final_tap_damage =
                     boss.preview_damage_with_source(*target_part, tap_damage, &DamageSource::Tap);
 
-                total_damage =
-                    total_damage.saturating_add(final_tap_damage.saturating_mul(*tap_count as u64));
+                total_damage += final_tap_damage * *tap_count as f64;
             }
 
             if total_target_taps > 0 {
@@ -105,10 +104,10 @@ impl SimService {
                             card_base_damage,
                         );
                         let card_damage =
-                            (final_damage_per_proc as f32 * target_proc_count).max(0.0) as u64;
+                            (final_damage_per_proc * target_proc_count as f64).max(0.0);
 
-                        total_damage = total_damage.saturating_add(card_damage);
-                        *card_damage_totals.entry(card.card_id).or_insert(0) += card_damage;
+                        total_damage += card_damage;
+                        *card_damage_totals.entry(card.card_id).or_insert(0.0) += card_damage;
                     }
                 }
             }
@@ -116,8 +115,11 @@ impl SimService {
             let card_damage = select_deck
                 .iter()
                 .map(|card| {
-                    let average_damage =
-                        card_damage_totals.get(&card.card_id).copied().unwrap_or(0);
+                    let average_damage = card_damage_totals
+                        .get(&card.card_id)
+                        .copied()
+                        .unwrap_or(0.0)
+                        .max(0.0) as u64;
                     SimCardDamageResult {
                         card: card.card_id,
                         card_name: card.card_id.display_name().to_string(),
@@ -127,6 +129,7 @@ impl SimService {
                 })
                 .collect();
 
+            let total_damage = total_damage.max(0.0) as u64;
             let pattern_result = SimPatternResult {
                 pattern: pattern_name.clone(),
                 average_damage: total_damage,
@@ -151,8 +154,11 @@ impl SimService {
                 let card_summary = select_deck
                     .iter()
                     .map(|card| {
-                        let average_damage =
-                            card_damage_totals.get(&card.card_id).copied().unwrap_or(0);
+                        let average_damage = card_damage_totals
+                            .get(&card.card_id)
+                            .copied()
+                            .unwrap_or(0.0)
+                            .max(0.0) as u64;
                         let average_proc_count =
                             card_proc_totals.get(&card.card_id).copied().unwrap_or(0.0);
 
@@ -267,7 +273,7 @@ impl SimService {
         boss: &Boss,
         target_part: BossPartName,
         card_base_damage: f64,
-    ) -> u64 {
+    ) -> f64 {
         let mut scratch_boss = boss.clone();
         let mut scratch_card = card.clone();
 
