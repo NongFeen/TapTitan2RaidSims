@@ -96,12 +96,18 @@ pub async fn run(
     }
     let mut boss_data = request.boss_data;
     boss_data.sync_part_states_from_current_values();
+    let mirror_force_boost: f64 = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT mirror_force_boost FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1), 0::DOUBLE PRECISION)",
+    )
+    .fetch_one(state.db()?)
+    .await?;
     let payload = SimPayLoad {
         player_raid_data,
         boss_data,
         attackable_part: request.attackable_parts,
         usable_card: request.deck,
         include_body_phase: false,
+        mirror_force_boost,
     };
     let total_taps = request.total_taps;
     let rounds_per_pattern = request.rounds_per_pattern;

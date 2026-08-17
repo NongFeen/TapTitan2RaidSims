@@ -20,7 +20,7 @@ use crate::{
     state::AppState,
 };
 
-const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-seasonal-boosts-v1");
+const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v2");
 const CURRENT_RECOMMENDATION_PHASE: &str = "current";
 const VOID_RECOMMENDATION_PHASE: &str = "void";
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
@@ -190,6 +190,11 @@ pub async fn create_job(
         .filter(|card| card.enabled)
         .map(|card| card.card_id)
         .collect();
+    let mirror_force_boost: f64 = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT mirror_force_boost FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1), 0::DOUBLE PRECISION)",
+    )
+    .fetch_one(state.db()?)
+    .await?;
 
     let payload = SimPayLoad {
         player_raid_data: player_stats,
@@ -197,14 +202,16 @@ pub async fn create_job(
         attackable_part,
         usable_card,
         include_body_phase: request.include_body_phase,
+        mirror_force_boost,
     };
     let deduplication_key = format!(
-        "{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{:.6}",
         internal_player_id,
         stats_revision,
         boss_version,
         SIMULATOR_VERSION,
-        request.include_body_phase
+        request.include_body_phase,
+        mirror_force_boost
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(

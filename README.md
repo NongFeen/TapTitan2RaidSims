@@ -22,7 +22,7 @@ Requests to `/internal/*` must include `x-internal-api-key` matching `INTERNAL_A
 
 ### TT2 player API
 
-Player fetching requires all five `TT2_*` values from `.env`. The Socket.IO client registers its handlers before explicitly connecting, uses only WebSocket transport, and does not automatically reconnect in development. If it cannot connect, the rest of the backend continues in degraded mode and fetch requests return `503`.
+Player fetching and live raid synchronization require all `TT2_*` values from `.env`. The Socket.IO client uses WebSocket transport and reconnects with bounded exponential backoff. If it cannot connect, the rest of the backend continues in degraded mode and fetch requests return `503`.
 
 Generate the AES-256-GCM token-encryption key once and keep it stable:
 
@@ -33,6 +33,8 @@ $bytes = New-Object byte[] 32
 ```
 
 Store that output as `TT2_PLAYER_TOKEN_ENCRYPTION_KEY`. Losing or changing it makes existing encrypted player tokens unreadable. The application token and encryption key are backend secrets and must never use `VITE_*` frontend variables.
+
+Set `TT2_RAID_SUBSCRIPTION_PLAYER_ID` to the player code whose encrypted Master/Grand Master token should be used for `/raid/unsubscribe` and `/raid/subscribe`.
 
 Protected admin workflow:
 
@@ -66,7 +68,7 @@ The existing synchronous simulation endpoints remain available for debugging and
 
 ## Raid API boundary
 
-`PUT /internal/current-boss` is the single normalized boss boundary. Its body contains `boss_data`, `attackable_parts`, and `run_sims`. Replacing the singleton current boss deletes all previous simulation jobs, deck results, and recommendations. Read it through `GET /api/current-boss`. A future Tap Titans subscriber should call the update route with `run_sims: true`; manual setup can use `false`.
+`PUT /internal/current-boss` remains the manual normalized boss boundary. Live `attack`, `sub_cycle`, and `cycle_reset` Socket.IO events store attack history, synchronize the singleton boss, and queue automatic Current+Void jobs when the enemy or Mirror Force clan boost changes. Read the live cycle modifiers through `GET /api/raid-cycle/current`.
 
 ## Checks
 

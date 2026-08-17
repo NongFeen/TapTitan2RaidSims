@@ -35,6 +35,16 @@ async fn replace_current_boss(
     attackable_parts: Vec<BossPartName>,
     trigger_simulations: bool,
 ) -> Result<(StatusCode, Json<RaidEventAccepted>), AppError> {
+    if boss_data
+        .global_raid_modifier_amount
+        .is_some_and(|amount| !amount.is_finite() || amount < 0.0)
+        || !boss_data.curse_damage_per_curse.is_finite()
+        || boss_data.curse_damage_per_curse < 0.0
+    {
+        return Err(AppError::BadRequest(
+            "Boss modifier amounts must be non-negative finite numbers".to_string(),
+        ));
+    }
     boss_data.sync_part_states_from_current_values();
 
     let mut tx = state.db()?.begin().await?;
@@ -42,7 +52,7 @@ async fn replace_current_boss(
         .execute(&mut *tx)
         .await?;
 
-    let current_boss_version: i64 = sqlx::query_scalar("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, updated_at=NOW() RETURNING version")
+    let current_boss_version: i64 = sqlx::query_scalar("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, source_raid_id=NULL, source_titan_index=NULL, source_enemy_id=NULL, updated_at=NOW() RETURNING version")
         .bind(serde_json::to_value(boss_data)?)
         .bind(serde_json::to_value(attackable_parts)?)
         .fetch_one(&mut *tx)

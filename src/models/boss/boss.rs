@@ -5,8 +5,13 @@ pub struct Boss {
     pub boss_name: BossName,
     #[serde(default)]
     pub global_raid_modifier: GlobalRaidModifier,
+    /// Fractional modifier amount supplied by TT2 (0.5 means +50%).
+    #[serde(default)]
+    pub global_raid_modifier_amount: Option<f64>,
     #[serde(default)]
     pub curse_type: CurseType,
+    #[serde(default = "default_curse_damage_per_curse")]
+    pub curse_damage_per_curse: f64,
     /// When enabled, simulations retain only attack patterns that actually
     /// attack one or two parts, so recommendations cannot select wider plans.
     #[serde(default)]
@@ -418,7 +423,8 @@ impl Boss {
         };
 
         if applies {
-            1.0 - f32::from(self.initial_cursed_part_count) * 0.06
+            (1.0 - f64::from(self.initial_cursed_part_count) * self.curse_damage_per_curse.abs())
+                .max(0.0) as f32
         } else {
             1.0
         }
@@ -452,6 +458,10 @@ impl Boss {
             })
             .sum()
     }
+}
+
+const fn default_curse_damage_per_curse() -> f64 {
+    0.06
 }
 
 #[cfg(test)]

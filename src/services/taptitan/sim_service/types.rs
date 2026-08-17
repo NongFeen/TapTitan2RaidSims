@@ -58,45 +58,49 @@ pub(super) struct GlobalRaidModifiers {
     pub(super) affliction_duration_mult: f64,
 }
 
-pub(super) fn global_raid_modifiers(selected: GlobalRaidModifier) -> GlobalRaidModifiers {
+pub(super) fn global_raid_modifiers(
+    selected: GlobalRaidModifier,
+    configured_amount: Option<f64>,
+) -> GlobalRaidModifiers {
+    let amount = configured_amount.filter(|amount| amount.is_finite());
     GlobalRaidModifiers {
         burst_damage_mult: if selected == GlobalRaidModifier::BurstDamage {
-            GLOBAL_RAID_BURST_DAMAGE_MULT
+            amount.map_or(GLOBAL_RAID_BURST_DAMAGE_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         burst_chance_mult: if selected == GlobalRaidModifier::BurstChance {
-            GLOBAL_RAID_BURST_CHANCE_MULT
+            amount.map_or(GLOBAL_RAID_BURST_CHANCE_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         support_effect_mult: if selected == GlobalRaidModifier::SupportEffect {
-            GLOBAL_RAID_SUPPORT_EFFECT_MULT
+            amount.map_or(GLOBAL_RAID_SUPPORT_EFFECT_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         affliction_chance_mult: if selected == GlobalRaidModifier::AfflictionChance {
-            GLOBAL_RAID_AFFLICTION_CHANCE_MULT
+            amount.map_or(GLOBAL_RAID_AFFLICTION_CHANCE_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         affliction_damage_mult: if selected == GlobalRaidModifier::AfflictionDamage {
-            GLOBAL_RAID_AFFLICTION_DAMAGE_MULT
+            amount.map_or(GLOBAL_RAID_AFFLICTION_DAMAGE_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         all_damage_mult: if selected == GlobalRaidModifier::AllDamage {
-            GLOBAL_RAID_ALL_DAMAGE_MULT
+            amount.map_or(GLOBAL_RAID_ALL_DAMAGE_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
         attack_duration_add_seconds: if selected == GlobalRaidModifier::AttackDuration {
-            GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS
+            amount.unwrap_or(GLOBAL_RAID_ATTACK_DURATION_ADD_SECONDS)
         } else {
             0.0
         },
         affliction_duration_mult: if selected == GlobalRaidModifier::AfflictionDuration {
-            GLOBAL_RAID_AFFLICTION_DURATION_MULT
+            amount.map_or(GLOBAL_RAID_AFFLICTION_DURATION_MULT, |value| 1.0 + value)
         } else {
             1.0
         },
@@ -122,7 +126,7 @@ mod global_raid_modifier_tests {
         ];
 
         for selected in selections {
-            let modifiers = global_raid_modifiers(selected);
+            let modifiers = global_raid_modifiers(selected, None);
             let active_count = [
                 modifiers.burst_damage_mult != 1.0,
                 modifiers.burst_chance_mult != 1.0,
@@ -152,6 +156,7 @@ pub struct SimStats {
     pub boss_stat: Boss,
     pub attackable_part: Vec<BossPartName>,
     pub usable_card: Vec<CardName>,
+    pub mirror_force_boost: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

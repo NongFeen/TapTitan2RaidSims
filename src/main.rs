@@ -72,8 +72,9 @@ async fn run() {
     ));
 
     if let Some(gamehive_api) = gamehive_api {
+        let socket_state = Arc::clone(&state);
         tokio::spawn(async move {
-            gamehive_api.connect().await;
+            gamehive_api.connect(socket_state).await;
         });
     } else {
         tracing::warn!("TT2 integration is not configured; player fetching is unavailable");

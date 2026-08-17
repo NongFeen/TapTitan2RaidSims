@@ -71,6 +71,7 @@ impl SimService {
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
+            mirror_force_boost: payload.mirror_force_boost,
         };
 
         let valid_decks = generate_deck(&sim_stats)
@@ -236,6 +237,7 @@ impl SimService {
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
+            mirror_force_boost: payload.mirror_force_boost,
         };
 
         let select_deck: Vec<Card> = sim_stats
@@ -289,6 +291,7 @@ impl SimService {
             boss_stat: payload.boss_data,
             attackable_part: payload.attackable_part,
             usable_card: payload.usable_card,
+            mirror_force_boost: payload.mirror_force_boost,
         };
         let select_deck = sim_stats
             .usable_card
@@ -443,6 +446,7 @@ impl SimService {
                                 1.0,
                                 &mut card_proc_totals,
                                 &mut support_cache,
+                                sim_stats.mirror_force_boost,
                                 &mut rng,
                             );
 
@@ -458,6 +462,7 @@ impl SimService {
                                     astral_proc_chance_scale,
                                     &mut card_proc_totals,
                                     &mut support_cache,
+                                    sim_stats.mirror_force_boost,
                                     &mut rng,
                                 );
                             }
@@ -588,6 +593,7 @@ impl SimService {
         proc_chance_scale: f64,
         card_proc_totals: &mut [u64],
         support_cache: &mut RoundSupportCache,
+        mirror_force_boost: f64,
         rng: &mut impl Rng,
     ) {
         if boss.get_state_from_part(attack_part) == PartState::Skeleton {
@@ -646,7 +652,7 @@ impl SimService {
                     boss,
                     attack_part,
                     card_base_damage,
-                    0,
+                    mirror_force_boost,
                     *total_burst_proc,
                     rng,
                 );

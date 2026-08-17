@@ -103,6 +103,7 @@ impl SimService {
                             &boss,
                             *target_part,
                             card_base_damage,
+                            sim_stats.mirror_force_boost,
                         );
                         let card_damage =
                             (final_damage_per_proc * target_proc_count as f64).max(0.0);
@@ -275,6 +276,7 @@ impl SimService {
         boss: &Boss,
         target_part: BossPartName,
         card_base_damage: f64,
+        mirror_force_boost: f64,
     ) -> f64 {
         let mut scratch_boss = boss.clone();
         let mut scratch_card = card.clone();
@@ -290,7 +292,7 @@ impl SimService {
             &mut scratch_boss,
             target_part,
             card_base_damage,
-            0,
+            mirror_force_boost,
             0,
             &mut rng,
         );

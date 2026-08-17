@@ -282,7 +282,7 @@ impl Card {
         boss: &mut Boss,
         target_part: BossPartName,
         damage: f64,
-        mirror_force_boost: u32,
+        mirror_force_boost: f64,
         burst_trigger_count: u32,
         rng: &mut impl Rng,
     ) -> f64 {

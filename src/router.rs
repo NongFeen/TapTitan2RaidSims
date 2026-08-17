@@ -60,6 +60,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(routes::players::update_auto_sims),
         )
         .route("/api/current-boss", get(routes::raids::current))
+        .route("/api/raid-cycle/current", get(routes::raid_cycle::current))
         .route(
             "/api/players/{player_id}/recommendations/current",
             get(routes::recommendations::current_for_player),

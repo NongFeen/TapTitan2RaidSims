@@ -1,0 +1,21 @@
+{
+  "clan_code": "zxw8e",
+  "raid_id": 3317047,
+  "next_reset_at": "2026-08-18T03:23:21Z",
+  "card_bonuses": [
+    {
+      "id": "MirrorForceBoost",
+      "value": 0.35
+    },
+    {
+      "id": "TeamTacticsClanMoraleBoost",
+      "value": 0.06299999999999994
+    }
+  ],
+  "morale": {
+    "bonus_amount": 0.38,
+    "used": 12000
+  },
+  "raid_started_at": "2026-08-16T15:23:21Z",
+  "started_at": "2026-08-17T15:23:22Z"
+}

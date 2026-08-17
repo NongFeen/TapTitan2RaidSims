@@ -29,6 +29,7 @@ use crate::{
         player_raid_data::PlayerRaidData,
     },
     services::taptitan::player_service::clean_data,
+    state::AppState,
 };
 
 pub const PLAYER_PROPERTIES: [&str; 8] = [
@@ -129,7 +130,20 @@ impl GameHiveApiClient {
         self.raid_connected.load(Ordering::Acquire)
     }
 
-    pub async fn connect(self: &Arc<Self>) {
+    pub async fn connect(self: &Arc<Self>, state: Arc<AppState>) {
+        let mut retry_delay = std::time::Duration::from_secs(2);
+        loop {
+            self.connect_once(Arc::clone(&state)).await;
+            tracing::warn!(
+                retry_seconds = retry_delay.as_secs(),
+                "TT2 socket reconnect scheduled"
+            );
+            tokio::time::sleep(retry_delay).await;
+            retry_delay = (retry_delay * 2).min(std::time::Duration::from_secs(30));
+        }
+    }
+
+    async fn connect_once(self: &Arc<Self>, state: Arc<AppState>) {
         let engine_url = match engine_url(&self.config) {
             Ok(url) => url,
             Err(error) => {
@@ -193,6 +207,9 @@ impl GameHiveApiClient {
                     } else if packet.starts_with("40/raid") {
                         self.raid_connected.store(true, Ordering::Release);
                         tracing::info!("TT2 /raid Socket.IO namespace connected");
+                        crate::services::raid_event_service::recover_pending_refresh(Arc::clone(
+                            &state,
+                        ));
                     } else if packet == "2" {
                         if let Err(error) = socket.send(Message::Text("3".into())).await {
                             tracing::error!(?error, "Could not send TT2 Engine.IO pong");
@@ -205,9 +222,14 @@ impl GameHiveApiClient {
                         self.raid_connected.store(false, Ordering::Release);
                         tracing::warn!(packet, "TT2 /raid disconnect event");
                     } else if let Some(payload) = packet.strip_prefix("42/player,") {
-                        log_socket_event(payload, "/player", &self.connected);
+                        dispatch_socket_event(payload, "/player", &self.connected, None);
                     } else if let Some(payload) = packet.strip_prefix("42/raid,") {
-                        log_socket_event(payload, "/raid", &self.raid_connected);
+                        dispatch_socket_event(
+                            payload,
+                            "/raid",
+                            &self.raid_connected,
+                            Some(Arc::clone(&state)),
+                        );
                     } else if let Some(payload) = packet.strip_prefix("44/player,") {
                         self.connected.store(false, Ordering::Release);
                         tracing::error!(payload, "TT2 /player connect_error event");
@@ -237,7 +259,52 @@ impl GameHiveApiClient {
         }
         self.connected.store(false, Ordering::Release);
         self.raid_connected.store(false, Ordering::Release);
-        tracing::warn!("TT2 socket stopped; automatic reconnect is disabled");
+        tracing::warn!("TT2 socket stopped");
+    }
+
+    pub async fn resubscribe_raid(&self, state: &AppState) -> Result<(), AppError> {
+        let token_row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
+            "SELECT player_token_ciphertext, player_token_nonce FROM players WHERE player_id=$1 AND player_token_ciphertext IS NOT NULL AND player_token_nonce IS NOT NULL",
+        )
+        .bind(&self.config.raid_subscription_player_id)
+        .fetch_optional(state.db()?)
+        .await?;
+        let (ciphertext, nonce) = token_row.ok_or_else(|| {
+            AppError::ServiceUnavailable(format!(
+                "TT2 raid subscription player {} has no stored token",
+                self.config.raid_subscription_player_id
+            ))
+        })?;
+        let player_token = self.cipher.decrypt(&ciphertext, &nonce)?;
+        let body = RaidSubscriptionRequest {
+            player_token: &player_token,
+        };
+        for action in ["unsubscribe", "subscribe"] {
+            let response = self
+                .http
+                .post(format!(
+                    "{}/raid/{action}",
+                    self.config.rest_base_url.trim_end_matches('/')
+                ))
+                .header("API-Authenticate", &self.config.application_token)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|error| {
+                    AppError::ServiceUnavailable(format!(
+                        "Could not {action} the TT2 raid socket: {error}"
+                    ))
+                })?;
+            if !response.status().is_success() && action == "subscribe" {
+                return Err(AppError::ServiceUnavailable(format!(
+                    "TT2 raid {action} returned {}",
+                    response.status()
+                )));
+            } else if !response.status().is_success() {
+                tracing::debug!(status = %response.status(), "TT2 raid unsubscribe was not active; continuing with subscribe");
+            }
+        }
+        Ok(())
     }
 
     pub async fn fetch_player(&self, player_token: &str) -> Result<PublicPlayerData, AppError> {
@@ -351,16 +418,21 @@ fn engine_url(config: &Tt2Config) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-fn log_socket_event(payload: &str, namespace: &str, connected: &AtomicBool) {
+fn dispatch_socket_event(
+    payload: &str,
+    namespace: &str,
+    connected: &AtomicBool,
+    state: Option<Arc<AppState>>,
+) {
     let parsed: Value = match serde_json::from_str(payload) {
         Ok(value) => value,
         Err(error) => {
-            tracing::warn!(?error, payload, "Could not parse TT2 Socket.IO event");
+            tracing::warn!(?error, namespace, "Could not parse TT2 Socket.IO event");
             return;
         }
     };
     let Some(values) = parsed.as_array() else {
-        tracing::warn!(payload, "TT2 Socket.IO event was not an array");
+        tracing::warn!(namespace, "TT2 Socket.IO event was not an array");
         return;
     };
     let event = values.first().and_then(Value::as_str).unwrap_or("unknown");
@@ -379,7 +451,20 @@ fn log_socket_event(payload: &str, namespace: &str, connected: &AtomicBool) {
             connected.store(false, Ordering::Release);
             tracing::error!(namespace, ?data, "TT2 connect_error event received");
         }
-        _ => tracing::debug!(namespace, event, ?data, "Ignoring unexpected TT2 event"),
+        "attack" | "sub_cycle" | "cycle_reset" if namespace == "/raid" => {
+            if let Some(state) = state {
+                let event = event.to_string();
+                tokio::spawn(async move {
+                    if let Err(error) =
+                        crate::services::raid_event_service::handle_event(&state, &event, data)
+                            .await
+                    {
+                        tracing::error!(event, ?error, "TT2 raid event processing failed");
+                    }
+                });
+            }
+        }
+        _ => tracing::debug!(namespace, event, "Ignoring unexpected TT2 event"),
     }
 }
 
@@ -392,6 +477,11 @@ fn sanitize_upstream_message(body: &str) -> String {
 struct PlayerDataRequest<'a> {
     player_token: &'a str,
     properties: &'a [&'static str],
+}
+
+#[derive(Serialize)]
+struct RaidSubscriptionRequest<'a> {
+    player_token: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
