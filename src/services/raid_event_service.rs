@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        app::CreateSimulationJobRequest,
+        app::{CreateSimulationJobRequest, LiveAttackBossView},
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
     },
@@ -28,31 +28,27 @@ pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Re
     }
 }
 
-pub fn recover_pending_refresh(state: Arc<AppState>) {
-    if state.optional_db().is_none() {
-        return;
-    }
-    tokio::spawn(async move {
-        let required = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM raid_current_state WHERE refresh_required=TRUE)",
-        )
-        .fetch_one(match state.db() {
-            Ok(db) => db,
-            Err(_) => return,
-        })
-        .await
-        .unwrap_or(false);
-        if required {
-            refresh_subscription(state).await;
-        }
-    });
-}
-
 async fn handle_attack(
     state: &Arc<AppState>,
     attack: AttackEvent,
     raw_payload: Value,
 ) -> Result<(), AppError> {
+    *state.live_attack_boss.write().await = Some(LiveAttackBossView {
+        clan_code: attack.clan_code.clone(),
+        raid_id: attack.raid_id,
+        cycle: attack.cycle,
+        titan_index: attack.raid_state.titan_index,
+        boss_data: serde_json::to_value(&attack.raid_state.current)?,
+        received_at: Utc::now(),
+    });
+    tracing::info!(
+        raid_id = attack.raid_id,
+        cycle = attack.cycle,
+        titan_index = attack.raid_state.titan_index,
+        enemy_id = %attack.raid_state.current.enemy_id,
+        "updated live current boss from TT2 attack event"
+    );
+    let raw_payload = without_live_boss_data(raw_payload);
     let components = attack_components(&attack)?;
     let attacked_titan_index = components
         .first()
@@ -116,22 +112,13 @@ async fn handle_attack(
         .await?;
     }
 
-    let previous_index: Option<i32> =
-        sqlx::query_scalar("SELECT resulting_titan_index FROM raid_current_state WHERE raid_id=$1")
-            .bind(attack.raid_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .flatten();
-    let transition = previous_index.is_none_or(|index| attack.raid_state.titan_index > index);
-
     sqlx::query(
-        "INSERT INTO raid_current_state (raid_id,clan_code,resulting_titan_index,current_enemy_id,refresh_required) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code, resulting_titan_index=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.resulting_titan_index ELSE raid_current_state.resulting_titan_index END, current_enemy_id=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.current_enemy_id ELSE raid_current_state.current_enemy_id END, refresh_required=raid_current_state.refresh_required OR EXCLUDED.refresh_required, updated_at=NOW()",
+        "INSERT INTO raid_current_state (raid_id,clan_code,resulting_titan_index,current_enemy_id,refresh_required) VALUES ($1,$2,$3,$4,FALSE) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code, resulting_titan_index=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.resulting_titan_index ELSE raid_current_state.resulting_titan_index END, current_enemy_id=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.current_enemy_id ELSE raid_current_state.current_enemy_id END, refresh_required=FALSE, updated_at=NOW()",
     )
     .bind(attack.raid_id)
     .bind(&attack.clan_code)
     .bind(attack.raid_state.titan_index)
     .bind(&attack.raid_state.current.enemy_id)
-    .bind(transition)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -145,11 +132,6 @@ async fn handle_attack(
         total_damage,
         "stored TT2 raid attack"
     );
-
-    if transition {
-        let refresh_state = Arc::clone(state);
-        tokio::spawn(async move { refresh_subscription(refresh_state).await });
-    }
     Ok(())
 }
 
@@ -363,35 +345,6 @@ async fn queue_auto_simulations(state: &Arc<AppState>) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn refresh_subscription(state: Arc<AppState>) {
-    let _guard = state.raid_refresh_lock.lock().await;
-    for attempt in 1..=3u64 {
-        let required = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM raid_current_state WHERE refresh_required=TRUE)",
-        )
-        .fetch_one(match state.db() {
-            Ok(db) => db,
-            Err(_) => return,
-        })
-        .await
-        .unwrap_or(false);
-        if !required {
-            return;
-        }
-        let result = match state.gamehive_api.as_ref() {
-            Some(client) => client.resubscribe_raid(&state).await,
-            None => Err(AppError::ServiceUnavailable(
-                "TT2 integration is not configured".into(),
-            )),
-        };
-        match result {
-            Ok(()) => tracing::info!(attempt, "TT2 raid unsubscribe/subscribe completed"),
-            Err(error) => tracing::warn!(attempt, ?error, "TT2 raid refresh failed"),
-        }
-        tokio::time::sleep(Duration::from_secs(attempt * 2)).await;
-    }
-}
-
 fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppError> {
     let levels = attack
         .attack_log
@@ -440,6 +393,17 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
             })
         })
         .collect()
+}
+
+fn without_live_boss_data(mut payload: Value) -> Value {
+    if let Some(raid_state) = payload
+        .as_object_mut()
+        .and_then(|root| root.get_mut("raid_state"))
+        .and_then(Value::as_object_mut)
+    {
+        raid_state.remove("current");
+    }
+    payload
 }
 
 fn boss_from_sub_cycle(
@@ -692,9 +656,17 @@ struct AttackRaidState {
     titan_index: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 struct AttackCurrentBoss {
     enemy_id: String,
+    current_hp: f64,
+    parts: Vec<AttackCurrentBossPart>,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct AttackCurrentBossPart {
+    part_id: String,
+    current_hp: f64,
 }
 
 struct AttackComponent {
@@ -797,17 +769,17 @@ mod tests {
     fn supplied_attack_samples_have_expected_totals_and_transition_indices() {
         let cases = [
             (
-                include_str!("../../attackdatajson/beforebosstrans.json"),
+                include_str!("../../exampleSocketdatajson/beforebosstrans.json"),
                 449_811_765,
                 1,
             ),
             (
-                include_str!("../../attackdatajson/bosstrans.json"),
+                include_str!("../../exampleSocketdatajson/bosstrans.json"),
                 835_323_242,
                 1,
             ),
             (
-                include_str!("../../attackdatajson/afterbosstrans.json"),
+                include_str!("../../exampleSocketdatajson/afterbosstrans.json"),
                 479_865_018,
                 2,
             ),
@@ -826,9 +798,41 @@ mod tests {
     }
 
     #[test]
+    fn persisted_attack_payload_excludes_ephemeral_live_boss_hp() {
+        let raw: Value = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/afterbosstrans.json"
+        ))
+        .unwrap();
+        let sanitized = without_live_boss_data(raw);
+        assert!(sanitized.pointer("/raid_state/current").is_none());
+        assert_eq!(
+            sanitized.pointer("/raid_state/titan_index"),
+            Some(&serde_json::json!(2))
+        );
+    }
+
+    #[tokio::test]
+    async fn attack_updates_ephemeral_live_boss_without_a_database() {
+        let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+        let raw: Value = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/afterbosstrans.json"
+        ))
+        .unwrap();
+
+        assert!(handle_event(&state, "attack", raw).await.is_err());
+
+        let live = state.live_attack_boss.read().await.clone().unwrap();
+        assert_eq!(live.titan_index, 2);
+        assert_eq!(live.boss_data["enemy_id"], "Enemy8");
+        assert_eq!(live.boss_data["current_hp"], 107_028_000_000.0);
+    }
+
+    #[test]
     fn sub_cycle_uses_part_totals_targets_and_live_modifiers() {
-        let event: SubCycleEvent =
-            serde_json::from_str(include_str!("../../sub_cycle_example.json")).unwrap();
+        let event: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
         let (boss, targets) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
         assert_eq!(boss.boss_name, BossName::Priker);
         assert_eq!(boss.head.max_armor, 29_967_840_000);
@@ -846,8 +850,10 @@ mod tests {
 
     #[test]
     fn cycle_sample_produces_expected_percentages_and_reset_boundary() {
-        let event: CycleResetEvent =
-            serde_json::from_str(include_str!("../../cycle_reset_example.json")).unwrap();
+        let event: CycleResetEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/cycle_reset_example.json"
+        ))
+        .unwrap();
         let team = bonus_value(&event.card_bonuses, "TeamTacticsClanMoraleBoost");
         let mirror = bonus_value(&event.card_bonuses, "MirrorForceBoost");
         assert!(((event.morale.bonus_amount + team) * 100.0 - 44.3).abs() < 1e-9);

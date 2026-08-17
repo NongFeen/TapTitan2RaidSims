@@ -1,6 +1,6 @@
 # Feen backend
 
-Rust backend for Tap Titans raid simulations. Player stats are versioned in PostgreSQL, one current boss is stored, simulations run as persistent background jobs, every current result is stored, and the backend calculates the highest-total 6- and 9-deck sets without duplicated cards.
+Rust backend for Tap Titans raid simulations. Player stats are versioned in PostgreSQL, one sims boss is stored, simulations run as persistent background jobs, every current result is stored, and the backend calculates the highest-total deck sets without duplicated cards.
 
 ## Run locally
 
@@ -34,7 +34,7 @@ $bytes = New-Object byte[] 32
 
 Store that output as `TT2_PLAYER_TOKEN_ENCRYPTION_KEY`. Losing or changing it makes existing encrypted player tokens unreadable. The application token and encryption key are backend secrets and must never use `VITE_*` frontend variables.
 
-Set `TT2_RAID_SUBSCRIPTION_PLAYER_ID` to the player code whose encrypted Master/Grand Master token should be used for `/raid/unsubscribe` and `/raid/subscribe`.
+Set `TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN` directly to one Master/Grand Master player token. The backend does not query PostgreSQL for raid subscription. Once per backend process, after the `/raid` namespace connects, it calls `/raid/unsubscribe` and then `/raid/subscribe`. Both requests send `TT2_APPLICATION_TOKEN` in `API-Authenticate` and `{ "player_tokens": ["..."] }` in the JSON body.
 
 Protected admin workflow:
 
@@ -54,11 +54,11 @@ docker compose down
 1. Create a player with `POST /api/players`. The optional unique `player_id` holds the Tap Titans player identifier.
 2. Store the player's current stats with `PUT /api/players/{player_id}/stats`. Each update creates an immutable version.
 3. Enable automatic simulations with `PUT /api/players/{player_id}/auto_sims` and `{ "auto_sims": true }`.
-4. Replace the current boss with `PUT /internal/current-boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the boss.
+4. Replace the persisted simulation input with `PUT /internal/sims-boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the sims boss.
 5. A persistent simulation job is created for every player with `auto_sims` enabled. Poll `GET /internal/simulation-jobs/{job_id}` or list `GET /api/players/{player_id}/simulation-jobs`.
 6. Read the best set from `GET /api/players/{player_id}/recommendations/current?deck_count=6` (or `9`).
 
-Updating the stats of an auto-sim player, or enabling `auto_sims` while a boss is active, automatically schedules the current boss simulation. Equivalent player/stat/boss/simulator inputs reuse the existing job.
+Updating the stats of an auto-sim player, or enabling `auto_sims` while a sims boss is active, automatically schedules the simulation. Equivalent player/stat/boss/simulator inputs reuse the existing job.
 
 `PUT /api/players/{player_id}/stats` accepts either the raw Tap Titans player export or the cleaned `PlayerRaidData` format. Raw input is cleaned automatically before it is validated and stored. Each update overwrites that player's current stats; `GET /api/players/{player_id}/stats/current` reads them.
 
@@ -68,7 +68,9 @@ The existing synchronous simulation endpoints remain available for debugging and
 
 ## Raid API boundary
 
-`PUT /internal/current-boss` remains the manual normalized boss boundary. Live `attack`, `sub_cycle`, and `cycle_reset` Socket.IO events store attack history, synchronize the singleton boss, and queue automatic Current+Void jobs when the enemy or Mirror Force clan boost changes. Read the live cycle modifiers through `GET /api/raid-cycle/current`.
+`PUT /internal/sims-boss` is the manual normalized simulation boundary, and `GET /api/sims-boss` reads it. The older `/internal/current-boss` and `/api/current-boss` paths remain compatibility aliases.
+
+Live `attack` events update `GET /api/live-current-boss`, a read-only in-memory snapshot for dashboard display. This snapshot is cleared on restart, is never used as simulation input, and its boss HP payload is removed before the attack log is persisted. Authoritative `sub_cycle` events synchronize the persisted sims boss and can queue automatic Current+Void jobs when the enemy changes. `cycle_reset` updates modifiers and queues eligible jobs when the Mirror Force clan boost changes. Read the live cycle modifiers through `GET /api/raid-cycle/current`.
 
 ## Checks
 

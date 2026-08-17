@@ -137,6 +137,16 @@ pub struct CurrentBossView {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct LiveAttackBossView {
+    pub clan_code: String,
+    pub raid_id: i64,
+    pub cycle: i32,
+    pub titan_index: i32,
+    pub boss_data: Value,
+    pub received_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct RecommendationView {
     pub id: Uuid,

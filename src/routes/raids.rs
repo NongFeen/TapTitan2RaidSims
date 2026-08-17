@@ -7,7 +7,7 @@ use crate::{
     models::{
         app::{
             CreateSimulationJobRequest, CurrentBossUpdateRequest, CurrentBossView,
-            RaidEventAccepted,
+            LiveAttackBossView, RaidEventAccepted,
         },
         boss::{Boss, BossPartName},
     },
@@ -35,16 +35,8 @@ async fn replace_current_boss(
     attackable_parts: Vec<BossPartName>,
     trigger_simulations: bool,
 ) -> Result<(StatusCode, Json<RaidEventAccepted>), AppError> {
-    if boss_data
-        .global_raid_modifier_amount
-        .is_some_and(|amount| !amount.is_finite() || amount < 0.0)
-        || !boss_data.curse_damage_per_curse.is_finite()
-        || boss_data.curse_damage_per_curse < 0.0
-    {
-        return Err(AppError::BadRequest(
-            "Boss modifier amounts must be non-negative finite numbers".to_string(),
-        ));
-    }
+    boss_data.global_raid_modifier_amount = None;
+    boss_data.curse_damage_per_curse = 0.06;
     boss_data.sync_part_states_from_current_values();
 
     let mut tx = state.db()?.begin().await?;
@@ -87,11 +79,11 @@ async fn replace_current_boss(
             status: "accepted",
             message: if trigger_simulations {
                 format!(
-                    "Current boss was replaced, old simulations were scheduled for background cleanup, and {} new job(s) were queued",
+                    "Sims boss data was replaced, old simulations were scheduled for background cleanup, and {} new job(s) were queued",
                     created_jobs.len()
                 )
             } else {
-                "Current boss was replaced and old simulations were scheduled for background cleanup; no simulations were started".to_string()
+                "Sims boss data was replaced and old simulations were scheduled for background cleanup; no simulations were started".to_string()
             },
             simulations_triggered: trigger_simulations,
             deleted_jobs: 0,
@@ -125,6 +117,17 @@ pub async fn current(
     )
     .fetch_optional(state.db()?)
     .await?
-    .ok_or_else(|| AppError::NotFound("No current raid boss".to_string()))?;
+    .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
+    Ok(Json(boss))
+}
+
+pub async fn live_from_attack(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<LiveAttackBossView>, AppError> {
+    let boss = state.live_attack_boss.read().await.clone().ok_or_else(|| {
+        AppError::NotFound(
+            "No live current boss has been received from an attack event".to_string(),
+        )
+    })?;
     Ok(Json(boss))
 }

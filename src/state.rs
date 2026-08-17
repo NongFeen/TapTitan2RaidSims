@@ -1,9 +1,10 @@
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 use uuid::Uuid;
 
 use crate::error::AppError;
+use crate::models::app::LiveAttackBossView;
 use crate::services::gamehive_api_client::GameHiveApiClient;
 
 #[derive(Clone)]
@@ -14,7 +15,7 @@ pub struct AppState {
     pub internal_api_key: Arc<str>,
     pub gamehive_api: Option<Arc<GameHiveApiClient>>,
     pub clan_fetch_lock: Arc<Mutex<()>>,
-    pub raid_refresh_lock: Arc<Mutex<()>>,
+    pub live_attack_boss: Arc<RwLock<Option<LiveAttackBossView>>>,
 }
 
 impl AppState {
@@ -31,7 +32,7 @@ impl AppState {
             internal_api_key: Arc::from(internal_api_key),
             gamehive_api,
             clan_fetch_lock: Arc::new(Mutex::new(())),
-            raid_refresh_lock: Arc::new(Mutex::new(())),
+            live_attack_boss: Arc::new(RwLock::new(None)),
         }
     }
 

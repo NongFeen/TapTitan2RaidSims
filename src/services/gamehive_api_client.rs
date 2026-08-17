@@ -106,6 +106,7 @@ pub struct GameHiveApiClient {
     http: reqwest::Client,
     connected: AtomicBool,
     raid_connected: AtomicBool,
+    raid_subscription_started: AtomicBool,
 }
 
 impl GameHiveApiClient {
@@ -117,6 +118,7 @@ impl GameHiveApiClient {
             http: reqwest::Client::new(),
             connected: AtomicBool::new(false),
             raid_connected: AtomicBool::new(false),
+            raid_subscription_started: AtomicBool::new(false),
         }))
     }
 
@@ -207,9 +209,24 @@ impl GameHiveApiClient {
                     } else if packet.starts_with("40/raid") {
                         self.raid_connected.store(true, Ordering::Release);
                         tracing::info!("TT2 /raid Socket.IO namespace connected");
-                        crate::services::raid_event_service::recover_pending_refresh(Arc::clone(
-                            &state,
-                        ));
+                        if self
+                            .raid_subscription_started
+                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                            .is_ok()
+                        {
+                            let subscription_client = Arc::clone(self);
+                            tokio::spawn(async move {
+                                match subscription_client.subscribe_raid_once().await {
+                                    Ok(()) => tracing::info!(
+                                        "TT2 raid unsubscribe/subscribe completed once"
+                                    ),
+                                    Err(error) => tracing::error!(
+                                        ?error,
+                                        "TT2 one-time raid subscription failed"
+                                    ),
+                                }
+                            });
+                        }
                     } else if packet == "2" {
                         if let Err(error) = socket.send(Message::Text("3".into())).await {
                             tracing::error!(?error, "Could not send TT2 Engine.IO pong");
@@ -262,22 +279,9 @@ impl GameHiveApiClient {
         tracing::warn!("TT2 socket stopped");
     }
 
-    pub async fn resubscribe_raid(&self, state: &AppState) -> Result<(), AppError> {
-        let token_row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
-            "SELECT player_token_ciphertext, player_token_nonce FROM players WHERE player_id=$1 AND player_token_ciphertext IS NOT NULL AND player_token_nonce IS NOT NULL",
-        )
-        .bind(&self.config.raid_subscription_player_id)
-        .fetch_optional(state.db()?)
-        .await?;
-        let (ciphertext, nonce) = token_row.ok_or_else(|| {
-            AppError::ServiceUnavailable(format!(
-                "TT2 raid subscription player {} has no stored token",
-                self.config.raid_subscription_player_id
-            ))
-        })?;
-        let player_token = self.cipher.decrypt(&ciphertext, &nonce)?;
+    async fn subscribe_raid_once(&self) -> Result<(), AppError> {
         let body = RaidSubscriptionRequest {
-            player_token: &player_token,
+            player_tokens: vec![self.config.raid_subscription_player_token.as_str()],
         };
         for action in ["unsubscribe", "subscribe"] {
             let response = self
@@ -453,6 +457,9 @@ fn dispatch_socket_event(
         }
         "attack" | "sub_cycle" | "cycle_reset" if namespace == "/raid" => {
             if let Some(state) = state {
+                if event == "attack" {
+                    tracing::info!(namespace, "TT2 raid attack event received");
+                }
                 let event = event.to_string();
                 tokio::spawn(async move {
                     if let Err(error) =
@@ -481,7 +488,7 @@ struct PlayerDataRequest<'a> {
 
 #[derive(Serialize)]
 struct RaidSubscriptionRequest<'a> {
-    player_token: &'a str,
+    player_tokens: Vec<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -663,6 +670,17 @@ mod tests {
         let other = TokenCipher::from_base64(&STANDARD.encode([8_u8; 32])).unwrap();
         let (encrypted, nonce) = cipher.encrypt("player-token").unwrap();
         assert!(other.decrypt(&encrypted, &nonce).is_err());
+    }
+
+    #[test]
+    fn raid_subscription_uses_player_tokens_array() {
+        let body = RaidSubscriptionRequest {
+            player_tokens: vec!["player-token-here"],
+        };
+        assert_eq!(
+            serde_json::to_value(body).unwrap(),
+            serde_json::json!({ "player_tokens": ["player-token-here"] })
+        );
     }
 
     #[test]

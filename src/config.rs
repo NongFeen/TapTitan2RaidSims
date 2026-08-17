@@ -17,7 +17,7 @@ pub struct Tt2Config {
     pub rest_base_url: String,
     pub application_token: String,
     pub player_token_encryption_key: String,
-    pub raid_subscription_player_id: String,
+    pub raid_subscription_player_token: String,
 }
 
 impl Config {
@@ -55,7 +55,7 @@ impl Config {
             env::var("TT2_REST_BASE_URL").ok(),
             env::var("TT2_APPLICATION_TOKEN").ok(),
             env::var("TT2_PLAYER_TOKEN_ENCRYPTION_KEY").ok(),
-            env::var("TT2_RAID_SUBSCRIPTION_PLAYER_ID").ok(),
+            env::var("TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN").ok(),
         ];
         let tt2 = if tt2_values
             .iter()
@@ -67,7 +67,7 @@ impl Config {
                 rest_base_url: tt2_values[2].clone().unwrap(),
                 application_token: tt2_values[3].clone().unwrap(),
                 player_token_encryption_key: tt2_values[4].clone().unwrap(),
-                raid_subscription_player_id: tt2_values[5].clone().unwrap(),
+                raid_subscription_player_token: tt2_values[5].clone().unwrap(),
             })
         } else {
             if tt2_values.iter().any(|value| value.is_some()) {

@@ -15,6 +15,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
         .route("/simulation-debug", post(routes::simulation_debug::run))
         .route("/current-boss", put(routes::raids::update_current_boss))
+        .route("/sims-boss", put(routes::raids::update_current_boss))
         .route(
             "/players/{player_id}/token",
             put(routes::players::update_token).delete(routes::players::clear_token),
@@ -60,6 +61,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(routes::players::update_auto_sims),
         )
         .route("/api/current-boss", get(routes::raids::current))
+        .route("/api/sims-boss", get(routes::raids::current))
+        .route(
+            "/api/live-current-boss",
+            get(routes::raids::live_from_attack),
+        )
         .route("/api/raid-cycle/current", get(routes::raid_cycle::current))
         .route(
             "/api/players/{player_id}/recommendations/current",

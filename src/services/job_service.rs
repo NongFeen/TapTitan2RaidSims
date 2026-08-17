@@ -181,7 +181,7 @@ pub async fn create_job(
     .fetch_optional(state.db()?)
     .await?;
     let (boss_json, attackable_json, boss_version) =
-        boss_row.ok_or_else(|| AppError::NotFound("No current raid boss".to_string()))?;
+        boss_row.ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
     let boss_data: Boss = serde_json::from_value(boss_json)?;
     let attackable_part: Vec<BossPartName> = serde_json::from_value(attackable_json)?;
     let usable_card: Vec<CardName> = player_stats

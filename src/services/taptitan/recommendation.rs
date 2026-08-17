@@ -107,7 +107,6 @@ pub fn optimize_decks_with_required_cards(
     );
     let mut selected = Vec::with_capacity(deck_count);
     let root_candidate_count = sorted.len().saturating_sub(deck_count.saturating_sub(1));
-    let mut next_progress_percent = 10usize;
     for index in 0..root_candidate_count {
         let candidate = &sorted[index];
         selected.push(index);
