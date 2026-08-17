@@ -669,7 +669,6 @@ fn should_run_targeted_body_phase(
     attackable_parts: &[BossPartName],
 ) -> bool {
     include_body_phase
-        && attackable_parts.len() >= 5
         && attackable_parts.iter().any(|part_name| {
             matches!(
                 boss.get_state_from_part(*part_name),
@@ -783,31 +782,23 @@ mod body_phase_tests {
     }
 
     #[test]
-    fn body_phase_requires_enabled_five_targets_and_convertible_part() {
+    fn body_phase_requires_enabled_and_convertible_target() {
         let boss = boss();
-        let five_targets = BossPartName::all()[..5].to_vec();
-        assert!(!should_run_targeted_body_phase(false, &boss, &five_targets));
+        let single_armor_target = [BossPartName::Head];
         assert!(!should_run_targeted_body_phase(
+            false,
+            &boss,
+            &single_armor_target
+        ));
+        assert!(should_run_targeted_body_phase(
             true,
             &boss,
-            &five_targets[..4]
+            &single_armor_target
         ));
-        assert!(should_run_targeted_body_phase(true, &boss, &five_targets));
+        assert!(!should_run_targeted_body_phase(true, &boss, &[]));
 
-        let body_targets = [
-            BossPartName::LeftShoulder,
-            BossPartName::RightShoulder,
-            BossPartName::LeftHand,
-            BossPartName::RightHand,
-            BossPartName::Torso,
-        ];
-        let mut all_body = boss.clone();
-        convert_targeted_armor_to_body(&mut all_body, &body_targets);
-        assert!(!should_run_targeted_body_phase(
-            true,
-            &all_body,
-            &body_targets
-        ));
+        let body_target = [BossPartName::LeftShoulder];
+        assert!(!should_run_targeted_body_phase(true, &boss, &body_target));
     }
 
     #[test]
