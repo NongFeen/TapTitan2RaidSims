@@ -8,7 +8,7 @@ pub fn get_proc_chance(_card: &Card, _boss: &Boss) -> f64 {
 }
 pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> f64 {
     let skull_bash = card.skill.value_a.unwrap_or(1.0);
-    let mut bonus_correct_part = 1.5f64;
+    let mut bonus_correct_part = 1.0f64;
     if target_part == BossPartName::Head
         || target_part == BossPartName::LeftLeg
         || target_part == BossPartName::RightLeg

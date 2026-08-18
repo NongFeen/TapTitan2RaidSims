@@ -8,10 +8,12 @@ mod database;
 mod dtos;
 mod error;
 mod models;
+mod request_logging;
 mod router;
 mod routes;
 mod services;
 mod state;
+use request_logging::FilteredHttpTrace;
 use state::AppState;
 
 fn main() {
@@ -88,8 +90,13 @@ async fn run() {
         .allow_methods(cors::Any)
         .allow_headers(cors::Any);
 
+    let request_trace = TraceLayer::new_for_http()
+        .make_span_with(FilteredHttpTrace)
+        .on_request(FilteredHttpTrace)
+        .on_response(FilteredHttpTrace)
+        .on_failure(FilteredHttpTrace);
     let app = router::create_router(Arc::clone(&state))
-        .layer(TraceLayer::new_for_http())
+        .layer(request_trace)
         .layer(cors);
 
     state.recover_pending_jobs().await;
