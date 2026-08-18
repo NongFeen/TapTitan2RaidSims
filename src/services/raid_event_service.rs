@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        app::{CreateSimulationJobRequest, LiveAttackBossView},
+        app::{CreateSimulationJobRequest, LiveAttackBossView, LiveBossDisplayPart},
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
     },
@@ -40,6 +40,7 @@ async fn handle_attack(
         titan_index: attack.raid_state.titan_index,
         boss_data: serde_json::to_value(&attack.raid_state.current)?,
         received_at: Utc::now(),
+        display_parts: None,
     });
     tracing::info!(
         raid_id = attack.raid_id,
@@ -93,7 +94,7 @@ async fn handle_attack(
 
     if inserted.is_none() {
         tx.commit().await?;
-        sync_sims_boss_on_body_transition(state, &attack).await?;
+        sync_sims_boss_on_phase_transition(state, &attack).await?;
         return Ok(());
     }
 
@@ -133,11 +134,17 @@ async fn handle_attack(
         total_damage,
         "stored TT2 raid attack"
     );
-    sync_sims_boss_on_body_transition(state, &attack).await?;
+    sync_sims_boss_on_phase_transition(state, &attack).await?;
     Ok(())
 }
 
-async fn sync_sims_boss_on_body_transition(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PhaseRefresh {
+    Full,
+    Incremental(u8),
+}
+
+async fn sync_sims_boss_on_phase_transition(
     state: &Arc<AppState>,
     attack: &AttackEvent,
 ) -> Result<bool, AppError> {
@@ -169,11 +176,16 @@ async fn sync_sims_boss_on_body_transition(
         && source_raid_id.is_none_or(|raid_id| raid_id == attack.raid_id)
         && source_titan_index
             .is_none_or(|titan_index| titan_index == attack.raid_state.titan_index);
-    if !source_matches
-        || !apply_attack_body_transition(&mut boss, &targets, &attack.raid_state.current)?
-    {
+    let Some(incoming) = boss_from_attack_snapshot(&boss, &attack.raid_state.current)? else {
         return Ok(false);
-    }
+    };
+    let Some(refresh) = source_matches
+        .then(|| classify_phase_refresh(&boss, &targets, &incoming))
+        .flatten()
+    else {
+        return Ok(false);
+    };
+    boss = incoming;
 
     let boss_version: i64 = sqlx::query_scalar(
         "UPDATE current_boss SET version=version+1,boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE RETURNING version",
@@ -187,73 +199,98 @@ async fn sync_sims_boss_on_body_transition(
     tx.commit().await?;
 
     job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-    queue_auto_simulations(state).await?;
+    queue_auto_simulations(
+        state,
+        match refresh {
+            PhaseRefresh::Full => None,
+            PhaseRefresh::Incremental(mask) => Some(mask),
+        },
+    )
+    .await?;
     tracing::info!(
         raid_id = attack.raid_id,
         titan_index = attack.raid_state.titan_index,
         enemy_id = %attack.raid_state.current.enemy_id,
         boss_version,
         target_count = targets.len(),
-        "all targeted armor became body; updated sims boss and queued auto simulations"
+        refresh_mode = ?refresh,
+        "boss target phase changed; updated sims boss and queued auto simulations"
     );
     Ok(true)
 }
 
-fn apply_attack_body_transition(
-    boss: &mut Boss,
-    targets: &[BossPartName],
+fn boss_from_attack_snapshot(
+    boss: &Boss,
     live: &AttackCurrentBoss,
-) -> Result<bool, AppError> {
+) -> Result<Option<Boss>, AppError> {
+    let mut incoming = boss.clone();
+    for part_name in BossPartName::all() {
+        let Some((current_armor, current_health)) = attack_part_values(live, part_name)? else {
+            return Ok(None);
+        };
+        let part = incoming.part_mut(part_name);
+        part.current_armor = current_armor;
+        part.current_health = current_health;
+    }
+    incoming.sync_part_states_from_current_values();
+    Ok(Some(incoming))
+}
+
+fn classify_phase_refresh(
+    current: &Boss,
+    targets: &[BossPartName],
+    incoming: &Boss,
+) -> Option<PhaseRefresh> {
     if targets.is_empty()
-        || !targets.iter().any(|part_name| {
-            matches!(
-                boss.part(*part_name).part_state,
-                PartState::Armor | PartState::Cursed
-            )
+        || BossPartName::all().iter().any(|part_name| {
+            phase_rank(incoming.part(*part_name).part_state)
+                < phase_rank(current.part(*part_name).part_state)
         })
     {
-        return Ok(false);
+        return None;
     }
 
-    let target_values = targets
-        .iter()
-        .map(|part_name| attack_part_values(live, *part_name))
-        .collect::<Result<Option<Vec<_>>, AppError>>()?;
-    let Some(target_values) = target_values else {
-        return Ok(false);
-    };
-    if !target_values
-        .iter()
-        .all(|(current_armor, current_health)| *current_armor == 0 && *current_health > 0)
-    {
-        return Ok(false);
+    let had_selected_armor = targets.iter().any(|part_name| {
+        matches!(
+            current.part(*part_name).part_state,
+            PartState::Armor | PartState::Cursed
+        )
+    });
+    let incoming_has_selected_armor = targets.iter().any(|part_name| {
+        matches!(
+            incoming.part(*part_name).part_state,
+            PartState::Armor | PartState::Cursed
+        )
+    });
+    if had_selected_armor && !incoming_has_selected_armor {
+        return Some(PhaseRefresh::Full);
     }
 
-    for part_name in BossPartName::all() {
-        if let Some((current_armor, current_health)) = attack_part_values(live, part_name)? {
-            let part = boss.part_mut(part_name);
-            part.current_armor = current_armor;
-            part.current_health = current_health;
+    let skeleton_mask = targets.iter().fold(0u8, |mask, part_name| {
+        if current.part(*part_name).part_state == PartState::Body
+            && incoming.part(*part_name).part_state == PartState::Skeleton
+        {
+            mask | part_name.dependency_mask()
+        } else {
+            mask
         }
+    });
+    (skeleton_mask != 0).then_some(PhaseRefresh::Incremental(skeleton_mask))
+}
+
+fn phase_rank(state: PartState) -> u8 {
+    match state {
+        PartState::Cursed | PartState::Armor => 0,
+        PartState::Body => 1,
+        PartState::Skeleton => 2,
     }
-    boss.sync_part_states_from_current_values();
-    Ok(true)
 }
 
 fn attack_part_values(
     live: &AttackCurrentBoss,
     part_name: BossPartName,
 ) -> Result<Option<(u64, u64)>, AppError> {
-    let (body_id, armor_id) = match part_name {
-        BossPartName::Head => ("BodyHead", "ArmorHead"),
-        BossPartName::Torso => ("BodyChestUpper", "ArmorChestUpper"),
-        BossPartName::RightShoulder => ("BodyArmUpperLeft", "ArmorArmUpperLeft"),
-        BossPartName::LeftShoulder => ("BodyArmUpperRight", "ArmorArmUpperRight"),
-        BossPartName::RightHand => ("BodyHandLeft", "ArmorHandLeft"),
-        BossPartName::LeftHand => ("BodyHandRight", "ArmorHandRight"),
-        BossPartName::RightLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
-        BossPartName::LeftLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
-    };
+    let (body_id, armor_id) = part_ids(part_name);
     let body = live.parts.iter().find(|part| part.part_id == body_id);
     let armor = live.parts.iter().find(|part| part.part_id == armor_id);
     match (armor, body) {
@@ -263,6 +300,91 @@ fn attack_part_values(
         ))),
         _ => Ok(None),
     }
+}
+
+fn part_ids(part_name: BossPartName) -> (&'static str, &'static str) {
+    match part_name {
+        BossPartName::Head => ("BodyHead", "ArmorHead"),
+        BossPartName::Torso => ("BodyChestUpper", "ArmorChestUpper"),
+        BossPartName::RightShoulder => ("BodyArmUpperLeft", "ArmorArmUpperLeft"),
+        BossPartName::LeftShoulder => ("BodyArmUpperRight", "ArmorArmUpperRight"),
+        BossPartName::RightHand => ("BodyHandLeft", "ArmorHandLeft"),
+        BossPartName::LeftHand => ("BodyHandRight", "ArmorHandRight"),
+        BossPartName::RightLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
+        BossPartName::LeftLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
+    }
+}
+
+pub fn live_boss_display_parts(
+    live_boss_data: &Value,
+    raid_data: &Value,
+    titan_targets: &Value,
+) -> Result<Option<Vec<LiveBossDisplayPart>>, AppError> {
+    let live: AttackCurrentBoss = serde_json::from_value(live_boss_data.clone())?;
+    let raid: RaidSnapshot = serde_json::from_value(raid_data.clone())?;
+    let targets: Vec<TitanTarget> = serde_json::from_value(titan_targets.clone())?;
+    let Some(titan) = raid
+        .titans
+        .iter()
+        .find(|titan| titan.enemy_id == live.enemy_id)
+    else {
+        return Ok(None);
+    };
+    let Some(titan_target) = targets
+        .iter()
+        .find(|target| target.enemy_id == live.enemy_id)
+    else {
+        return Ok(None);
+    };
+    let stored_parts = titan
+        .parts
+        .iter()
+        .map(|part| (part.part_id.as_str(), part))
+        .collect::<HashMap<_, _>>();
+    let mut display_parts = Vec::with_capacity(8);
+
+    for part_name in BossPartName::all() {
+        let (body_id, armor_id) = part_ids(part_name);
+        let Some(body) = stored_parts.get(body_id) else {
+            return Ok(None);
+        };
+        let Some(armor) = stored_parts.get(armor_id) else {
+            return Ok(None);
+        };
+        let Some((current_armor, current_health)) = attack_part_values(&live, part_name)? else {
+            return Ok(None);
+        };
+        let (part_state, current_hp, max_hp) = if current_armor > 0 {
+            (
+                if armor.cursed {
+                    PartState::Cursed
+                } else {
+                    PartState::Armor
+                },
+                current_armor,
+                rounded_u64(armor.total_hp, armor_id)?,
+            )
+        } else if current_health > 0 {
+            (
+                PartState::Body,
+                current_health,
+                rounded_u64(body.total_hp, body_id)?,
+            )
+        } else {
+            (PartState::Skeleton, 0, rounded_u64(body.total_hp, body_id)?)
+        };
+        display_parts.push(LiveBossDisplayPart {
+            part_name,
+            part_state,
+            current_hp,
+            max_hp,
+            is_targeted: titan_target.state.iter().any(|target| {
+                target.state == "2" && target_part_name(&target.id).ok() == Some(part_name)
+            }),
+        });
+    }
+
+    Ok(Some(display_parts))
 }
 
 async fn handle_sub_cycle(
@@ -296,20 +418,33 @@ async fn handle_sub_cycle(
         .ok_or_else(|| AppError::Conflict("Current raid state has no enemy_id".to_string()))?;
     let titan_index = titan_index.unwrap_or_default();
 
-    let previous_boss: Option<(Value, Option<String>)> =
-        sqlx::query_as("SELECT boss_data,source_enemy_id FROM current_boss WHERE singleton=TRUE")
-            .fetch_optional(state.db()?)
-            .await?;
+    let previous_boss: Option<(Value, Value, Option<String>)> = sqlx::query_as(
+        "SELECT boss_data,attackable_parts,source_enemy_id FROM current_boss WHERE singleton=TRUE",
+    )
+    .fetch_optional(state.db()?)
+    .await?;
     let preserve_narrow = previous_boss
         .as_ref()
-        .and_then(|(boss, _)| boss.get("recommend_1_to_2_part_patterns_only"))
+        .and_then(|(boss, _, _)| boss.get("recommend_1_to_2_part_patterns_only"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let (boss, attackable_parts) = boss_from_sub_cycle(&event, &enemy_id, preserve_narrow)?;
     let enemy_changed = previous_boss
         .as_ref()
-        .and_then(|(_, enemy)| enemy.as_deref())
+        .and_then(|(_, _, enemy)| enemy.as_deref())
         != Some(enemy_id.as_str());
+    let phase_refresh = if enemy_changed {
+        Some(PhaseRefresh::Full)
+    } else {
+        previous_boss
+            .as_ref()
+            .and_then(|(previous, previous_targets, _)| {
+                let previous: Boss = serde_json::from_value(previous.clone()).ok()?;
+                let previous_targets: Vec<BossPartName> =
+                    serde_json::from_value(previous_targets.clone()).ok()?;
+                classify_phase_refresh(&previous, &previous_targets, &boss)
+            })
+    };
 
     let mut tx = state.db()?.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
@@ -329,7 +464,7 @@ async fn handle_sub_cycle(
 
     let boss_json = serde_json::to_value(&boss)?;
     let targets_json = serde_json::to_value(&attackable_parts)?;
-    let boss_version: i64 = if enemy_changed {
+    let boss_version: i64 = if enemy_changed || phase_refresh.is_some() {
         sqlx::query_scalar(
             "INSERT INTO current_boss (singleton,version,boss_data,attackable_parts,source_raid_id,source_titan_index,source_enemy_id) VALUES (TRUE,1,$1,$2,$3,$4,$5) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1,boss_data=EXCLUDED.boss_data,attackable_parts=EXCLUDED.attackable_parts,source_raid_id=EXCLUDED.source_raid_id,source_titan_index=EXCLUDED.source_titan_index,source_enemy_id=EXCLUDED.source_enemy_id,updated_at=NOW() RETURNING version",
         )
@@ -354,11 +489,19 @@ async fn handle_sub_cycle(
     };
     tx.commit().await?;
 
-    if enemy_changed {
+    if enemy_changed || phase_refresh.is_some() {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
     }
-    if enemy_changed || mirror_changed {
-        queue_auto_simulations(state).await?;
+    if enemy_changed || mirror_changed || phase_refresh.is_some() {
+        let incremental_mask = if mirror_changed || enemy_changed {
+            None
+        } else {
+            match phase_refresh {
+                Some(PhaseRefresh::Incremental(mask)) => Some(mask),
+                _ => None,
+            }
+        };
+        queue_auto_simulations(state, incremental_mask).await?;
     }
     tracing::info!(
         event.raid_id,
@@ -366,6 +509,7 @@ async fn handle_sub_cycle(
         enemy_id,
         enemy_changed,
         mirror_changed,
+        phase_refresh = ?phase_refresh,
         "synchronized current boss from sub_cycle"
     );
     Ok(())
@@ -385,7 +529,7 @@ async fn handle_cycle_reset(state: &Arc<AppState>, event: CycleResetEvent) -> Re
     )
     .await?;
     if mirror_changed {
-        queue_auto_simulations(state).await?;
+        queue_auto_simulations(state, None).await?;
     }
     Ok(())
 }
@@ -449,22 +593,26 @@ async fn store_cycle_state(
     }))
 }
 
-async fn queue_auto_simulations(state: &Arc<AppState>) -> Result<(), AppError> {
+async fn queue_auto_simulations(
+    state: &Arc<AppState>,
+    phase_change_mask: Option<u8>,
+) -> Result<(), AppError> {
     let player_ids: Vec<String> = sqlx::query_scalar(
         "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
     )
     .fetch_all(state.db()?)
     .await?;
     for player_id in player_ids {
-        if let Err(error) = job_service::create_job(
-            state,
-            CreateSimulationJobRequest {
-                player_id: player_id.clone(),
-                include_body_phase: true,
-            },
-        )
-        .await
-        {
+        let request = CreateSimulationJobRequest {
+            player_id: player_id.clone(),
+            include_body_phase: true,
+        };
+        let result = if let Some(mask) = phase_change_mask {
+            job_service::create_phase_aware_job(state, request, mask).await
+        } else {
+            job_service::create_job(state, request).await
+        };
+        if let Err(error) = result {
             tracing::error!(
                 player_id,
                 ?error,
@@ -1037,6 +1185,93 @@ mod tests {
     }
 
     #[test]
+    fn live_boss_display_combines_attack_hp_with_sub_cycle_metadata() {
+        let mut attack: AttackEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/afterbosstrans.json"
+        ))
+        .unwrap();
+        let sub_cycle: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
+
+        for part in &mut attack.raid_state.current.parts {
+            match part.part_id.as_str() {
+                "ArmorHead" => part.current_hp = 0.0,
+                "BodyHead" => part.current_hp = 123_456_789.0,
+                "ArmorChestUpper" | "BodyChestUpper" => part.current_hp = 0.0,
+                _ => {}
+            }
+        }
+        let parts = live_boss_display_parts(
+            &serde_json::to_value(&attack.raid_state.current).unwrap(),
+            &serde_json::to_value(&sub_cycle.raid).unwrap(),
+            &serde_json::to_value(&sub_cycle.titan_target).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(parts.len(), 8);
+        let head = parts
+            .iter()
+            .find(|part| part.part_name == BossPartName::Head)
+            .unwrap();
+        assert_eq!(head.part_state, PartState::Body);
+        assert_eq!(head.current_hp, 123_456_789);
+        assert_eq!(head.max_hp, 43_667_424_000);
+        assert!(head.is_targeted);
+        let torso = parts
+            .iter()
+            .find(|part| part.part_name == BossPartName::Torso)
+            .unwrap();
+        assert_eq!(torso.part_state, PartState::Skeleton);
+        assert_eq!(torso.current_hp, 0);
+        let right_shoulder = parts
+            .iter()
+            .find(|part| part.part_name == BossPartName::RightShoulder)
+            .unwrap();
+        assert_eq!(right_shoulder.part_state, PartState::Cursed);
+        assert_eq!(right_shoulder.current_hp, 5_613_024_000);
+        assert_eq!(right_shoulder.max_hp, 8_027_100_000);
+        let right_leg = parts
+            .iter()
+            .find(|part| part.part_name == BossPartName::RightLeg)
+            .unwrap();
+        assert!(!right_leg.is_targeted);
+
+        let mut incomplete_raid = serde_json::to_value(&sub_cycle.raid).unwrap();
+        incomplete_raid["titans"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|titan| titan["enemy_id"] == "Enemy8")
+            .unwrap()["parts"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert!(
+            live_boss_display_parts(
+                &serde_json::to_value(&attack.raid_state.current).unwrap(),
+                &incomplete_raid,
+                &serde_json::to_value(&sub_cycle.titan_target).unwrap(),
+            )
+            .unwrap()
+            .is_none()
+        );
+
+        attack.raid_state.current.enemy_id = "MissingEnemy".to_string();
+        assert!(
+            live_boss_display_parts(
+                &serde_json::to_value(&attack.raid_state.current).unwrap(),
+                &serde_json::to_value(&sub_cycle.raid).unwrap(),
+                &serde_json::to_value(&sub_cycle.titan_target).unwrap(),
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
+
+    #[test]
     fn attack_updates_sims_boss_once_when_every_target_becomes_body() {
         let event: SubCycleEvent = serde_json::from_str(include_str!(
             "../../exampleSocketdatajson/sub_cycle_example.json"
@@ -1044,15 +1279,21 @@ mod tests {
         .unwrap();
         let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
         let targets = [BossPartName::Head, BossPartName::Torso];
-        let live = body_phase_attack_boss(0);
+        boss.head.part_state = PartState::Armor;
+        boss.torso.part_state = PartState::Armor;
+        let mut incoming = boss.clone();
+        incoming.head.current_armor = 0;
+        incoming.head.current_health = 15_000_000_000;
+        incoming.torso.current_armor = 0;
+        incoming.torso.current_health = 15_000_000_000;
+        incoming.sync_part_states_from_current_values();
 
-        assert!(apply_attack_body_transition(&mut boss, &targets, &live).unwrap());
-        assert_eq!(boss.head.part_state, PartState::Body);
-        assert_eq!(boss.head.current_armor, 0);
-        assert_eq!(boss.head.current_health, 15_000_000_000);
-        assert_eq!(boss.torso.part_state, PartState::Body);
+        assert_eq!(
+            classify_phase_refresh(&boss, &targets, &incoming),
+            Some(PhaseRefresh::Full)
+        );
 
-        assert!(!apply_attack_body_transition(&mut boss, &targets, &live).unwrap());
+        assert_eq!(classify_phase_refresh(&incoming, &targets, &incoming), None);
     }
 
     #[test]
@@ -1063,36 +1304,89 @@ mod tests {
         .unwrap();
         let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
         let targets = [BossPartName::Head, BossPartName::Torso];
+        boss.head.part_state = PartState::Armor;
+        boss.torso.part_state = PartState::Armor;
+        let mut incoming = boss.clone();
+        incoming.head.current_armor = 0;
+        incoming.head.current_health = 15_000_000_000;
+        incoming.sync_part_states_from_current_values();
 
-        assert!(
-            !apply_attack_body_transition(&mut boss, &targets, &body_phase_attack_boss(1)).unwrap()
-        );
-        assert_ne!(boss.head.current_armor, 0);
+        assert_eq!(classify_phase_refresh(&boss, &targets, &incoming), None);
     }
 
-    fn body_phase_attack_boss(torso_armor: u64) -> AttackCurrentBoss {
-        AttackCurrentBoss {
-            enemy_id: "Enemy8".to_string(),
-            current_hp: 30_000_000_000.0,
-            parts: vec![
-                AttackCurrentBossPart {
-                    part_id: "BodyHead".to_string(),
-                    current_hp: 15_000_000_000.0,
-                },
-                AttackCurrentBossPart {
-                    part_id: "ArmorHead".to_string(),
-                    current_hp: 0.0,
-                },
-                AttackCurrentBossPart {
-                    part_id: "BodyChestUpper".to_string(),
-                    current_hp: 15_000_000_000.0,
-                },
-                AttackCurrentBossPart {
-                    part_id: "ArmorChestUpper".to_string(),
-                    current_hp: torso_armor as f64,
-                },
-            ],
-        }
+    #[test]
+    fn selected_body_to_skeleton_is_incremental_and_non_selected_is_ignored() {
+        let event: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
+        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        boss.head.current_armor = 0;
+        boss.head.current_health = 10;
+        boss.head.sync_state_from_current_values();
+        boss.torso.current_armor = 0;
+        boss.torso.current_health = 10;
+        boss.torso.sync_state_from_current_values();
+        let targets = [BossPartName::Head];
+
+        let mut incoming = boss.clone();
+        incoming.head.current_health = 0;
+        incoming.head.sync_state_from_current_values();
+        assert_eq!(
+            classify_phase_refresh(&boss, &targets, &incoming),
+            Some(PhaseRefresh::Incremental(
+                BossPartName::Head.dependency_mask()
+            ))
+        );
+
+        let multi_targets = [BossPartName::Head, BossPartName::Torso];
+        let mut multiple = boss.clone();
+        multiple.head.current_health = 0;
+        multiple.torso.current_health = 0;
+        multiple.sync_part_states_from_current_values();
+        assert_eq!(
+            classify_phase_refresh(&boss, &multi_targets, &multiple),
+            Some(PhaseRefresh::Incremental(
+                BossPartName::Head.dependency_mask() | BossPartName::Torso.dependency_mask()
+            ))
+        );
+
+        let mut non_selected = boss.clone();
+        non_selected.torso.current_health = 0;
+        non_selected.torso.sync_state_from_current_values();
+        assert_eq!(classify_phase_refresh(&boss, &targets, &non_selected), None);
+
+        assert_eq!(
+            classify_phase_refresh(&incoming, &targets, &boss),
+            None,
+            "stale events must not move skeleton back to body"
+        );
+
+        let mut hp_only = boss.clone();
+        hp_only.head.current_health -= 1;
+        hp_only.head.sync_state_from_current_values();
+        assert_eq!(classify_phase_refresh(&boss, &targets, &hp_only), None);
+    }
+
+    #[test]
+    fn selected_armor_skipping_directly_to_skeleton_requires_full_refresh() {
+        let event: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
+        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        boss.head.current_armor = 10;
+        boss.head.current_health = 10;
+        boss.head.part_state = PartState::Armor;
+        let mut incoming = boss.clone();
+        incoming.head.current_armor = 0;
+        incoming.head.current_health = 0;
+        incoming.head.sync_state_from_current_values();
+
+        assert_eq!(
+            classify_phase_refresh(&boss, &[BossPartName::Head], &incoming),
+            Some(PhaseRefresh::Full)
+        );
     }
 
     #[test]

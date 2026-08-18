@@ -6,7 +6,7 @@ use crate::{
     error::AppError,
     models::{
         app::{CreateSimulationJobRequest, SimulationJobView},
-        boss::{Boss, BossPartName},
+        boss::{Boss, BossPartName, PartState},
         cards::CardName,
         player_raid_data::PlayerRaidData,
         sim_payload::SimPayLoad,
@@ -15,7 +15,7 @@ use crate::{
         recommendation::{
             CandidateDeck, DeckRecommendation, optimize_decks, optimize_decks_with_required_cards,
         },
-        sim_service::{SimRunResult, SimService},
+        sim_service::{SIMS_ROUNDS, SimRunResult, SimService},
     },
     state::AppState,
 };
@@ -116,6 +116,7 @@ fn prepare_results(
             "card_mask": candidate.card_mask as i64,
             "average_damage": candidate.average_damage.to_string(),
             "recommendation_phase": recommendation_phase,
+            "dependency_part_mask": result.decks[candidate.source_index].dependency_part_mask,
             "result": result.decks[candidate.source_index],
         }));
     }
@@ -160,6 +161,22 @@ fn combine_prepared_results(
 pub async fn create_job(
     state: &Arc<AppState>,
     request: CreateSimulationJobRequest,
+) -> Result<(Uuid, bool), AppError> {
+    create_job_with_mode(state, request, None).await
+}
+
+pub async fn create_phase_aware_job(
+    state: &Arc<AppState>,
+    request: CreateSimulationJobRequest,
+    phase_change_mask: u8,
+) -> Result<(Uuid, bool), AppError> {
+    create_job_with_mode(state, request, Some(phase_change_mask)).await
+}
+
+async fn create_job_with_mode(
+    state: &Arc<AppState>,
+    request: CreateSimulationJobRequest,
+    phase_change_mask: Option<u8>,
 ) -> Result<(Uuid, bool), AppError> {
     let internal_player_id: Uuid = sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1")
         .bind(request.player_id.trim())
@@ -215,7 +232,7 @@ pub async fn create_job(
     );
     let job_id = Uuid::new_v4();
     let inserted: Option<(Uuid,)> = sqlx::query_as(
-        "INSERT INTO simulation_jobs (id, player_id, boss_version, deduplication_key, simulator_version, status, payload) VALUES ($1,$2,$3,$4,$5,'pending',$6) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
+        "INSERT INTO simulation_jobs (id, player_id, boss_version, deduplication_key, simulator_version, status, payload, recompute_mode, phase_change_mask) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,$8) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
     )
     .bind(job_id)
     .bind(internal_player_id)
@@ -223,6 +240,12 @@ pub async fn create_job(
     .bind(&deduplication_key)
     .bind(SIMULATOR_VERSION)
     .bind(serde_json::to_value(payload)?)
+    .bind(if phase_change_mask.is_some() {
+        "phase_aware"
+    } else {
+        "full"
+    })
+    .bind(i16::from(phase_change_mask.unwrap_or_default()))
     .fetch_optional(state.db()?)
     .await?;
 
@@ -251,7 +274,7 @@ pub fn spawn_old_job_cleanup(state: Arc<AppState>, current_boss_version: i64) {
         let mut deleted_total = 0u64;
         loop {
             let result = sqlx::query(
-                "DELETE FROM simulation_jobs WHERE id IN (SELECT id FROM simulation_jobs WHERE boss_version < $1 ORDER BY created_at LIMIT 10)",
+                "DELETE FROM simulation_jobs old WHERE old.id IN (SELECT candidate.id FROM simulation_jobs candidate WHERE candidate.boss_version < $1 AND candidate.status NOT IN ('pending','running','optimizing') AND (EXISTS (SELECT 1 FROM simulation_jobs current WHERE current.player_id=candidate.player_id AND current.boss_version >= $1 AND current.status='completed') OR candidate.id NOT IN (SELECT DISTINCT ON (keep.player_id) keep.id FROM simulation_jobs keep WHERE keep.boss_version < $1 AND keep.status='completed' ORDER BY keep.player_id,keep.boss_version DESC,keep.completed_at DESC NULLS LAST)) ORDER BY candidate.created_at LIMIT 10)",
             )
             .bind(current_boss_version)
             .execute(db)
@@ -315,23 +338,63 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         .await
         .map_err(|_| AppError::Internal("Simulation worker is shutting down".to_string()))?;
 
-    let payload: Option<(serde_json::Value,)> = sqlx::query_as(
-        "UPDATE simulation_jobs SET status='running', attempts=attempts+1, started_at=NOW(), error_message=NULL, updated_at=NOW() WHERE id=$1 AND status IN ('pending','failed') RETURNING payload",
+    let payload: Option<(serde_json::Value, String, i16, Uuid, i64)> = sqlx::query_as(
+        "UPDATE simulation_jobs SET status='running', attempts=attempts+1, started_at=NOW(), error_message=NULL, updated_at=NOW() WHERE id=$1 AND status IN ('pending','failed') RETURNING payload,recompute_mode,phase_change_mask,player_id,boss_version",
     )
     .bind(job_id)
     .fetch_optional(state.db()?)
     .await?;
-    let Some((payload_json,)) = payload else {
+    let Some((payload_json, recompute_mode, phase_change_mask, player_id, boss_version)) = payload
+    else {
         return Ok(());
     };
     let payload: SimPayLoad = serde_json::from_value(payload_json)?;
     let total_processing_started = Instant::now();
     let simulation_started = Instant::now();
-    let (current_result, void_result) = tokio::task::spawn_blocking(move || {
-        SimService::run_simulation_with_optional_body_phase(payload)
-    })
-    .await
-    .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
+    let incremental = if recompute_mode == "phase_aware" {
+        try_incremental_run(
+            state,
+            player_id,
+            boss_version,
+            phase_change_mask as u8,
+            &payload,
+        )
+        .await?
+    } else {
+        None
+    };
+    let (current_result, void_result, base_job_id, reused_decks, rerun_decks, execution_mode) =
+        if let Some(run) = incremental {
+            sqlx::query("UPDATE simulation_jobs SET base_job_id=$2 WHERE id=$1")
+                .bind(job_id)
+                .bind(run.base_job_id)
+                .execute(state.db()?)
+                .await?;
+            (
+                run.current,
+                run.void_result,
+                Some(run.base_job_id),
+                run.reused_decks,
+                run.rerun_decks,
+                "incremental",
+            )
+        } else {
+            if recompute_mode == "phase_aware" {
+                tracing::info!(
+                    %job_id,
+                    phase_change_mask,
+                    "phase-aware simulation has no compatible reusable base; running full simulation"
+                );
+            }
+            let (current, void_result) = tokio::task::spawn_blocking(move || {
+                SimService::run_simulation_with_optional_body_phase(payload)
+            })
+            .await
+            .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
+            let rerun_decks =
+                current.decks.len() + void_result.as_ref().map_or(0, |result| result.decks.len());
+            (current, void_result, None, 0, rerun_decks, "full")
+        };
     let simulation_duration_ms = simulation_started.elapsed().as_millis() as u64;
 
     sqlx::query("UPDATE simulation_jobs SET status='optimizing', updated_at=NOW() WHERE id=$1")
@@ -366,11 +429,263 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
             "body_phase_ran": body_phase_ran,
             "simulation_duration_ms": simulation_duration_ms,
             "recommendation_duration_ms": recommendation_duration_ms,
-            "total_duration_ms": total_duration_ms
+            "total_duration_ms": total_duration_ms,
+            "execution_mode": execution_mode,
+            "base_job_id": base_job_id,
+            "reused_decks": reused_decks,
+            "rerun_decks": rerun_decks
         }))
         .execute(state.db()?)
         .await?;
+    tracing::info!(
+        %job_id,
+        execution_mode,
+        reused_decks,
+        rerun_decks,
+        phase_change_mask,
+        "simulation job completed"
+    );
+    spawn_old_job_cleanup(Arc::clone(state), boss_version);
     Ok(())
+}
+
+struct IncrementalRun {
+    current: SimRunResult,
+    void_result: Option<SimRunResult>,
+    base_job_id: Uuid,
+    reused_decks: usize,
+    rerun_decks: usize,
+}
+
+async fn try_incremental_run(
+    state: &Arc<AppState>,
+    player_id: Uuid,
+    boss_version: i64,
+    requested_mask: u8,
+    payload: &SimPayLoad,
+) -> Result<Option<IncrementalRun>, AppError> {
+    let candidates: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
+        "SELECT id,payload FROM simulation_jobs WHERE player_id=$1 AND status='completed' AND boss_version < $2 AND simulator_version=$3 ORDER BY boss_version DESC,completed_at DESC LIMIT 10",
+    )
+    .bind(player_id)
+    .bind(boss_version)
+    .bind(SIMULATOR_VERSION)
+    .fetch_all(state.db()?)
+    .await?;
+
+    let mut selected = None;
+    for (candidate_id, candidate_payload) in candidates {
+        let Ok(candidate_payload) = serde_json::from_value::<SimPayLoad>(candidate_payload) else {
+            continue;
+        };
+        if let Some(changed_mask) = compatible_incremental_mask(&candidate_payload, payload) {
+            if changed_mask & requested_mask != 0 {
+                selected = Some((candidate_id, changed_mask));
+                break;
+            }
+        }
+    }
+    let Some((base_job_id, changed_mask)) = selected else {
+        return Ok(None);
+    };
+
+    let rows: Vec<(serde_json::Value, Option<i16>, String)> = sqlx::query_as(
+        "SELECT result,dependency_part_mask,recommendation_phase FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY recommendation_phase,card_mask",
+    )
+    .bind(base_job_id)
+    .fetch_all(state.db()?)
+    .await?;
+    if rows.is_empty() || rows.iter().any(|(_, mask, _)| mask.is_none()) {
+        return Ok(None);
+    }
+
+    let current_rows = rows
+        .iter()
+        .filter(|(_, _, phase)| phase == CURRENT_RECOMMENDATION_PHASE)
+        .cloned()
+        .collect::<Vec<_>>();
+    let void_rows = rows
+        .iter()
+        .filter(|(_, _, phase)| phase == VOID_RECOMMENDATION_PHASE)
+        .cloned()
+        .collect::<Vec<_>>();
+    let should_have_void = payload.include_body_phase
+        && payload.attackable_part.iter().any(|part_name| {
+            matches!(
+                payload.boss_data.part(*part_name).part_state,
+                PartState::Armor | PartState::Cursed
+            )
+        });
+    if current_rows.is_empty() || (should_have_void && void_rows.is_empty()) {
+        return Ok(None);
+    }
+
+    let payload = payload.clone();
+    let rebuilt = tokio::task::spawn_blocking(move || {
+        let (current, current_reused, current_rerun) =
+            rebuild_incremental_phase(&payload, current_rows, changed_mask, false)?;
+        let (void_result, void_reused, void_rerun) = if should_have_void {
+            let (result, reused, rerun) =
+                rebuild_incremental_void_phase(&payload, &current, void_rows)?;
+            (Some(result), reused, rerun)
+        } else {
+            (None, 0, 0)
+        };
+        Some((
+            current,
+            void_result,
+            current_reused + void_reused,
+            current_rerun + void_rerun,
+        ))
+    })
+    .await
+    .map_err(|error| {
+        AppError::Internal(format!("Incremental simulation worker panicked: {error}"))
+    })?;
+    let Some((current, void_result, reused_decks, rerun_decks)) = rebuilt else {
+        return Ok(None);
+    };
+    tracing::info!(
+        %base_job_id,
+        changed_mask,
+        reused_decks,
+        rerun_decks,
+        "prepared incremental simulation results"
+    );
+    Ok(Some(IncrementalRun {
+        current,
+        void_result,
+        base_job_id,
+        reused_decks,
+        rerun_decks,
+    }))
+}
+
+fn rebuild_incremental_void_phase(
+    payload: &SimPayLoad,
+    current: &SimRunResult,
+    base_void_rows: Vec<(serde_json::Value, Option<i16>, String)>,
+) -> Option<(SimRunResult, usize, usize)> {
+    let mut decks = current
+        .decks
+        .iter()
+        .filter(|result| !result.deck.contains(&CardName::InsanityVoid))
+        .cloned()
+        .collect::<Vec<_>>();
+    let reused = decks.len();
+    let mut rerun = 0usize;
+
+    for (result, dependency_mask, _) in base_void_rows {
+        dependency_mask?;
+        let result: crate::services::taptitan::sim_service::SimDeckResult =
+            serde_json::from_value(result).ok()?;
+        if !result.deck.contains(&CardName::InsanityVoid) {
+            continue;
+        }
+        rerun += 1;
+        let mut deck_payload = payload.clone();
+        deck_payload.usable_card = result.deck;
+        if let Some(result) = SimService::run_exact_deck_for_phase(deck_payload, true, SIMS_ROUNDS)
+        {
+            decks.push(result);
+        }
+    }
+
+    let total_attack_patterns = decks.iter().map(|deck| deck.total_attack_patterns).sum();
+    Some((
+        SimRunResult {
+            total_decks: decks.len(),
+            total_attack_patterns,
+            rounds_per_pattern: SIMS_ROUNDS,
+            ticks_per_round: 600,
+            decks,
+        },
+        reused,
+        rerun,
+    ))
+}
+
+fn compatible_incremental_mask(base: &SimPayLoad, current: &SimPayLoad) -> Option<u8> {
+    if base.include_body_phase != current.include_body_phase
+        || base.attackable_part != current.attackable_part
+        || base.usable_card != current.usable_card
+        || (base.mirror_force_boost - current.mirror_force_boost).abs() > 1e-9
+        || serde_json::to_value(&base.player_raid_data).ok()?
+            != serde_json::to_value(&current.player_raid_data).ok()?
+        || base.boss_data.boss_name != current.boss_data.boss_name
+        || base.boss_data.global_raid_modifier != current.boss_data.global_raid_modifier
+        || base.boss_data.global_raid_modifier_amount
+            != current.boss_data.global_raid_modifier_amount
+        || base.boss_data.curse_type != current.boss_data.curse_type
+        || (base.boss_data.curse_damage_per_curse - current.boss_data.curse_damage_per_curse).abs()
+            > 1e-9
+        || base.boss_data.recommend_1_to_2_part_patterns_only
+            != current.boss_data.recommend_1_to_2_part_patterns_only
+    {
+        return None;
+    }
+
+    incremental_boss_change_mask(&base.boss_data, &current.boss_data)
+}
+
+fn incremental_boss_change_mask(base: &Boss, current: &Boss) -> Option<u8> {
+    let mut changed_mask = 0u8;
+    for part_name in BossPartName::all() {
+        let before = base.part(part_name).part_state;
+        let after = current.part(part_name).part_state;
+        if before == after {
+            continue;
+        }
+        if before == PartState::Body && after == PartState::Skeleton {
+            changed_mask |= part_name.dependency_mask();
+        } else {
+            return None;
+        }
+    }
+    (changed_mask != 0).then_some(changed_mask)
+}
+
+fn rebuild_incremental_phase(
+    payload: &SimPayLoad,
+    rows: Vec<(serde_json::Value, Option<i16>, String)>,
+    changed_mask: u8,
+    body_phase: bool,
+) -> Option<(SimRunResult, usize, usize)> {
+    let mut decks = Vec::with_capacity(rows.len());
+    let mut reused = 0usize;
+    let mut rerun = 0usize;
+    for (result, dependency_mask, _) in rows {
+        let dependency_mask = dependency_mask? as u8;
+        let mut result: crate::services::taptitan::sim_service::SimDeckResult =
+            serde_json::from_value(result).ok()?;
+        result.dependency_part_mask = dependency_mask;
+        if dependency_mask & changed_mask == 0 {
+            reused += 1;
+            decks.push(result);
+            continue;
+        }
+
+        rerun += 1;
+        let mut deck_payload = payload.clone();
+        deck_payload.usable_card = result.deck;
+        if let Some(result) =
+            SimService::run_exact_deck_for_phase(deck_payload, body_phase, SIMS_ROUNDS)
+        {
+            decks.push(result);
+        }
+    }
+    let total_attack_patterns = decks.iter().map(|deck| deck.total_attack_patterns).sum();
+    Some((
+        SimRunResult {
+            total_decks: decks.len(),
+            total_attack_patterns,
+            rounds_per_pattern: SIMS_ROUNDS,
+            ticks_per_round: 600,
+            decks,
+        },
+        reused,
+        rerun,
+    ))
 }
 
 async fn persist_results(
@@ -405,7 +720,7 @@ async fn persist_results(
     );
     for (index, chunk) in row_chunks.into_iter().enumerate() {
         sqlx::query(
-            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, row->>'recommendation_phase', row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
+            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, dependency_part_mask, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, row->>'recommendation_phase', (row->>'dependency_part_mask')::SMALLINT, row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
         )
         .bind(job_id)
         .bind(chunk)
@@ -606,4 +921,54 @@ pub async fn retry_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppErr
     }
     spawn_job(Arc::clone(state), job_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod phase_aware_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn part(name: &str, state: &str, armor: u64, health: u64) -> serde_json::Value {
+        json!({
+            "part_name": name,
+            "part_state": state,
+            "max_armor": 100,
+            "max_health": 100,
+            "current_armor": armor,
+            "current_health": health
+        })
+    }
+
+    fn boss() -> Boss {
+        serde_json::from_value(json!({
+            "boss_name": "Jukk",
+            "head": part("Head", "Body", 0, 50),
+            "torso": part("Torso", "Body", 0, 50),
+            "left_shoulder": part("LeftShoulder", "Armor", 50, 100),
+            "right_shoulder": part("RightShoulder", "Body", 0, 50),
+            "left_hand": part("LeftHand", "Body", 0, 50),
+            "right_hand": part("RightHand", "Body", 0, 50),
+            "left_leg": part("LeftLeg", "Body", 0, 50),
+            "right_leg": part("RightLeg", "Body", 0, 50)
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn incremental_base_accepts_only_body_to_skeleton_changes() {
+        let base = boss();
+        let mut skeleton = base.clone();
+        skeleton.head.current_health = 0;
+        skeleton.head.sync_state_from_current_values();
+        assert_eq!(
+            incremental_boss_change_mask(&base, &skeleton),
+            Some(BossPartName::Head.dependency_mask())
+        );
+
+        let mut armor_to_body = base.clone();
+        armor_to_body.left_shoulder.current_armor = 0;
+        armor_to_body.left_shoulder.sync_state_from_current_values();
+        assert_eq!(incremental_boss_change_mask(&base, &armor_to_body), None);
+    }
 }

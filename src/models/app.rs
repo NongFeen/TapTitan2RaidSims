@@ -145,6 +145,16 @@ pub struct LiveAttackBossView {
     pub titan_index: i32,
     pub boss_data: Value,
     pub received_at: DateTime<Utc>,
+    pub display_parts: Option<Vec<LiveBossDisplayPart>>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LiveBossDisplayPart {
+    pub part_name: crate::models::boss::BossPartName,
+    pub part_state: crate::models::boss::PartState,
+    pub current_hp: u64,
+    pub max_hp: u64,
+    pub is_targeted: bool,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

@@ -11,7 +11,7 @@ use crate::{
         },
         boss::{Boss, BossPartName},
     },
-    services::job_service,
+    services::{job_service, raid_event_service},
     state::AppState,
 };
 
@@ -124,10 +124,29 @@ pub async fn current(
 pub async fn live_from_attack(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiveAttackBossView>, AppError> {
-    let boss = state.live_attack_boss.read().await.clone().ok_or_else(|| {
+    let mut boss = state.live_attack_boss.read().await.clone().ok_or_else(|| {
         AppError::NotFound(
             "No live current boss has been received from an attack event".to_string(),
         )
     })?;
+    if let Some(db) = state.optional_db() {
+        let display_metadata: Option<(serde_json::Value, serde_json::Value)> = sqlx::query_as(
+            "SELECT raid_data,titan_targets FROM raid_current_state WHERE raid_id=$1 AND raid_data IS NOT NULL AND titan_targets IS NOT NULL",
+        )
+        .bind(boss.raid_id)
+        .fetch_optional(db)
+        .await?;
+        boss.display_parts = display_metadata
+            .as_ref()
+            .map(|(raid_data, titan_targets)| {
+                raid_event_service::live_boss_display_parts(
+                    &boss.boss_data,
+                    raid_data,
+                    titan_targets,
+                )
+            })
+            .transpose()?
+            .flatten();
+    }
     Ok(Json(boss))
 }

@@ -230,7 +230,21 @@ impl SimService {
         }
     }
 
-    pub fn run_deck_simulation(mut payload: SimPayLoad) -> Option<SimDeckResult> {
+    pub fn run_deck_simulation(payload: SimPayLoad) -> Option<SimDeckResult> {
+        Self::run_exact_deck_for_phase(payload, false, 10)
+    }
+
+    pub fn run_exact_deck_for_phase(
+        mut payload: SimPayLoad,
+        body_phase: bool,
+        rounds: u64,
+    ) -> Option<SimDeckResult> {
+        if body_phase {
+            if !should_run_targeted_body_phase(true, &payload.boss_data, &payload.attackable_part) {
+                return None;
+            }
+            convert_targeted_armor_to_body(&mut payload.boss_data, &payload.attackable_part);
+        }
         payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
             player_stat: Arc::new(payload.player_raid_data),
@@ -267,17 +281,34 @@ impl SimService {
             return None;
         }
 
-        Some(Self::run_deck_sim(
-            &sim_stats,
-            select_deck,
-            attack_patterns,
-            10,
-            None,
-            1,
-            None,
-            None,
-            false,
-        ))
+        let tap_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
+        let mut proc_cache = PreDeterminedProc::new();
+        proc_cache.generate_proc_count(&select_deck, &sim_stats.boss_stat, tap_count);
+        let mut result = if Self::is_fast_calc_deck(&select_deck) {
+            Self::run_fast_calc_deck_sim(
+                &sim_stats,
+                select_deck,
+                attack_patterns,
+                &proc_cache,
+                None,
+            )
+        } else {
+            Self::run_deck_sim(
+                &sim_stats,
+                select_deck,
+                attack_patterns,
+                rounds,
+                None,
+                1,
+                None,
+                None,
+                false,
+            )
+        };
+        if body_phase {
+            result.simulation_phase = SimulationPhase::TargetedBody;
+        }
+        Some(result)
     }
 
     pub fn run_deck_debug_simulation(
@@ -345,6 +376,8 @@ impl SimService {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck, &sim_stats.boss_stat);
         cache_deck_proc_chances(&mut select_deck, &sim_stats.boss_stat);
+        let dependency_part_mask =
+            deck_dependency_part_mask(sim_stats, &select_deck, &attack_patterns);
 
         let deck = select_deck
             .iter()
@@ -364,6 +397,7 @@ impl SimService {
                 best_pattern: None,
                 simulation_phase: SimulationPhase::Current,
                 patterns: Vec::new(),
+                dependency_part_mask,
             };
         }
 
@@ -582,6 +616,7 @@ impl SimService {
             best_pattern,
             simulation_phase: SimulationPhase::Current,
             patterns: pattern_results,
+            dependency_part_mask,
         }
     }
     pub(super) fn tap_boss(
@@ -758,6 +793,7 @@ mod body_phase_tests {
             best_pattern: Some(pattern(damage)),
             simulation_phase: phase,
             patterns: Vec::new(),
+            dependency_part_mask: 0,
         }
     }
 

@@ -32,7 +32,8 @@ use proc_cache::*;
 pub use proc_cache::{PreDeterminedProc, ProcScenario, configure_sim_worker_count};
 use types::*;
 pub use types::{
-    SimCardDamageResult, SimDeckResult, SimPatternResult, SimProgress, SimRunResult, SimStats,
+    SIMS_ROUNDS, SimCardDamageResult, SimDeckResult, SimPatternResult, SimProgress, SimRunResult,
+    SimStats,
 };
 
 //release version 20R all cards 2m 1.56 sec

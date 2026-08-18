@@ -31,6 +31,21 @@ pub enum PartState {
     Body,
     Skeleton,
 }
+
+impl BossPartName {
+    pub fn dependency_mask(self) -> u8 {
+        1 << match self {
+            Self::Head => 0,
+            Self::Torso => 1,
+            Self::LeftShoulder => 2,
+            Self::RightShoulder => 3,
+            Self::LeftHand => 4,
+            Self::RightHand => 5,
+            Self::LeftLeg => 6,
+            Self::RightLeg => 7,
+        }
+    }
+}
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub enum CurseType {
     #[default]

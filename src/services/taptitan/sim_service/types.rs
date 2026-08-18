@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const SIMS_ROUNDS: u64 = 20;
+pub const SIMS_ROUNDS: u64 = 20;
 pub(super) const TICKS_PER_ROUND: u32 = 600;
 pub(super) const TICKS_PER_SECOND: f64 = 20.0;
 pub(super) const PRINT_SIM_PATTERN_PROGRESS: bool = true;
@@ -186,6 +186,10 @@ pub struct SimDeckResult {
     pub simulation_phase: SimulationPhase,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patterns: Vec<SimPatternResult>,
+    /// Parts whose state can affect this deck's result. Missing legacy metadata
+    /// is represented by NULL in the database rather than this serde default.
+    #[serde(default)]
+    pub dependency_part_mask: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

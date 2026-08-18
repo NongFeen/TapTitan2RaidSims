@@ -20,6 +20,8 @@ impl SimService {
             .map(|card| card.card_id.display_name().to_string())
             .collect::<Vec<_>>();
         let total_attack_patterns = attack_patterns.len();
+        let dependency_part_mask =
+            deck_dependency_part_mask(sim_stats, &select_deck, &attack_patterns);
 
         if attack_patterns.is_empty() {
             return SimDeckResult {
@@ -29,6 +31,7 @@ impl SimService {
                 best_pattern: None,
                 simulation_phase: SimulationPhase::Current,
                 patterns: Vec::new(),
+                dependency_part_mask,
             };
         }
 
@@ -193,6 +196,7 @@ impl SimService {
             best_pattern,
             simulation_phase: SimulationPhase::Current,
             patterns: Vec::new(),
+            dependency_part_mask,
         }
     }
 
