@@ -247,12 +247,12 @@ fn attack_part_values(
     let (body_id, armor_id) = match part_name {
         BossPartName::Head => ("BodyHead", "ArmorHead"),
         BossPartName::Torso => ("BodyChestUpper", "ArmorChestUpper"),
-        BossPartName::RightShoulder => ("BodyArmUpperRight", "ArmorArmUpperRight"),
-        BossPartName::LeftShoulder => ("BodyArmUpperLeft", "ArmorArmUpperLeft"),
-        BossPartName::RightHand => ("BodyHandRight", "ArmorHandRight"),
-        BossPartName::LeftHand => ("BodyHandLeft", "ArmorHandLeft"),
-        BossPartName::RightLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
-        BossPartName::LeftLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
+        BossPartName::RightShoulder => ("BodyArmUpperLeft", "ArmorArmUpperLeft"),
+        BossPartName::LeftShoulder => ("BodyArmUpperRight", "ArmorArmUpperRight"),
+        BossPartName::RightHand => ("BodyHandLeft", "ArmorHandLeft"),
+        BossPartName::LeftHand => ("BodyHandRight", "ArmorHandRight"),
+        BossPartName::RightLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
+        BossPartName::LeftLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
     };
     let body = live.parts.iter().find(|part| part.part_id == body_id);
     let armor = live.parts.iter().find(|part| part.part_id == armor_id);
@@ -639,12 +639,12 @@ fn boss_from_sub_cycle(
         "recommend_1_to_2_part_patterns_only": preserve_narrow,
         "head": part_json(BossPartName::Head, "BodyHead", "ArmorHead")?,
         "torso": part_json(BossPartName::Torso, "BodyChestUpper", "ArmorChestUpper")?,
-        "right_shoulder": part_json(BossPartName::RightShoulder, "BodyArmUpperRight", "ArmorArmUpperRight")?,
-        "left_shoulder": part_json(BossPartName::LeftShoulder, "BodyArmUpperLeft", "ArmorArmUpperLeft")?,
-        "right_hand": part_json(BossPartName::RightHand, "BodyHandRight", "ArmorHandRight")?,
-        "left_hand": part_json(BossPartName::LeftHand, "BodyHandLeft", "ArmorHandLeft")?,
-        "right_leg": part_json(BossPartName::RightLeg, "BodyLegUpperRight", "ArmorLegUpperRight")?,
-        "left_leg": part_json(BossPartName::LeftLeg, "BodyLegUpperLeft", "ArmorLegUpperLeft")?,
+        "right_shoulder": part_json(BossPartName::RightShoulder, "BodyArmUpperLeft", "ArmorArmUpperLeft")?,
+        "left_shoulder": part_json(BossPartName::LeftShoulder, "BodyArmUpperRight", "ArmorArmUpperRight")?,
+        "right_hand": part_json(BossPartName::RightHand, "BodyHandLeft", "ArmorHandLeft")?,
+        "left_hand": part_json(BossPartName::LeftHand, "BodyHandRight", "ArmorHandRight")?,
+        "right_leg": part_json(BossPartName::RightLeg, "BodyLegUpperLeft", "ArmorLegUpperLeft")?,
+        "left_leg": part_json(BossPartName::LeftLeg, "BodyLegUpperRight", "ArmorLegUpperRight")?,
         "damage_results": [],
     }))?;
     Ok((boss, attackable_parts))
@@ -700,12 +700,12 @@ fn target_part_name(id: &str) -> Result<BossPartName, AppError> {
     match id {
         "Head" => Ok(BossPartName::Head),
         "ChestUpper" => Ok(BossPartName::Torso),
-        "ArmUpperRight" => Ok(BossPartName::RightShoulder),
-        "ArmUpperLeft" => Ok(BossPartName::LeftShoulder),
-        "HandRight" => Ok(BossPartName::RightHand),
-        "HandLeft" => Ok(BossPartName::LeftHand),
-        "LegUpperRight" => Ok(BossPartName::RightLeg),
-        "LegUpperLeft" => Ok(BossPartName::LeftLeg),
+        "ArmUpperRight" => Ok(BossPartName::LeftShoulder),
+        "ArmUpperLeft" => Ok(BossPartName::RightShoulder),
+        "HandRight" => Ok(BossPartName::LeftHand),
+        "HandLeft" => Ok(BossPartName::RightHand),
+        "LegUpperRight" => Ok(BossPartName::LeftLeg),
+        "LegUpperLeft" => Ok(BossPartName::RightLeg),
         _ => Err(AppError::BadRequest(format!("Unknown titan target {id}"))),
     }
 }
@@ -976,6 +976,64 @@ mod tests {
         assert_eq!(boss.curse_damage_per_curse, 0.06);
         assert!(targets.contains(&BossPartName::Head));
         assert!(!targets.contains(&BossPartName::RightLeg));
+        let enemy = event
+            .raid
+            .titans
+            .iter()
+            .find(|titan| titan.enemy_id == "Enemy8")
+            .unwrap();
+        let game_left_shoulder_armor = enemy
+            .parts
+            .iter()
+            .find(|part| part.part_id == "ArmorArmUpperLeft")
+            .unwrap();
+        assert_eq!(
+            boss.right_shoulder.current_armor,
+            rounded_u64(game_left_shoulder_armor.current_hp, "ArmorArmUpperLeft").unwrap()
+        );
+        assert_eq!(
+            target_part_name("ArmUpperRight").unwrap(),
+            BossPartName::LeftShoulder
+        );
+        assert_eq!(
+            target_part_name("HandLeft").unwrap(),
+            BossPartName::RightHand
+        );
+    }
+
+    #[test]
+    fn attack_part_values_flip_game_left_and_right() {
+        let live = AttackCurrentBoss {
+            enemy_id: "Enemy8".to_string(),
+            current_hp: 1_010.0,
+            parts: vec![
+                AttackCurrentBossPart {
+                    part_id: "BodyArmUpperLeft".to_string(),
+                    current_hp: 101.0,
+                },
+                AttackCurrentBossPart {
+                    part_id: "ArmorArmUpperLeft".to_string(),
+                    current_hp: 202.0,
+                },
+                AttackCurrentBossPart {
+                    part_id: "BodyArmUpperRight".to_string(),
+                    current_hp: 303.0,
+                },
+                AttackCurrentBossPart {
+                    part_id: "ArmorArmUpperRight".to_string(),
+                    current_hp: 404.0,
+                },
+            ],
+        };
+
+        assert_eq!(
+            attack_part_values(&live, BossPartName::RightShoulder).unwrap(),
+            Some((202, 101))
+        );
+        assert_eq!(
+            attack_part_values(&live, BossPartName::LeftShoulder).unwrap(),
+            Some((404, 303))
+        );
     }
 
     #[test]
