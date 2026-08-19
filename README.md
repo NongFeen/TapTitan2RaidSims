@@ -51,8 +51,8 @@ docker compose down
 
 ## Workflow
 
-1. Create a player with `POST /api/players`. The optional unique `player_id` holds the Tap Titans player identifier.
-2. Store the player's current stats with `PUT /api/players/{player_id}/stats`. Each update creates an immutable version.
+1. Fetch clan player data with `POST /internal/tt2/fetch-clan-stats`; the configured raid subscription player token identifies the clan, and clan sync creates or updates players by their Tap Titans player code.
+2. Store a player's current stats with `PUT /api/players/{player_id}/stats` when a manual update is needed.
 3. Enable automatic simulations with `PUT /api/players/{player_id}/auto_sims` and `{ "auto_sims": true }`.
 4. Replace the persisted simulation input with `PUT /internal/sims-boss`. Set `run_sims` to `true` to queue jobs or `false` to only store the sims boss.
 5. A persistent simulation job is created for every player with `auto_sims` enabled. Poll `GET /internal/simulation-jobs/{job_id}` or list `GET /api/players/{player_id}/simulation-jobs`.

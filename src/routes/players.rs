@@ -15,54 +15,15 @@ use crate::{
     error::AppError,
     models::{
         app::{
-            CreatePlayerRequest, CreateSimulationJobRequest, PlayerDetail, PlayerStatsVersion,
-            PlayerSummary, Tt2ClanFetchResult, Tt2ClanStatus, Tt2PlayerStatus,
-            UpdateAutoSimsRequest, UpdatePlayerStatsRequest, UpdatePlayerTokenRequest,
+            CreateSimulationJobRequest, PlayerDetail, PlayerStatsVersion, PlayerSummary,
+            Tt2ClanFetchResult, Tt2ClanStatus, Tt2PlayerStatus, UpdateAutoSimsRequest,
+            UpdatePlayerStatsRequest, UpdatePlayerTokenRequest,
         },
         player_raid_data::PlayerRaidData,
     },
     services::taptitan::player_service::clean_data,
     state::AppState,
 };
-
-pub async fn create(
-    State(state): State<Arc<AppState>>,
-    Json(request): Json<CreatePlayerRequest>,
-) -> Result<(StatusCode, Json<PlayerSummary>), AppError> {
-    let display_name = request.display_name.trim();
-    if display_name.is_empty() {
-        return Err(AppError::BadRequest(
-            "display_name cannot be empty".to_string(),
-        ));
-    }
-    let game_player_id = request.player_id.trim();
-    if game_player_id.is_empty() {
-        return Err(AppError::BadRequest(
-            "player_id cannot be empty when provided".to_string(),
-        ));
-    }
-    let id = Uuid::new_v4();
-    let player = sqlx::query_as(
-        "INSERT INTO players (id, player_id, display_name, auto_sims) VALUES ($1,$2,$3,$4) RETURNING player_id, display_name, auto_sims, NULL::BIGINT AS stats_revision, FALSE AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
-    )
-    .bind(id)
-    .bind(game_player_id)
-    .bind(display_name)
-    .bind(request.auto_sims)
-    .fetch_one(state.db()?)
-    .await
-    .map_err(|error| {
-        if error
-            .as_database_error()
-            .is_some_and(|database| database.is_unique_violation())
-        {
-            AppError::Conflict("A player with this player_id already exists".to_string())
-        } else {
-            AppError::Database(error)
-        }
-    })?;
-    Ok((StatusCode::CREATED, Json(player)))
-}
 
 pub async fn list(
     State(state): State<Arc<AppState>>,
@@ -231,7 +192,6 @@ pub async fn tt2_clan_status(
 
 pub async fn fetch_tt2_clan_stats(
     State(state): State<Arc<AppState>>,
-    Path(player_id): Path<String>,
 ) -> Result<(StatusCode, Json<Tt2ClanFetchResult>), AppError> {
     let _fetch_guard = state.clan_fetch_lock.lock().await;
     let tt2 = state.gamehive_api.as_ref().ok_or_else(|| {
@@ -257,19 +217,7 @@ pub async fn fetch_tt2_clan_stats(
         }
     }
 
-    let token_row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
-        "SELECT player_token_ciphertext, player_token_nonce FROM players WHERE player_id=$1 AND player_token_ciphertext IS NOT NULL AND player_token_nonce IS NOT NULL",
-    )
-    .bind(&player_id)
-    .fetch_optional(state.db()?)
-    .await?;
-    let (ciphertext, nonce) = token_row.ok_or_else(|| {
-        AppError::BadRequest(
-            "The selected player needs a configured Master or Grand Master TT2 token".to_string(),
-        )
-    })?;
-    let player_token = tt2.cipher().decrypt(&ciphertext, &nonce)?;
-    let clan = tt2.fetch_clan(&player_token).await?;
+    let clan = tt2.fetch_clan().await?;
     if clan.clan_code.trim().is_empty() || clan.clan_name.trim().is_empty() {
         return Err(AppError::BadRequest(
             "TT2 returned clan data without a clan code or name".to_string(),

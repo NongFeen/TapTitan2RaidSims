@@ -27,7 +27,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/tt2/player-status", get(routes::players::tt2_status))
         .route("/tt2/clan-status", get(routes::players::tt2_clan_status))
         .route(
-            "/players/{player_id}/fetch-clan-stats",
+            "/tt2/fetch-clan-stats",
             post(routes::players::fetch_tt2_clan_stats),
         )
         .route_layer(middleware::from_fn_with_state(
@@ -39,10 +39,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest("/internal", internal)
         //GET
         .route("/api/health", get(routes::health::handler))
-        .route(
-            "/api/players",
-            post(routes::players::create).get(routes::players::list),
-        )
+        .route("/api/players", get(routes::players::list))
         .route("/api/players/{player_id}", get(routes::players::get))
         .route(
             "/api/players/{player_id}/simulation-jobs",

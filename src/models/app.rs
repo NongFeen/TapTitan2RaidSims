@@ -31,14 +31,6 @@ pub struct PlayerDetail {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CreatePlayerRequest {
-    pub player_id: String,
-    pub display_name: String,
-    #[serde(default)]
-    pub auto_sims: bool,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct UpdateAutoSimsRequest {
     pub auto_sims: bool,
 }

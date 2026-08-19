@@ -361,7 +361,7 @@ impl GameHiveApiClient {
         })
     }
 
-    pub async fn fetch_clan(&self, player_token: &str) -> Result<PublicClanData, AppError> {
+    pub async fn fetch_clan(&self) -> Result<PublicClanData, AppError> {
         if !self.is_raid_connected() {
             return Err(AppError::ServiceUnavailable(
                 "TT2 /raid socket is not connected; restart the backend after checking TT2 configuration".to_string(),
@@ -376,7 +376,7 @@ impl GameHiveApiClient {
             .post(url)
             .header("API-Authenticate", &self.config.application_token)
             .json(&PlayerDataRequest {
-                player_token,
+                player_token: &self.config.raid_subscription_player_token,
                 properties: &CLAN_PROPERTIES,
             })
             .send()
