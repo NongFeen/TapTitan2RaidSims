@@ -455,7 +455,7 @@ fn dispatch_socket_event(
             connected.store(false, Ordering::Release);
             tracing::error!(namespace, ?data, "TT2 connect_error event received");
         }
-        "attack" | "sub_cycle" | "cycle_reset" if namespace == "/raid" => {
+        "attack" | "sub_start" | "sub_cycle" | "cycle_reset" if namespace == "/raid" => {
             if let Some(state) = state {
                 if event == "attack" {
                     tracing::info!(namespace, "TT2 raid attack event received");

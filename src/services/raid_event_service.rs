@@ -22,10 +22,54 @@ const RESET_INTERVAL_HOURS: i64 = 12;
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
     match event {
         "attack" => handle_attack(state, serde_json::from_value(data.clone())?, data).await,
+        "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
         _ => Ok(()),
     }
+}
+
+async fn handle_sub_start(
+    state: &Arc<AppState>,
+    event: SubStartEvent,
+    raw_payload: Value,
+) -> Result<(), AppError> {
+    let first_reset_at = event.start_at + chrono::Duration::hours(RESET_INTERVAL_HOURS);
+    store_cycle_state(
+        state,
+        &event.clan_code,
+        event.raid_id,
+        Some(event.start_at),
+        event.start_at,
+        first_reset_at,
+        event.morale.bonus_amount,
+        0.0,
+        0.0,
+    )
+    .await?;
+
+    let titan_count = event.raid.titans.len();
+    let sequence_count = event.raid.spawn_sequence.len();
+    sqlx::query(
+        "INSERT INTO raid_current_state (raid_id,clan_code,raid_data,raw_sub_start,received_at) VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code,raid_data=EXCLUDED.raid_data,raw_sub_start=EXCLUDED.raw_sub_start,received_at=NOW(),updated_at=NOW()",
+    )
+    .bind(event.raid_id)
+    .bind(&event.clan_code)
+    .bind(serde_json::to_value(&event.raid)?)
+    .bind(raw_payload)
+    .execute(state.db()?)
+    .await?;
+
+    tracing::info!(
+        raid_id = event.raid_id,
+        clan_code = event.clan_code,
+        start_at = %event.start_at,
+        morale = event.morale.bonus_amount,
+        titan_count,
+        sequence_count,
+        "stored TT2 sub_start base raid data"
+    );
+    Ok(())
 }
 
 async fn handle_attack(
@@ -392,6 +436,12 @@ async fn handle_sub_cycle(
     event: SubCycleEvent,
     raw_payload: Value,
 ) -> Result<(), AppError> {
+    let previous_next_reset_at: Option<DateTime<Utc>> =
+        sqlx::query_scalar("SELECT next_reset_at FROM raid_cycle_state WHERE raid_id=$1")
+            .bind(event.raid_id)
+            .fetch_optional(state.db()?)
+            .await?;
+    let cycle_changed = previous_next_reset_at != Some(event.next_reset_at);
     let mirror_changed = store_cycle_state(
         state,
         &event.clan_code,
@@ -405,17 +455,20 @@ async fn handle_sub_cycle(
     )
     .await?;
 
-    let runtime: Option<(Option<i32>, Option<String>)> = sqlx::query_as(
-        "SELECT resulting_titan_index,current_enemy_id FROM raid_current_state WHERE raid_id=$1",
+    let runtime: Option<(Option<i32>, Option<String>, Option<Value>, Option<Value>)> =
+        sqlx::query_as(
+        "SELECT resulting_titan_index,current_enemy_id,raid_data,raw_sub_start FROM raid_current_state WHERE raid_id=$1",
     )
     .bind(event.raid_id)
     .fetch_optional(state.db()?)
     .await?;
-    let (titan_index, enemy_id) = runtime.ok_or_else(|| {
-        AppError::Conflict("sub_cycle arrived before an attack identified the current titan".into())
+    let (titan_index, enemy_id, stored_base_raid, raw_sub_start) = runtime.ok_or_else(|| {
+        AppError::Conflict("sub_cycle arrived before an attack established raid state".into())
     })?;
+    let (base_raid, used_sub_cycle_fallback) =
+        select_base_raid(stored_base_raid, raw_sub_start.is_some(), &event.raid)?;
     let enemy_id = enemy_id
-        .ok_or_else(|| AppError::Conflict("Current raid state has no enemy_id".to_string()))?;
+        .ok_or_else(|| AppError::Conflict("No attack has identified the current titan".into()))?;
     let titan_index = titan_index.unwrap_or_default();
 
     let previous_boss: Option<(Value, Value, Option<String>)> = sqlx::query_as(
@@ -428,23 +481,27 @@ async fn handle_sub_cycle(
         .and_then(|(boss, _, _)| boss.get("recommend_1_to_2_part_patterns_only"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let (boss, attackable_parts) = boss_from_sub_cycle(&event, &enemy_id, preserve_narrow)?;
+    let (mut boss, attackable_parts) =
+        boss_from_raid_snapshot(&base_raid, &event.titan_target, &enemy_id, preserve_narrow)?;
     let enemy_changed = previous_boss
         .as_ref()
         .and_then(|(_, _, enemy)| enemy.as_deref())
         != Some(enemy_id.as_str());
-    let phase_refresh = if enemy_changed {
-        Some(PhaseRefresh::Full)
-    } else {
-        previous_boss
+    let targets_changed = previous_boss
+        .as_ref()
+        .and_then(|(_, previous_targets, _)| {
+            serde_json::from_value::<Vec<BossPartName>>(previous_targets.clone()).ok()
+        })
+        .is_none_or(|previous_targets| previous_targets != attackable_parts);
+    if !enemy_changed {
+        if let Some(previous) = previous_boss
             .as_ref()
-            .and_then(|(previous, previous_targets, _)| {
-                let previous: Boss = serde_json::from_value(previous.clone()).ok()?;
-                let previous_targets: Vec<BossPartName> =
-                    serde_json::from_value(previous_targets.clone()).ok()?;
-                classify_phase_refresh(&previous, &previous_targets, &boss)
-            })
-    };
+            .and_then(|(previous, _, _)| serde_json::from_value::<Boss>(previous.clone()).ok())
+        {
+            preserve_current_boss_values(&mut boss, &previous);
+        }
+    }
+    let needs_simulation = cycle_changed || enemy_changed || targets_changed || mirror_changed;
 
     let mut tx = state.db()?.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
@@ -452,19 +509,19 @@ async fn handle_sub_cycle(
         .execute(&mut *tx)
         .await?;
     sqlx::query(
-        "UPDATE raid_current_state SET clan_code=$2,raid_data=$3,titan_targets=$4,raw_sub_cycle=$5,received_at=NOW(),refresh_required=FALSE,updated_at=NOW() WHERE raid_id=$1",
+        "UPDATE raid_current_state SET clan_code=$2,titan_targets=$3,raw_sub_cycle=$4,raid_data=CASE WHEN raw_sub_start IS NULL THEN $5 ELSE raid_data END,received_at=NOW(),refresh_required=FALSE,updated_at=NOW() WHERE raid_id=$1",
     )
     .bind(event.raid_id)
     .bind(&event.clan_code)
-    .bind(serde_json::to_value(&event.raid)?)
     .bind(serde_json::to_value(&event.titan_target)?)
     .bind(raw_payload)
+    .bind(serde_json::to_value(&event.raid)?)
     .execute(&mut *tx)
     .await?;
 
     let boss_json = serde_json::to_value(&boss)?;
     let targets_json = serde_json::to_value(&attackable_parts)?;
-    let boss_version: i64 = if enemy_changed || phase_refresh.is_some() {
+    let boss_version: i64 = if needs_simulation {
         sqlx::query_scalar(
             "INSERT INTO current_boss (singleton,version,boss_data,attackable_parts,source_raid_id,source_titan_index,source_enemy_id) VALUES (TRUE,1,$1,$2,$3,$4,$5) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1,boss_data=EXCLUDED.boss_data,attackable_parts=EXCLUDED.attackable_parts,source_raid_id=EXCLUDED.source_raid_id,source_titan_index=EXCLUDED.source_titan_index,source_enemy_id=EXCLUDED.source_enemy_id,updated_at=NOW() RETURNING version",
         )
@@ -489,28 +546,21 @@ async fn handle_sub_cycle(
     };
     tx.commit().await?;
 
-    if enemy_changed || phase_refresh.is_some() {
+    if needs_simulation {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-    }
-    if enemy_changed || mirror_changed || phase_refresh.is_some() {
-        let incremental_mask = if mirror_changed || enemy_changed {
-            None
-        } else {
-            match phase_refresh {
-                Some(PhaseRefresh::Incremental(mask)) => Some(mask),
-                _ => None,
-            }
-        };
-        queue_auto_simulations(state, incremental_mask).await?;
+        queue_auto_simulations(state, None).await?;
     }
     tracing::info!(
         event.raid_id,
         titan_index,
         enemy_id,
         enemy_changed,
+        targets_changed,
+        cycle_changed,
         mirror_changed,
-        phase_refresh = ?phase_refresh,
-        "synchronized current boss from sub_cycle"
+        needs_simulation,
+        used_sub_cycle_fallback,
+        "applied TT2 sub_cycle targeting to the stored base raid boss"
     );
     Ok(())
 }
@@ -684,19 +734,18 @@ fn without_live_boss_data(mut payload: Value) -> Value {
     payload
 }
 
-fn boss_from_sub_cycle(
-    event: &SubCycleEvent,
+fn boss_from_raid_snapshot(
+    raid: &RaidSnapshot,
+    titan_targets: &[TitanTarget],
     enemy_id: &str,
     preserve_narrow: bool,
 ) -> Result<(Boss, Vec<BossPartName>), AppError> {
-    let titan = event
-        .raid
+    let titan = raid
         .titans
         .iter()
         .find(|titan| titan.enemy_id == enemy_id)
-        .ok_or_else(|| AppError::BadRequest(format!("sub_cycle has no titan {enemy_id}")))?;
-    let target = event
-        .titan_target
+        .ok_or_else(|| AppError::BadRequest(format!("base raid has no titan {enemy_id}")))?;
+    let target = titan_targets
         .iter()
         .find(|target| target.enemy_id == enemy_id)
         .ok_or_else(|| {
@@ -714,13 +763,12 @@ fn boss_from_sub_cycle(
         ));
     }
 
-    if event.raid.area_buffs.len() > 1 || titan.cursed_debuffs.len() > 1 {
+    if raid.area_buffs.len() > 1 || titan.cursed_debuffs.len() > 1 {
         return Err(AppError::BadRequest(
             "Only one global raid modifier and one curse modifier are supported".into(),
         ));
     }
-    let (global_modifier, global_amount) = event
-        .raid
+    let (global_modifier, global_amount) = raid
         .area_buffs
         .first()
         .map(|bonus| {
@@ -796,6 +844,30 @@ fn boss_from_sub_cycle(
         "damage_results": [],
     }))?;
     Ok((boss, attackable_parts))
+}
+
+fn select_base_raid(
+    stored_base_raid: Option<Value>,
+    has_sub_start: bool,
+    sub_cycle_raid: &RaidSnapshot,
+) -> Result<(RaidSnapshot, bool), AppError> {
+    if !has_sub_start {
+        return Ok((sub_cycle_raid.clone(), true));
+    }
+    let stored_base_raid = stored_base_raid
+        .ok_or_else(|| AppError::Conflict("sub_start did not contain base raid data".into()))?;
+    Ok((serde_json::from_value(stored_base_raid)?, false))
+}
+
+fn preserve_current_boss_values(boss: &mut Boss, current: &Boss) {
+    for part_name in BossPartName::all() {
+        let current_part = current.part(part_name);
+        let part = boss.part_mut(part_name);
+        part.current_armor = current_part.current_armor;
+        part.current_health = current_part.current_health;
+        part.radioactivity_afflicted_seconds = current_part.radioactivity_afflicted_seconds;
+        part.sync_state_from_current_values();
+    }
 }
 
 fn rounded_u64(value: f64, field: &str) -> Result<u64, AppError> {
@@ -969,6 +1041,15 @@ struct CycleResetEvent {
 }
 
 #[derive(Debug, Deserialize)]
+struct SubStartEvent {
+    clan_code: String,
+    raid_id: i64,
+    morale: RaidMorale,
+    raid: RaidSnapshot,
+    start_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SubCycleEvent {
     clan_code: String,
     raid_id: i64,
@@ -992,8 +1073,10 @@ struct RaidBonus {
     value: f64,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 struct RaidSnapshot {
+    #[serde(default)]
+    spawn_sequence: Vec<String>,
     titans: Vec<RaidTitan>,
     #[serde(default)]
     area_buffs: Vec<TitanBonus>,
@@ -1001,7 +1084,7 @@ struct RaidSnapshot {
     extra: HashMap<String, Value>,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 struct RaidTitan {
     enemy_id: String,
     enemy_name: String,
@@ -1012,7 +1095,7 @@ struct RaidTitan {
     extra: HashMap<String, Value>,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 struct RaidTitanPart {
     part_id: String,
     current_hp: f64,
@@ -1021,7 +1104,7 @@ struct RaidTitanPart {
     cursed: bool,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 struct TitanBonus {
     bonus_type: String,
     bonus_amount: f64,
@@ -1106,12 +1189,13 @@ mod tests {
     }
 
     #[test]
-    fn sub_cycle_uses_part_totals_targets_and_live_modifiers() {
+    fn raid_snapshot_uses_part_totals_targets_and_live_modifiers() {
         let event: SubCycleEvent = serde_json::from_str(include_str!(
             "../../exampleSocketdatajson/sub_cycle_example.json"
         ))
         .unwrap();
-        let (boss, targets) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        let (boss, targets) =
+            boss_from_raid_snapshot(&event.raid, &event.titan_target, "Enemy8", false).unwrap();
         assert_eq!(boss.boss_name, BossName::Priker);
         assert_eq!(boss.head.max_armor, 29_967_840_000);
         assert_eq!(boss.head.current_armor, 28_358_456_000);
@@ -1147,6 +1231,56 @@ mod tests {
             target_part_name("HandLeft").unwrap(),
             BossPartName::RightHand
         );
+    }
+
+    #[test]
+    fn sub_start_supplies_base_raid_and_sub_cycle_supplies_only_targets() {
+        let sub_start: SubStartEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_start_example.json"
+        ))
+        .unwrap();
+        let sub_cycle: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
+
+        assert_eq!(sub_start.raid_id, 3_318_220);
+        assert_eq!(sub_start.raid.spawn_sequence.len(), 6);
+        assert_eq!(sub_start.raid.titans.len(), 3);
+        assert_eq!(sub_start.morale.bonus_amount, 0.39);
+
+        let (boss, targets) =
+            boss_from_raid_snapshot(&sub_start.raid, &sub_cycle.titan_target, "Enemy3", false)
+                .unwrap();
+        assert_eq!(boss.boss_name, BossName::Jukk);
+        assert_eq!(boss.global_raid_modifier, GlobalRaidModifier::BurstDamage);
+        assert_eq!(boss.global_raid_modifier_amount, Some(0.3));
+        assert_eq!(boss.curse_type, CurseType::BodyDamage);
+        assert!(targets.contains(&BossPartName::Torso));
+        assert!(!targets.contains(&BossPartName::Head));
+    }
+
+    #[test]
+    fn sub_cycle_raid_is_used_only_when_sub_start_is_missing() {
+        let sub_start: SubStartEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_start_example.json"
+        ))
+        .unwrap();
+        let sub_cycle: SubCycleEvent = serde_json::from_str(include_str!(
+            "../../exampleSocketdatajson/sub_cycle_example.json"
+        ))
+        .unwrap();
+
+        let (fallback, used_fallback) = select_base_raid(None, false, &sub_cycle.raid).unwrap();
+        assert!(used_fallback);
+        assert_eq!(fallback.spawn_sequence, sub_cycle.raid.spawn_sequence);
+
+        let stored = serde_json::to_value(&sub_start.raid).unwrap();
+        let (authoritative, used_fallback) =
+            select_base_raid(Some(stored), true, &sub_cycle.raid).unwrap();
+        assert!(!used_fallback);
+        assert_eq!(authoritative.spawn_sequence, sub_start.raid.spawn_sequence);
+        assert_ne!(authoritative.spawn_sequence, sub_cycle.raid.spawn_sequence);
     }
 
     #[test]
@@ -1277,7 +1411,8 @@ mod tests {
             "../../exampleSocketdatajson/sub_cycle_example.json"
         ))
         .unwrap();
-        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        let (mut boss, _) =
+            boss_from_raid_snapshot(&event.raid, &event.titan_target, "Enemy8", false).unwrap();
         let targets = [BossPartName::Head, BossPartName::Torso];
         boss.head.part_state = PartState::Armor;
         boss.torso.part_state = PartState::Armor;
@@ -1302,7 +1437,8 @@ mod tests {
             "../../exampleSocketdatajson/sub_cycle_example.json"
         ))
         .unwrap();
-        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        let (mut boss, _) =
+            boss_from_raid_snapshot(&event.raid, &event.titan_target, "Enemy8", false).unwrap();
         let targets = [BossPartName::Head, BossPartName::Torso];
         boss.head.part_state = PartState::Armor;
         boss.torso.part_state = PartState::Armor;
@@ -1320,7 +1456,8 @@ mod tests {
             "../../exampleSocketdatajson/sub_cycle_example.json"
         ))
         .unwrap();
-        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        let (mut boss, _) =
+            boss_from_raid_snapshot(&event.raid, &event.titan_target, "Enemy8", false).unwrap();
         boss.head.current_armor = 0;
         boss.head.current_health = 10;
         boss.head.sync_state_from_current_values();
@@ -1374,7 +1511,8 @@ mod tests {
             "../../exampleSocketdatajson/sub_cycle_example.json"
         ))
         .unwrap();
-        let (mut boss, _) = boss_from_sub_cycle(&event, "Enemy8", false).unwrap();
+        let (mut boss, _) =
+            boss_from_raid_snapshot(&event.raid, &event.titan_target, "Enemy8", false).unwrap();
         boss.head.current_armor = 10;
         boss.head.current_health = 10;
         boss.head.part_state = PartState::Armor;
