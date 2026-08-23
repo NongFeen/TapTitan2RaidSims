@@ -218,44 +218,62 @@ async fn sync_sims_boss_on_phase_transition(
     let Some(incoming) = boss_from_attack_snapshot(&boss, &attack.raid_state.current)? else {
         return Ok(false);
     };
-    let Some(refresh) = source_matches
-        .then(|| classify_phase_refresh(&boss, &targets, &incoming))
-        .flatten()
-    else {
+    if !source_matches {
         return Ok(false);
-    };
-    boss = incoming;
+    }
+    let refresh = classify_phase_refresh(&boss, &targets, &incoming);
 
-    let boss_version: i64 = sqlx::query_scalar(
-        "UPDATE current_boss SET version=version+1,boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE RETURNING version",
-    )
-    .bind(serde_json::to_value(&boss)?)
-    .bind(attack.raid_id)
-    .bind(attack.raid_state.titan_index)
-    .bind(&attack.raid_state.current.enemy_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    tx.commit().await?;
+    if let Some(refresh) = refresh {
+        let boss_version: i64 = sqlx::query_scalar(
+            "UPDATE current_boss SET version=version+1,boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE RETURNING version",
+        )
+        .bind(serde_json::to_value(&incoming)?)
+        .bind(attack.raid_id)
+        .bind(attack.raid_state.titan_index)
+        .bind(&attack.raid_state.current.enemy_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
 
-    job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-    queue_auto_simulations(
-        state,
-        match refresh {
-            PhaseRefresh::Full => None,
-            PhaseRefresh::Incremental(mask) => Some(mask),
-        },
-    )
-    .await?;
-    tracing::info!(
-        raid_id = attack.raid_id,
-        titan_index = attack.raid_state.titan_index,
-        enemy_id = %attack.raid_state.current.enemy_id,
-        boss_version,
-        target_count = targets.len(),
-        refresh_mode = ?refresh,
-        "boss target phase changed; updated sims boss and queued auto simulations"
-    );
-    Ok(true)
+        job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+        queue_auto_simulations(
+            state,
+            match refresh {
+                PhaseRefresh::Full => None,
+                PhaseRefresh::Incremental(mask) => Some(mask),
+            },
+        )
+        .await?;
+        tracing::info!(
+            raid_id = attack.raid_id,
+            titan_index = attack.raid_state.titan_index,
+            enemy_id = %attack.raid_state.current.enemy_id,
+            boss_version,
+            target_count = targets.len(),
+            refresh_mode = ?refresh,
+            "boss target phase changed; updated sims boss and queued auto simulations"
+        );
+        Ok(true)
+    } else {
+        // No phase change — sync HP values without bumping the simulation version.
+        sqlx::query(
+            "UPDATE current_boss SET boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE",
+        )
+        .bind(serde_json::to_value(&incoming)?)
+        .bind(attack.raid_id)
+        .bind(attack.raid_state.titan_index)
+        .bind(&attack.raid_state.current.enemy_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        tracing::debug!(
+            raid_id = attack.raid_id,
+            titan_index = attack.raid_state.titan_index,
+            enemy_id = %attack.raid_state.current.enemy_id,
+            "synced sims boss HP values from attack event (no phase change)"
+        );
+        Ok(false)
+    }
 }
 
 fn boss_from_attack_snapshot(
@@ -305,6 +323,18 @@ fn classify_phase_refresh(
         return Some(PhaseRefresh::Full);
     }
 
+    // All cursed parts cleared — curse damage modifier changes even on non-targeted parts.
+    let all_parts = BossPartName::all();
+    let had_any_cursed = all_parts
+        .iter()
+        .any(|p| current.part(*p).part_state == PartState::Cursed);
+    let incoming_has_any_cursed = all_parts
+        .iter()
+        .any(|p| incoming.part(*p).part_state == PartState::Cursed);
+    if had_any_cursed && !incoming_has_any_cursed {
+        return Some(PhaseRefresh::Full);
+    }
+
     let skeleton_mask = targets.iter().fold(0u8, |mask, part_name| {
         if current.part(*part_name).part_state == PartState::Body
             && incoming.part(*part_name).part_state == PartState::Skeleton
@@ -330,15 +360,15 @@ fn attack_part_values(
     part_name: BossPartName,
 ) -> Result<Option<(u64, u64)>, AppError> {
     let (body_id, armor_id) = part_ids(part_name);
-    let body = live.parts.iter().find(|part| part.part_id == body_id);
-    let armor = live.parts.iter().find(|part| part.part_id == armor_id);
-    match (armor, body) {
-        (Some(armor), Some(body)) => Ok(Some((
-            rounded_u64(armor.current_hp, armor_id)?,
-            rounded_u64(body.current_hp, body_id)?,
-        ))),
-        _ => Ok(None),
-    }
+    let Some(body) = live.parts.iter().find(|part| part.part_id == body_id) else {
+        return Ok(None);
+    };
+    // TT2 omits armor entries for parts whose armor is already destroyed; treat absence as 0.
+    let current_armor = match live.parts.iter().find(|part| part.part_id == armor_id) {
+        Some(armor) => rounded_u64(armor.current_hp, armor_id)?,
+        None => 0,
+    };
+    Ok(Some((current_armor, rounded_u64(body.current_hp, body_id)?)))
 }
 
 fn part_ids(part_name: BossPartName) -> (&'static str, &'static str) {
