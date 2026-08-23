@@ -246,11 +246,12 @@ pub struct Card {
     pub level: u16,
     #[serde(default = "default_card_enabled")]
     pub enabled: bool,
-    #[serde(default)]
+
+    #[serde(skip)]
     pub tap_count: u16,
-    #[serde(default)]
+    #[serde(skip)]
     pub chained_parts: Vec<BossPartName>,
-    #[serde(default)]
+    #[serde(skip)]
     pub celestial_stacks: usize,
     #[serde(skip, default)]
     pub skill: CardSkillCache,

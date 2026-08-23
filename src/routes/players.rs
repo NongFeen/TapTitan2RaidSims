@@ -117,9 +117,9 @@ pub async fn update_auto_sims(
     .fetch_optional(state.db()?)
     .await?
     .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    if request.auto_sims {
-        enqueue_for_current_boss(&state, &player_id).await?;
-    }
+    // if request.auto_sims {
+    //     enqueue_for_current_boss(&state, &player_id).await?;
+    // }
     Ok(Json(player))
 }
 

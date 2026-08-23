@@ -15,7 +15,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/simulation-jobs/{job_id}/retry", post(routes::jobs::retry))
         .route("/simulation-debug", post(routes::simulation_debug::run))
         .route("/current-boss", put(routes::raids::update_current_boss))
-        .route("/sims-boss", put(routes::raids::update_current_boss))
         .route(
             "/players/{player_id}/token",
             put(routes::players::update_token).delete(routes::players::clear_token),
@@ -45,20 +44,25 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/simulation-jobs",
             get(routes::jobs::list_for_player),
         )
-        .route(
-            "/api/players/{player_id}/stats",
-            put(routes::players::update_stats),
-        )
+
+        // UNUSED FETCH FROM GAME NO MANUAL UPDATE
+        // .route(
+        //     "/api/players/{player_id}/stats",
+        //     put(routes::players::update_stats),
+        // ) 
+        
         .route(
             "/api/players/{player_id}/stats/current",
             get(routes::players::current_stats),
         )
-        .route(
-            "/api/players/{player_id}/auto_sims",
-            put(routes::players::update_auto_sims),
-        )
+
+        // .route(
+        //     "/api/players/{player_id}/auto_sims",
+        //     put(routes::players::update_auto_sims),
+        // )
+
+        
         .route("/api/current-boss", get(routes::raids::current))
-        .route("/api/sims-boss", get(routes::raids::current))
         .route(
             "/api/live-current-boss",
             get(routes::raids::live_from_attack),
@@ -72,27 +76,29 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/recommendations",
             post(routes::recommendations::generate_for_player),
         )
-        .route(
-            "/api/simulation-jobs/{job_id}/deck-results",
-            get(routes::recommendations::deck_results),
-        )
+
+        //UNUSED
+        // .route(
+        //     "/api/simulation-jobs/{job_id}/deck-results",
+        //     get(routes::recommendations::deck_results),
+        // )
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
-        //POST
-        .route(
-            "/api/taptitan/player_data",
-            post(routes::taptitan::send_player_data_json),
-        )
+        //POST UNUSED
+        // .route(
+        //     "/api/taptitan/player_data",
+        //     post(routes::taptitan::send_player_data_json),
+        // )
         .route(
             "/api/taptitan/cards",
             get(routes::taptitan::get_all_card_definitions),
         )
-        .route(
-            "/api/taptitan/sim_data",
-            post(routes::taptitan::send_sim_payload),
-        )
-        .route(
-            "/api/taptitan/sim_deck",
-            post(routes::taptitan::send_sim_deck),
-        )
+        // .route(
+        //     "/api/taptitan/sim_data",
+        //     post(routes::taptitan::send_sim_payload),
+        // )
+        // .route(
+        //     "/api/taptitan/sim_deck",
+        //     post(routes::taptitan::send_sim_deck),
+        // )
         .with_state(state)
 }
