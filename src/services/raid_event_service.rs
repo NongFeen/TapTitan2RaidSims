@@ -34,17 +34,12 @@ async fn handle_sub_start(
     event: SubStartEvent,
     raw_payload: Value,
 ) -> Result<(), AppError> {
-    let first_reset_at = event.start_at + chrono::Duration::hours(RESET_INTERVAL_HOURS);
-    store_cycle_state(
+    store_sub_start_cycle_state(
         state,
         &event.clan_code,
         event.raid_id,
-        Some(event.start_at),
         event.start_at,
-        first_reset_at,
         event.morale.bonus_amount,
-        0.0,
-        0.0,
     )
     .await?;
 
@@ -581,6 +576,30 @@ async fn handle_cycle_reset(state: &Arc<AppState>, event: CycleResetEvent) -> Re
     if mirror_changed {
         queue_auto_simulations(state, None).await?;
     }
+    Ok(())
+}
+
+async fn store_sub_start_cycle_state(
+    state: &Arc<AppState>,
+    clan_code: &str,
+    raid_id: i64,
+    start_at: DateTime<Utc>,
+    morale: f64,
+) -> Result<(), AppError> {
+    if !morale.is_finite() || morale < 0.0 {
+        return Err(AppError::BadRequest(
+            "morale must be a non-negative finite number".into(),
+        ));
+    }
+    sqlx::query(
+        "INSERT INTO raid_cycle_state (raid_id,clan_code,started_at,raid_started_at,next_reset_at,morale,team_tactics_morale_boost,mirror_force_boost) VALUES ($1,$2,$3,$3,$3,$4,0,0) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code,started_at=EXCLUDED.started_at,raid_started_at=EXCLUDED.raid_started_at,next_reset_at=EXCLUDED.next_reset_at,morale=EXCLUDED.morale,team_tactics_morale_boost=0,mirror_force_boost=0,updated_at=NOW()",
+    )
+    .bind(raid_id)
+    .bind(clan_code)
+    .bind(start_at)
+    .bind(morale)
+    .execute(state.db()?)
+    .await?;
     Ok(())
 }
 
@@ -1248,6 +1267,13 @@ mod tests {
         assert_eq!(sub_start.raid.spawn_sequence.len(), 6);
         assert_eq!(sub_start.raid.titans.len(), 3);
         assert_eq!(sub_start.morale.bonus_amount, 0.39);
+        assert_eq!(
+            sub_start
+                .start_at
+                .with_timezone(&chrono::FixedOffset::east_opt(7 * 60 * 60).unwrap())
+                .to_rfc3339(),
+            "2026-08-20T03:31:24+07:00"
+        );
 
         let (boss, targets) =
             boss_from_raid_snapshot(&sub_start.raid, &sub_cycle.titan_target, "Enemy3", false)
