@@ -266,6 +266,7 @@ pub(super) fn deck_wants_wide_attack(deck: &[Card]) -> bool {
                     | CardName::RuinousRain
                     | CardName::ElectroZap
                     | CardName::Maelstrom
+                    | CardName::GrimShadow
             )
     })
 }
@@ -382,6 +383,9 @@ pub(super) fn burst_target_fit_score(
                     score += (candidates.len().min(6) as i32) * 300;
                 }
             }
+            CardName::GrimShadow => {
+                score += grim_shadow_target_score(deck, candidates.len());
+            }
             _ => {}
         }
     }
@@ -461,6 +465,27 @@ pub(super) fn barbed_morningstar_target_score(
         .sum::<f64>();
 
     ((total_bonus / candidates.len() as f64) * 2_000.0).round() as i32
+}
+
+pub(super) fn grim_shadow_target_score(deck: &[Card], candidate_count: usize) -> i32 {
+    if candidate_count == 0 {
+        return 0;
+    }
+    // With a duration buff (SandsOfTime), stacks stay alive long enough to maintain
+    // coverage across more parts; without one, concentrate on 2-3.
+    let has_duration_buff = deck_has_card(deck, CardName::SandsOfTime);
+    let (ideal_min, ideal_max): (usize, usize) = if has_duration_buff { (3, 5) } else { (2, 3) };
+
+    if candidate_count >= ideal_min && candidate_count <= ideal_max {
+        2_500
+    } else if candidate_count < ideal_min {
+        // Below ideal range: partial credit scaling up toward the minimum
+        (2_500 * candidate_count as i32 / ideal_min as i32).max(500)
+    } else {
+        // Above ideal range: penalise each extra part
+        let over = (candidate_count - ideal_max) as i32;
+        (2_500 - 750 * over).max(-1_500)
+    }
 }
 
 pub(super) fn pattern_shape_score(
