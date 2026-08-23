@@ -189,13 +189,5 @@ fn card_pair_label(index: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deck_pair_csv_loads() {
-        let table = card_pair_table();
-        assert!(table[0][1]);
-        assert!(table[CARD_PAIR_COUNT - 1][0]);
-    }
-}
+#[path = "../../../../tests/unit/services/taptitan/csv/deck_pair_rules_tests.rs"]
+mod tests;
