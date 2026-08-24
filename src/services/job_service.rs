@@ -182,14 +182,11 @@ async fn create_job_with_mode(
         .fetch_optional(state.db()?)
         .await?
         .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let row: Option<(i64, serde_json::Value)> =
-        sqlx::query_as("SELECT revision, stats FROM player_stats WHERE player_id = $1")
-            .bind(internal_player_id)
-            .fetch_optional(state.db()?)
-            .await?;
-    let (stats_revision, stats_json) =
-        row.ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
-    let player_stats: PlayerRaidData = serde_json::from_value(stats_json)?;
+    let loaded_stats = crate::services::player_stats_repo::load(state.db()?, internal_player_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
+    let stats_revision = loaded_stats.revision;
+    let player_stats: PlayerRaidData = loaded_stats.data;
 
     let boss_row: Option<(serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
         "SELECT boss_data, attackable_parts, version FROM current_boss WHERE singleton=TRUE",
