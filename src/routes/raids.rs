@@ -11,7 +11,7 @@ use crate::{
         },
         boss::{Boss, BossPartName},
     },
-    services::{job_service, raid_event_service},
+    services::{boss_repo, job_service, raid_event_service},
     state::AppState,
 };
 
@@ -44,11 +44,18 @@ async fn replace_current_boss(
         .execute(&mut *tx)
         .await?;
 
-    let current_boss_version: i64 = sqlx::query_scalar("INSERT INTO current_boss (singleton, version, boss_data, attackable_parts) VALUES (TRUE,1,$1,$2) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1, boss_data=EXCLUDED.boss_data, attackable_parts=EXCLUDED.attackable_parts, source_raid_id=NULL, source_titan_index=NULL, source_enemy_id=NULL, updated_at=NOW() RETURNING version")
-        .bind(serde_json::to_value(boss_data)?)
-        .bind(serde_json::to_value(attackable_parts)?)
-        .fetch_one(&mut *tx)
-        .await?;
+    let current_boss_version = boss_repo::store(
+        &mut tx,
+        boss_repo::BossWrite {
+            boss: &boss_data,
+            attackable_parts: Some(&attackable_parts),
+            source_raid_id: None,
+            source_titan_index: None,
+            source_enemy_id: None,
+            bump_version: true,
+        },
+    )
+    .await?;
     tx.commit().await?;
 
     job_service::spawn_old_job_cleanup(Arc::clone(state), current_boss_version);
@@ -112,13 +119,15 @@ fn validate_attackable_parts(attackable_parts: &[BossPartName]) -> Result<(), Ap
 pub async fn current(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentBossView>, AppError> {
-    let boss = sqlx::query_as(
-        "SELECT boss_data, attackable_parts, created_at, updated_at FROM current_boss WHERE singleton=TRUE",
-    )
-    .fetch_optional(state.db()?)
-    .await?
-    .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
-    Ok(Json(boss))
+    let loaded = boss_repo::load(state.db()?)
+        .await?
+        .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
+    Ok(Json(CurrentBossView {
+        boss_data: serde_json::to_value(&loaded.boss)?,
+        attackable_parts: serde_json::to_value(&loaded.attackable_parts)?,
+        created_at: loaded.created_at,
+        updated_at: loaded.updated_at,
+    }))
 }
 
 pub async fn live_from_attack(

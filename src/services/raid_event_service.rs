@@ -13,7 +13,7 @@ use crate::{
         cards::CardName,
         db_enums::ComponentKind,
     },
-    services::job_service,
+    services::{boss_repo, job_service},
     state::AppState,
 };
 
@@ -198,19 +198,14 @@ async fn sync_sims_boss_on_phase_transition(
         .execute(&mut *tx)
         .await?;
 
-    let current: Option<(Value, Value, i64, Option<i64>, Option<i32>, Option<String>)> =
-        sqlx::query_as(
-            "SELECT boss_data,attackable_parts,version,source_raid_id,source_titan_index,source_enemy_id FROM current_boss WHERE singleton=TRUE FOR UPDATE",
-        )
-        .fetch_optional(&mut *tx)
-        .await?;
-    let Some((boss_json, targets_json, _, source_raid_id, source_titan_index, source_enemy_id)) =
-        current
-    else {
+    let Some(current) = boss_repo::load_for_update(&mut tx).await? else {
         return Ok(false);
     };
-    let mut boss: Boss = serde_json::from_value(boss_json)?;
-    let targets: Vec<BossPartName> = serde_json::from_value(targets_json)?;
+    let boss = current.boss;
+    let targets = current.attackable_parts;
+    let source_raid_id = current.source_raid_id;
+    let source_titan_index = current.source_titan_index;
+    let source_enemy_id = current.source_enemy_id;
     let expected_boss = boss_name(&attack.raid_state.current.enemy_id, "")?;
     let source_matches = source_enemy_id
         .as_deref()
@@ -229,14 +224,17 @@ async fn sync_sims_boss_on_phase_transition(
     let refresh = classify_phase_refresh(&boss, &targets, &incoming);
 
     if let Some(refresh) = refresh {
-        let boss_version: i64 = sqlx::query_scalar(
-            "UPDATE current_boss SET version=version+1,boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE RETURNING version",
+        let boss_version = boss_repo::store(
+            &mut tx,
+            boss_repo::BossWrite {
+                boss: &incoming,
+                attackable_parts: None,
+                source_raid_id: Some(attack.raid_id),
+                source_titan_index: Some(attack.raid_state.titan_index),
+                source_enemy_id: Some(&attack.raid_state.current.enemy_id),
+                bump_version: true,
+            },
         )
-        .bind(serde_json::to_value(&incoming)?)
-        .bind(attack.raid_id)
-        .bind(attack.raid_state.titan_index)
-        .bind(&attack.raid_state.current.enemy_id)
-        .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
 
@@ -261,14 +259,17 @@ async fn sync_sims_boss_on_phase_transition(
         Ok(true)
     } else {
         // No phase change — sync HP values without bumping the simulation version.
-        sqlx::query(
-            "UPDATE current_boss SET boss_data=$1,source_raid_id=$2,source_titan_index=$3,source_enemy_id=$4,updated_at=NOW() WHERE singleton=TRUE",
+        boss_repo::store(
+            &mut tx,
+            boss_repo::BossWrite {
+                boss: &incoming,
+                attackable_parts: None,
+                source_raid_id: Some(attack.raid_id),
+                source_titan_index: Some(attack.raid_state.titan_index),
+                source_enemy_id: Some(&attack.raid_state.current.enemy_id),
+                bump_version: false,
+            },
         )
-        .bind(serde_json::to_value(&incoming)?)
-        .bind(attack.raid_id)
-        .bind(attack.raid_state.titan_index)
-        .bind(&attack.raid_state.current.enemy_id)
-        .execute(&mut *tx)
         .await?;
         tx.commit().await?;
         tracing::debug!(
@@ -501,34 +502,23 @@ async fn handle_sub_cycle(
         .ok_or_else(|| AppError::Conflict("No attack has identified the current titan".into()))?;
     let titan_index = titan_index.unwrap_or_default();
 
-    let previous_boss: Option<(Value, Value, Option<String>)> = sqlx::query_as(
-        "SELECT boss_data,attackable_parts,source_enemy_id FROM current_boss WHERE singleton=TRUE",
-    )
-    .fetch_optional(state.db()?)
-    .await?;
+    let previous_boss = boss_repo::load(state.db()?).await?;
     let preserve_narrow = previous_boss
         .as_ref()
-        .and_then(|(boss, _, _)| boss.get("recommend_1_to_2_part_patterns_only"))
-        .and_then(Value::as_bool)
+        .map(|previous| previous.boss.recommend_1_to_2_part_patterns_only)
         .unwrap_or(false);
     let (mut boss, attackable_parts) =
         boss_from_raid_snapshot(&base_raid, &event.titan_target, &enemy_id, preserve_narrow)?;
     let enemy_changed = previous_boss
         .as_ref()
-        .and_then(|(_, _, enemy)| enemy.as_deref())
+        .and_then(|previous| previous.source_enemy_id.as_deref())
         != Some(enemy_id.as_str());
     let targets_changed = previous_boss
         .as_ref()
-        .and_then(|(_, previous_targets, _)| {
-            serde_json::from_value::<Vec<BossPartName>>(previous_targets.clone()).ok()
-        })
-        .is_none_or(|previous_targets| previous_targets != attackable_parts);
+        .is_none_or(|previous| previous.attackable_parts != attackable_parts);
     if !enemy_changed {
-        if let Some(previous) = previous_boss
-            .as_ref()
-            .and_then(|(previous, _, _)| serde_json::from_value::<Boss>(previous.clone()).ok())
-        {
-            preserve_current_boss_values(&mut boss, &previous);
+        if let Some(previous) = &previous_boss {
+            preserve_current_boss_values(&mut boss, &previous.boss);
         }
     }
     let needs_simulation = cycle_changed || enemy_changed || targets_changed || mirror_changed;
@@ -549,31 +539,18 @@ async fn handle_sub_cycle(
     .execute(&mut *tx)
     .await?;
 
-    let boss_json = serde_json::to_value(&boss)?;
-    let targets_json = serde_json::to_value(&attackable_parts)?;
-    let boss_version: i64 = if needs_simulation {
-        sqlx::query_scalar(
-            "INSERT INTO current_boss (singleton,version,boss_data,attackable_parts,source_raid_id,source_titan_index,source_enemy_id) VALUES (TRUE,1,$1,$2,$3,$4,$5) ON CONFLICT (singleton) DO UPDATE SET version=current_boss.version+1,boss_data=EXCLUDED.boss_data,attackable_parts=EXCLUDED.attackable_parts,source_raid_id=EXCLUDED.source_raid_id,source_titan_index=EXCLUDED.source_titan_index,source_enemy_id=EXCLUDED.source_enemy_id,updated_at=NOW() RETURNING version",
-        )
-        .bind(boss_json)
-        .bind(targets_json)
-        .bind(event.raid_id)
-        .bind(titan_index)
-        .bind(&enemy_id)
-        .fetch_one(&mut *tx)
-        .await?
-    } else {
-        sqlx::query_scalar(
-            "UPDATE current_boss SET boss_data=$1,attackable_parts=$2,source_raid_id=$3,source_titan_index=$4,source_enemy_id=$5,updated_at=NOW() WHERE singleton=TRUE RETURNING version",
-        )
-        .bind(boss_json)
-        .bind(targets_json)
-        .bind(event.raid_id)
-        .bind(titan_index)
-        .bind(&enemy_id)
-        .fetch_one(&mut *tx)
-        .await?
-    };
+    let boss_version = boss_repo::store(
+        &mut tx,
+        boss_repo::BossWrite {
+            boss: &boss,
+            attackable_parts: Some(&attackable_parts),
+            source_raid_id: Some(event.raid_id),
+            source_titan_index: Some(titan_index),
+            source_enemy_id: Some(&enemy_id),
+            bump_version: needs_simulation,
+        },
+    )
+    .await?;
     tx.commit().await?;
 
     if needs_simulation {

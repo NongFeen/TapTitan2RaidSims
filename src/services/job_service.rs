@@ -188,15 +188,12 @@ async fn create_job_with_mode(
     let stats_revision = loaded_stats.revision;
     let player_stats: PlayerRaidData = loaded_stats.data;
 
-    let boss_row: Option<(serde_json::Value, serde_json::Value, i64)> = sqlx::query_as(
-        "SELECT boss_data, attackable_parts, version FROM current_boss WHERE singleton=TRUE",
-    )
-    .fetch_optional(state.db()?)
-    .await?;
-    let (boss_json, attackable_json, boss_version) =
-        boss_row.ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
-    let boss_data: Boss = serde_json::from_value(boss_json)?;
-    let attackable_part: Vec<BossPartName> = serde_json::from_value(attackable_json)?;
+    let loaded_boss = crate::services::boss_repo::load(state.db()?)
+        .await?
+        .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
+    let boss_version = loaded_boss.version;
+    let boss_data: Boss = loaded_boss.boss;
+    let attackable_part: Vec<BossPartName> = loaded_boss.attackable_parts;
     let usable_card: Vec<CardName> = player_stats
         .card_list
         .iter()
