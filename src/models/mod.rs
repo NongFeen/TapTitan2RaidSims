@@ -4,6 +4,7 @@ pub mod boss;
 pub mod card_skill_data;
 pub mod cards;
 pub mod damage_source;
+pub mod db_enums;
 pub mod player_data;
 pub mod player_raid_data;
 pub mod responses;

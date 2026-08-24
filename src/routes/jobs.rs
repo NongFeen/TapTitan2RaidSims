@@ -12,7 +12,10 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::app::{CreateSimulationJobRequest, SimulationJobView},
+    models::{
+        app::{CreateSimulationJobRequest, SimulationJobView},
+        db_enums::JobStatus,
+    },
     services::job_service,
     state::AppState,
 };
@@ -139,25 +142,25 @@ pub async fn get_batch(
     let Some((requested, created_at)) = batch else {
         return Err(AppError::NotFound("Simulation batch not found".to_string()));
     };
-    let jobs: Vec<(bool, String, Option<Value>, Option<DateTime<Utc>>)> = sqlx::query_as(
+    let jobs: Vec<(bool, JobStatus, Option<Value>, Option<DateTime<Utc>>)> = sqlx::query_as(
         "SELECT b.created_for_batch, j.status, j.result, j.completed_at FROM simulation_batch_jobs b JOIN simulation_jobs j ON j.id=b.simulation_job_id WHERE b.batch_id=$1",
     )
     .bind(batch_id)
     .fetch_all(state.db()?)
     .await?;
 
-    let count_status = |status: &str| jobs.iter().filter(|job| job.1 == status).count();
+    let count_status = |status: JobStatus| jobs.iter().filter(|job| job.1 == status).count();
     let metric = |key: &str| {
         jobs.iter()
             .filter(|job| job.0)
             .filter_map(|job| job.2.as_ref()?.get(key)?.as_u64())
             .sum::<u64>()
     };
-    let pending = count_status("pending");
-    let running = count_status("running");
-    let optimizing = count_status("optimizing");
-    let completed = count_status("completed");
-    let failed = count_status("failed");
+    let pending = count_status(JobStatus::Pending);
+    let running = count_status(JobStatus::Running);
+    let optimizing = count_status(JobStatus::Optimizing);
+    let completed = count_status(JobStatus::Completed);
+    let failed = count_status(JobStatus::Failed);
     let finished = !jobs.is_empty() && completed + failed == jobs.len();
     let completed_at = finished
         .then(|| jobs.iter().filter_map(|job| job.3).max())

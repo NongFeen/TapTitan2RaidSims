@@ -11,6 +11,7 @@ use crate::{
         app::{CreateSimulationJobRequest, LiveAttackBossView, LiveBossDisplayPart},
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
+        db_enums::ComponentKind,
     },
     services::job_service,
     state::AppState,
@@ -143,7 +144,11 @@ async fn handle_attack(
         )
         .bind(attack_id)
         .bind(position as i32)
-        .bind(if component.card_id.is_some() { "card" } else { "tap" })
+        .bind(if component.card_id.is_some() {
+            ComponentKind::Card
+        } else {
+            ComponentKind::Tap
+        })
         .bind(&component.card_id)
         .bind(&component.card_name)
         .bind(component.card_level)
