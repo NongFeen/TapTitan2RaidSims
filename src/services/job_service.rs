@@ -8,6 +8,7 @@ use crate::{
         app::{CreateSimulationJobRequest, SimulationJobView},
         boss::{Boss, BossPartName, PartState},
         cards::CardName,
+        db_enums::{RecommendationPhase, RecomputeMode},
         player_raid_data::PlayerRaidData,
         sim_payload::SimPayLoad,
     },
@@ -21,8 +22,6 @@ use crate::{
 };
 
 const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v2");
-const CURRENT_RECOMMENDATION_PHASE: &str = "current";
-const VOID_RECOMMENDATION_PHASE: &str = "void";
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
 
@@ -30,7 +29,7 @@ struct PreparedRecommendation {
     deck_count: usize,
     must_include_mirror_force: bool,
     must_include_team_tactics: bool,
-    recommendation_phase: &'static str,
+    recommendation_phase: RecommendationPhase,
     recommendation: DeckRecommendation,
 }
 
@@ -44,7 +43,7 @@ struct PreparedResults {
 fn prepare_recommendations(
     candidates: &[CandidateDeck],
     deck_counts: &[usize],
-    recommendation_phase: &'static str,
+    recommendation_phase: RecommendationPhase,
 ) -> Vec<PreparedRecommendation> {
     let mut recommendations = Vec::with_capacity(deck_counts.len() * 4);
     for &deck_count in deck_counts {
@@ -101,7 +100,7 @@ fn prepare_recommendations(
 
 fn prepare_results(
     result: SimRunResult,
-    recommendation_phase: &'static str,
+    recommendation_phase: RecommendationPhase,
 ) -> Result<PreparedResults, serde_json::Error> {
     let candidates =
         crate::services::taptitan::recommendation::candidates_from_results(&result.decks);
@@ -241,9 +240,9 @@ async fn create_job_with_mode(
     .bind(SIMULATOR_VERSION)
     .bind(serde_json::to_value(payload)?)
     .bind(if phase_change_mask.is_some() {
-        "phase_aware"
+        RecomputeMode::PhaseAware
     } else {
-        "full"
+        RecomputeMode::Full
     })
     .bind(i16::from(phase_change_mask.unwrap_or_default()))
     .fetch_optional(state.db()?)
@@ -338,7 +337,7 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         .await
         .map_err(|_| AppError::Internal("Simulation worker is shutting down".to_string()))?;
 
-    let payload: Option<(serde_json::Value, String, i16, Uuid, i64)> = sqlx::query_as(
+    let payload: Option<(serde_json::Value, RecomputeMode, i16, Uuid, i64)> = sqlx::query_as(
         "UPDATE simulation_jobs SET status='running', attempts=attempts+1, started_at=NOW(), error_message=NULL, updated_at=NOW() WHERE id=$1 AND status IN ('pending','failed') RETURNING payload,recompute_mode,phase_change_mask,player_id,boss_version",
     )
     .bind(job_id)
@@ -351,7 +350,7 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     let payload: SimPayLoad = serde_json::from_value(payload_json)?;
     let total_processing_started = Instant::now();
     let simulation_started = Instant::now();
-    let incremental = if recompute_mode == "phase_aware" {
+    let incremental = if recompute_mode == RecomputeMode::PhaseAware {
         try_incremental_run(
             state,
             player_id,
@@ -379,7 +378,7 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
                 "incremental",
             )
         } else {
-            if recompute_mode == "phase_aware" {
+            if recompute_mode == RecomputeMode::PhaseAware {
                 tracing::info!(
                     %job_id,
                     phase_change_mask,
@@ -405,11 +404,11 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     let recommendation_started = Instant::now();
     let prepared =
         tokio::task::spawn_blocking(move || -> Result<PreparedResults, serde_json::Error> {
-            let current = prepare_results(current_result, CURRENT_RECOMMENDATION_PHASE)?;
+            let current = prepare_results(current_result, RecommendationPhase::Current)?;
             match void_result {
                 Some(result) => Ok(combine_prepared_results(
                     current,
-                    prepare_results(result, VOID_RECOMMENDATION_PHASE)?,
+                    prepare_results(result, RecommendationPhase::Void)?,
                 )),
                 None => Ok(current),
             }
@@ -489,7 +488,7 @@ async fn try_incremental_run(
         return Ok(None);
     };
 
-    let rows: Vec<(serde_json::Value, Option<i16>, String)> = sqlx::query_as(
+    let rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)> = sqlx::query_as(
         "SELECT result,dependency_part_mask,recommendation_phase FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY recommendation_phase,card_mask",
     )
     .bind(base_job_id)
@@ -501,12 +500,12 @@ async fn try_incremental_run(
 
     let current_rows = rows
         .iter()
-        .filter(|(_, _, phase)| phase == CURRENT_RECOMMENDATION_PHASE)
+        .filter(|(_, _, phase)| *phase == RecommendationPhase::Current)
         .cloned()
         .collect::<Vec<_>>();
     let void_rows = rows
         .iter()
-        .filter(|(_, _, phase)| phase == VOID_RECOMMENDATION_PHASE)
+        .filter(|(_, _, phase)| *phase == RecommendationPhase::Void)
         .cloned()
         .collect::<Vec<_>>();
     let should_have_void = payload.include_body_phase
@@ -564,7 +563,7 @@ async fn try_incremental_run(
 fn rebuild_incremental_void_phase(
     payload: &SimPayLoad,
     current: &SimRunResult,
-    base_void_rows: Vec<(serde_json::Value, Option<i16>, String)>,
+    base_void_rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)>,
 ) -> Option<(SimRunResult, usize, usize)> {
     let mut decks = current
         .decks
@@ -647,7 +646,7 @@ fn incremental_boss_change_mask(base: &Boss, current: &Boss) -> Option<u8> {
 
 fn rebuild_incremental_phase(
     payload: &SimPayLoad,
-    rows: Vec<(serde_json::Value, Option<i16>, String)>,
+    rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)>,
     changed_mask: u8,
     body_phase: bool,
 ) -> Option<(SimRunResult, usize, usize)> {
@@ -720,7 +719,7 @@ async fn persist_results(
     );
     for (index, chunk) in row_chunks.into_iter().enumerate() {
         sqlx::query(
-            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, dependency_part_mask, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, row->>'recommendation_phase', (row->>'dependency_part_mask')::SMALLINT, row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
+            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, dependency_part_mask, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, (row->>'recommendation_phase')::recommendation_phase, (row->>'dependency_part_mask')::SMALLINT, row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
         )
         .bind(job_id)
         .bind(chunk)
@@ -798,9 +797,9 @@ pub async fn generate_deck_recommendations(
         .map_err(|_| AppError::Internal("Recommendation worker is shutting down".to_string()))?;
 
     let recommendation_phase = if include_body_phase {
-        VOID_RECOMMENDATION_PHASE
+        RecommendationPhase::Void
     } else {
-        CURRENT_RECOMMENDATION_PHASE
+        RecommendationPhase::Current
     };
     let job_id: Uuid = sqlx::query_scalar(
         "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",

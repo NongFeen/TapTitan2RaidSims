@@ -20,7 +20,9 @@ use strum_macros::{EnumIter, EnumString};
     Copy,
     EnumIter,
     EnumString,
+    sqlx::Type,
 )]
+#[sqlx(type_name = "card_name", rename_all = "PascalCase")]
 pub enum CardName {
     // Burst
     #[serde(rename = "MoonBeam")]
@@ -161,7 +163,8 @@ pub enum CardName {
     BattleDrums,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy, sqlx::Type)]
+#[sqlx(type_name = "card_type", rename_all = "PascalCase")]
 pub enum CardType {
     Burst,
     Affliction,

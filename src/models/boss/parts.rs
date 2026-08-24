@@ -13,7 +13,9 @@ use super::*;
     Copy,
     EnumIter,
     EnumString,
+    sqlx::Type,
 )]
+#[sqlx(type_name = "boss_part_name", rename_all = "PascalCase")]
 pub enum BossPartName {
     Head,
     Torso,
@@ -24,7 +26,8 @@ pub enum BossPartName {
     LeftLeg,
     RightLeg,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[sqlx(type_name = "part_state", rename_all = "PascalCase")]
 pub enum PartState {
     Cursed,
     Armor,
@@ -46,7 +49,8 @@ impl BossPartName {
         }
     }
 }
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[sqlx(type_name = "curse_type", rename_all = "PascalCase")]
 pub enum CurseType {
     #[default]
     None,
@@ -54,7 +58,8 @@ pub enum CurseType {
     BurstDamage,
     AfflictionDamage,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[sqlx(type_name = "boss_name", rename_all = "PascalCase")]
 pub enum BossName {
     Lojak,
     Takedar,
@@ -66,7 +71,8 @@ pub enum BossName {
     Priker,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[sqlx(type_name = "global_raid_modifier", rename_all = "PascalCase")]
 pub enum GlobalRaidModifier {
     #[default]
     None,

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::models::db_enums::{JobStatus, TokenStatus};
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct PlayerSummary {
     pub player_id: String,
@@ -10,7 +12,7 @@ pub struct PlayerSummary {
     pub auto_sims: bool,
     pub stats_revision: Option<i64>,
     pub has_player_token: bool,
-    pub player_token_status: String,
+    pub player_token_status: TokenStatus,
     pub tt2_last_fetched_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -24,7 +26,7 @@ pub struct PlayerDetail {
     pub stats_revision: Option<i64>,
     pub stats: Option<Value>,
     pub has_player_token: bool,
-    pub player_token_status: String,
+    pub player_token_status: TokenStatus,
     pub tt2_last_fetched_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -87,7 +89,7 @@ pub struct SimulationJobView {
     pub id: Uuid,
     pub player_id: String,
     pub simulator_version: String,
-    pub status: String,
+    pub status: JobStatus,
     pub result: Option<Value>,
     pub error_message: Option<String>,
     pub attempts: i32,
