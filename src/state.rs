@@ -1,10 +1,11 @@
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::app::LiveAttackBossView;
+use crate::models::app::{LiveAttackBossView, LiveAttackingPlayer};
 use crate::services::gamehive_api_client::GameHiveApiClient;
 
 #[derive(Clone)]
@@ -16,6 +17,7 @@ pub struct AppState {
     pub gamehive_api: Option<Arc<GameHiveApiClient>>,
     pub clan_fetch_lock: Arc<Mutex<()>>,
     pub live_attack_boss: Arc<RwLock<Option<LiveAttackBossView>>>,
+    pub live_attacking_players: Arc<RwLock<HashMap<String, LiveAttackingPlayer>>>,
 }
 
 impl AppState {
@@ -33,6 +35,7 @@ impl AppState {
             gamehive_api,
             clan_fetch_lock: Arc::new(Mutex::new(())),
             live_attack_boss: Arc::new(RwLock::new(None)),
+            live_attacking_players: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

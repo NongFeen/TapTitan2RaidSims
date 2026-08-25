@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use axum::{Json, extract::State, http::StatusCode};
 
+use chrono::Utc;
+
 use crate::{
     error::AppError,
     models::{
         app::{
             CreateSimulationJobRequest, CurrentBossUpdateRequest, CurrentBossView,
-            LiveAttackBossView, RaidEventAccepted,
+            LiveAttackBossView, LiveAttackingPlayer, RaidEventAccepted,
         },
         boss::{Boss, BossPartName},
     },
@@ -171,6 +173,17 @@ pub async fn live_from_attack(
         }
     }
     Ok(Json(boss))
+}
+
+pub async fn live_attacking_players(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<LiveAttackingPlayer>> {
+    let mut players = state.live_attacking_players.write().await;
+    let now = Utc::now();
+    players.retain(|_, player| !player.is_expired(now));
+    let mut list: Vec<LiveAttackingPlayer> = players.values().cloned().collect();
+    list.sort_by_key(|player| player.started_at);
+    Json(list)
 }
 
 /// Reconstructs a live-boss view from the persisted `current_boss` tables

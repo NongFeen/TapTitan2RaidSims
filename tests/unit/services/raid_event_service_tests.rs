@@ -422,3 +422,107 @@ fn cycle_sample_produces_expected_percentages_and_reset_boundary() {
         event.next_reset_at
     );
 }
+
+#[test]
+fn attack_duration_applies_battle_drums_and_global_modifier_adjustments() {
+    assert_eq!(
+        attack_duration_seconds(&[], GlobalRaidModifier::None),
+        30.0
+    );
+    assert_eq!(
+        attack_duration_seconds(&[CardName::BattleDrums], GlobalRaidModifier::None),
+        20.0
+    );
+    assert_eq!(
+        attack_duration_seconds(&[], GlobalRaidModifier::AttackDuration),
+        33.0
+    );
+    assert!(
+        (attack_duration_seconds(&[], GlobalRaidModifier::SupportEffect) - 18.5).abs() < 1e-9
+    );
+    // Both adjustments stack: Battle Drums plus a global modifier.
+    assert!(
+        (attack_duration_seconds(
+            &[CardName::BattleDrums],
+            GlobalRaidModifier::SupportEffect
+        ) - 8.5)
+            .abs()
+            < 1e-9
+    );
+    // A modifier unrelated to duration leaves the base window untouched.
+    assert_eq!(
+        attack_duration_seconds(&[], GlobalRaidModifier::BurstDamage),
+        30.0
+    );
+}
+
+#[test]
+fn start_attack_sample_parses_into_expected_player_and_cards() {
+    let event: StartAttackEvent = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/start_attack.json"
+    ))
+    .unwrap();
+    assert_eq!(event.player.player_code, "933qd64");
+    assert_eq!(event.player.name, "12 Kero -> Feen");
+    assert_eq!(
+        event.cards,
+        vec!["CosmicBarb", "MentalFocus", "InnerTruth"]
+    );
+}
+
+#[tokio::test]
+async fn start_attack_registers_a_live_attacking_player_without_a_database() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let raw: Value = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/start_attack.json"
+    ))
+    .unwrap();
+
+    handle_event(&state, "start_attack", raw).await.unwrap();
+
+    let players = state.live_attacking_players.read().await;
+    let player = players.get("933qd64").unwrap();
+    assert_eq!(player.name, "12 Kero -> Feen");
+    assert_eq!(player.cards.len(), 3);
+    assert_eq!(player.cards[0].card_id, "CosmicBarb");
+    assert_eq!(player.cards[0].display_name, "Electro Zap");
+    // No database available, so the global raid modifier can't be looked up
+    // and only Battle Drums (absent from this deck) would change the base window.
+    assert_eq!(player.duration_seconds, 30.0);
+}
+
+#[tokio::test]
+async fn repeated_start_attack_for_the_same_player_refreshes_started_at() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let raw: Value = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/start_attack.json"
+    ))
+    .unwrap();
+
+    handle_event(&state, "start_attack", raw.clone()).await.unwrap();
+    let first_started_at = state
+        .live_attacking_players
+        .read()
+        .await
+        .get("933qd64")
+        .unwrap()
+        .started_at;
+
+    // A later attack from the same player carries a newer `started_at`; the
+    // frontend uses that (not an artificial counter) to tell "still the same
+    // attack" apart from "a fresh one just began, restart the countdown".
+    let mut later: Value = raw.clone();
+    later["started_at"] = serde_json::json!("2026-08-25T15:00:00Z");
+
+    handle_event(&state, "start_attack", later).await.unwrap();
+    let second_started_at = state
+        .live_attacking_players
+        .read()
+        .await
+        .get("933qd64")
+        .unwrap()
+        .started_at;
+
+    assert!(second_started_at > first_started_at);
+    assert_eq!(state.live_attacking_players.read().await.len(), 1);
+}

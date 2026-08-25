@@ -67,6 +67,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/live-current-boss",
             get(routes::raids::live_from_attack),
         )
+        .route(
+            "/api/live-attacking-players",
+            get(routes::raids::live_attacking_players),
+        )
         .route("/api/raid-cycle/current", get(routes::raid_cycle::current))
         .route(
             "/api/players/{player_id}/recommendations/current",

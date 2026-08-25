@@ -8,7 +8,10 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        app::{CreateSimulationJobRequest, LiveAttackBossView, LiveBossDisplayPart},
+        app::{
+            CreateSimulationJobRequest, LiveAttackBossView, LiveAttackingCard,
+            LiveAttackingPlayer, LiveBossDisplayPart,
+        },
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
         db_enums::ComponentKind,
@@ -26,8 +29,82 @@ pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Re
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
+        "start_attack" => handle_start_attack(state, serde_json::from_value(data)?).await,
         _ => Ok(()),
     }
+}
+
+const BASE_ATTACK_DURATION_SECONDS: f64 = 30.0;
+const BATTLE_DRUMS_DURATION_ADJUST_SECONDS: f64 = -10.0;
+const ATTACK_DURATION_MODIFIER_ADJUST_SECONDS: f64 = 3.0;
+const SUPPORT_EFFECT_MODIFIER_ADJUST_SECONDS: f64 = -10.0 * 1.15;
+
+/// The attack timer TT2 shows to other clan members: a fixed base window,
+/// shortened if the attacker's own deck carries Battle Drums (matches its
+/// `attack_duration_add_seconds` support modifier, see
+/// `card_function/support/battle_drums.rs`), and then adjusted again by
+/// whatever global raid modifier is currently active for the whole clan.
+fn attack_duration_seconds(cards: &[CardName], global_modifier: GlobalRaidModifier) -> f64 {
+    let mut duration = BASE_ATTACK_DURATION_SECONDS;
+    if cards.contains(&CardName::BattleDrums) {
+        duration += BATTLE_DRUMS_DURATION_ADJUST_SECONDS;
+    }
+    duration += match global_modifier {
+        GlobalRaidModifier::AttackDuration => ATTACK_DURATION_MODIFIER_ADJUST_SECONDS,
+        GlobalRaidModifier::SupportEffect => SUPPORT_EFFECT_MODIFIER_ADJUST_SECONDS,
+        _ => 0.0,
+    };
+    duration.max(0.0)
+}
+
+async fn handle_start_attack(
+    state: &Arc<AppState>,
+    event: StartAttackEvent,
+) -> Result<(), AppError> {
+    let cards: Vec<LiveAttackingCard> = event
+        .cards
+        .iter()
+        .map(|card_id| match CardName::from_str(card_id) {
+            Ok(card) => LiveAttackingCard {
+                card_id: card_id.clone(),
+                display_name: card.display_name().to_string(),
+                image_url: card.image_url(),
+            },
+            Err(_) => LiveAttackingCard {
+                card_id: card_id.clone(),
+                display_name: card_id.clone(),
+                image_url: String::new(),
+            },
+        })
+        .collect();
+    let recognized_cards: Vec<CardName> = event
+        .cards
+        .iter()
+        .filter_map(|card_id| CardName::from_str(card_id).ok())
+        .collect();
+
+    let global_modifier = match state.optional_db() {
+        Some(db) => boss_repo::load(db)
+            .await?
+            .map_or(GlobalRaidModifier::None, |loaded| {
+                loaded.boss.global_raid_modifier
+            }),
+        None => GlobalRaidModifier::None,
+    };
+    let duration_seconds = attack_duration_seconds(&recognized_cards, global_modifier);
+
+    let player = LiveAttackingPlayer {
+        player_code: event.player.player_code.clone(),
+        name: event.player.name,
+        cards,
+        started_at: event.started_at,
+        duration_seconds,
+    };
+    let mut players = state.live_attacking_players.write().await;
+    let now = Utc::now();
+    players.retain(|_, existing| !existing.is_expired(now));
+    players.insert(event.player.player_code, player);
+    Ok(())
 }
 
 async fn handle_sub_start(
@@ -1111,6 +1188,13 @@ struct AttackCardLevel {
 struct AttackPlayer {
     player_code: String,
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartAttackEvent {
+    player: AttackPlayer,
+    cards: Vec<String>,
+    started_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
