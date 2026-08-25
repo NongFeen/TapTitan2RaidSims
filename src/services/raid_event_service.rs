@@ -34,7 +34,7 @@ pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Re
     }
 }
 
-const BASE_ATTACK_DURATION_SECONDS: f64 = 30.0;
+const BASE_ATTACK_DURATION_SECONDS: f64 = 33.0;
 const BATTLE_DRUMS_DURATION_ADJUST_SECONDS: f64 = -10.0;
 const ATTACK_DURATION_MODIFIER_ADJUST_SECONDS: f64 = 3.0;
 const SUPPORT_EFFECT_MODIFIER_ADJUST_SECONDS: f64 = -10.0 * 1.15;
