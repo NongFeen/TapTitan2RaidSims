@@ -304,6 +304,12 @@ fn classify_phase_refresh(
     targets: &[BossPartName],
     incoming: &Boss,
 ) -> Option<PhaseRefresh> {
+    // A part appearing to regress here means an `attack` event arrived out
+    // of order relative to another (concurrent players, network jitter) --
+    // not a real boss reset. Real resets (new titan, new cycle) go through
+    // `handle_sub_cycle` instead, which is authoritative and not subject to
+    // this per-tap reordering risk. Treat any regression here as stale and
+    // ignore it, rather than resimulating against a phantom rollback.
     if targets.is_empty()
         || BossPartName::all().iter().any(|part_name| {
             phase_rank(incoming.part(*part_name).part_state)
@@ -388,6 +394,70 @@ fn part_ids(part_name: BossPartName) -> (&'static str, &'static str) {
         BossPartName::RightLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
         BossPartName::LeftLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
     }
+}
+
+/// Reconstructs a `LiveAttackBossView` from the persisted, continuously-synced
+/// `current_boss`/`current_boss_parts` tables -- used when the in-memory live
+/// attack snapshot is empty (e.g. right after a backend restart, before the
+/// next `attack` event arrives). This is necessarily an approximation of the
+/// real live feed: `current_hp` is the sum of each part's current body HP
+/// (the raw feed reports the titan's own total, which isn't stored), and
+/// armor entries are only synthesized for parts still in Armor/Cursed state,
+/// matching TT2's own convention of omitting a destroyed layer.
+pub fn live_boss_from_persisted(
+    loaded: &crate::services::boss_repo::LoadedBoss,
+    clan_code: String,
+    cycle: i32,
+) -> Option<LiveAttackBossView> {
+    let raid_id = loaded.source_raid_id?;
+    let titan_index = loaded.source_titan_index.unwrap_or_default();
+    let enemy_id = loaded.source_enemy_id.clone().unwrap_or_default();
+
+    let mut parts = Vec::with_capacity(16);
+    let mut current_hp_total = 0.0f64;
+    let mut display_parts = Vec::with_capacity(8);
+    for part_name in BossPartName::all() {
+        let part = loaded.boss.part(part_name);
+        let (body_id, armor_id) = part_ids(part_name);
+        parts.push(serde_json::json!({
+            "part_id": body_id,
+            "current_hp": part.current_health as f64,
+        }));
+        if matches!(part.part_state, PartState::Armor | PartState::Cursed) {
+            parts.push(serde_json::json!({
+                "part_id": armor_id,
+                "current_hp": part.current_armor as f64,
+            }));
+        }
+        current_hp_total += part.current_health as f64;
+
+        let (current_hp, max_hp) = match part.part_state {
+            PartState::Armor | PartState::Cursed => (part.current_armor, part.max_armor),
+            PartState::Body => (part.current_health, part.max_health),
+            PartState::Skeleton => (0, part.max_health),
+        };
+        display_parts.push(LiveBossDisplayPart {
+            part_name,
+            part_state: part.part_state,
+            current_hp,
+            max_hp,
+            is_targeted: loaded.attackable_parts.contains(&part_name),
+        });
+    }
+
+    Some(LiveAttackBossView {
+        clan_code,
+        raid_id,
+        cycle,
+        titan_index,
+        boss_data: serde_json::json!({
+            "enemy_id": enemy_id,
+            "current_hp": current_hp_total,
+            "parts": parts,
+        }),
+        received_at: loaded.updated_at,
+        display_parts: Some(display_parts),
+    })
 }
 
 pub fn live_boss_display_parts(
@@ -516,12 +586,24 @@ async fn handle_sub_cycle(
     let targets_changed = previous_boss
         .as_ref()
         .is_none_or(|previous| previous.attackable_parts != attackable_parts);
-    if !enemy_changed {
+    // Only trust attack-tracked HP over this snapshot within the same cycle
+    // against the same titan -- sub_cycle reports periodically and can lag
+    // behind more frequent attack events, but a new cycle or a new titan is
+    // exactly when parts are expected to legitimately reset/regenerate, and
+    // the fresh snapshot must be allowed through rather than silently
+    // reverted back to the old, already-depleted values.
+    if !enemy_changed && !cycle_changed {
         if let Some(previous) = &previous_boss {
             preserve_current_boss_values(&mut boss, &previous.boss);
         }
     }
-    let needs_simulation = cycle_changed || enemy_changed || targets_changed || mirror_changed;
+    let parts_changed = previous_boss.as_ref().is_none_or(|previous| {
+        BossPartName::all()
+            .iter()
+            .any(|part_name| boss.part(*part_name).part_state != previous.boss.part(*part_name).part_state)
+    });
+    let needs_simulation =
+        cycle_changed || enemy_changed || targets_changed || mirror_changed || parts_changed;
 
     let mut tx = state.db()?.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")

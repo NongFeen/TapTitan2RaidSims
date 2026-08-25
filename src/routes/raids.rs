@@ -133,29 +133,75 @@ pub async fn current(
 pub async fn live_from_attack(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiveAttackBossView>, AppError> {
-    let mut boss = state.live_attack_boss.read().await.clone().ok_or_else(|| {
-        AppError::NotFound(
-            "No live current boss has been received from an attack event".to_string(),
-        )
-    })?;
-    if let Some(db) = state.optional_db() {
-        let display_metadata: Option<(serde_json::Value, serde_json::Value)> = sqlx::query_as(
-            "SELECT raid_data,titan_targets FROM raid_current_state WHERE raid_id=$1 AND raid_data IS NOT NULL AND titan_targets IS NOT NULL",
-        )
-        .bind(boss.raid_id)
-        .fetch_optional(db)
-        .await?;
-        boss.display_parts = display_metadata
-            .as_ref()
-            .map(|(raid_data, titan_targets)| {
-                raid_event_service::live_boss_display_parts(
-                    &boss.boss_data,
-                    raid_data,
-                    titan_targets,
+    let cached = state.live_attack_boss.read().await.clone();
+    let (mut boss, from_cache) = match cached {
+        Some(boss) => (boss, true),
+        None => {
+            let fallback = build_live_boss_fallback(&state).await?;
+            let boss = fallback.ok_or_else(|| {
+                AppError::NotFound(
+                    "No live current boss has been received from an attack event".to_string(),
                 )
-            })
-            .transpose()?
-            .flatten();
+            })?;
+            (boss, false)
+        }
+    };
+    // The DB-reconstructed fallback already computes display_parts directly
+    // from normalized data; only the real in-memory path needs this extra
+    // raw-JSON enrichment step (it doesn't carry titan-target info itself).
+    if from_cache {
+        if let Some(db) = state.optional_db() {
+            let display_metadata: Option<(serde_json::Value, serde_json::Value)> = sqlx::query_as(
+                "SELECT raid_data,titan_targets FROM raid_current_state WHERE raid_id=$1 AND raid_data IS NOT NULL AND titan_targets IS NOT NULL",
+            )
+            .bind(boss.raid_id)
+            .fetch_optional(db)
+            .await?;
+            boss.display_parts = display_metadata
+                .as_ref()
+                .map(|(raid_data, titan_targets)| {
+                    raid_event_service::live_boss_display_parts(
+                        &boss.boss_data,
+                        raid_data,
+                        titan_targets,
+                    )
+                })
+                .transpose()?
+                .flatten();
+        }
     }
     Ok(Json(boss))
+}
+
+/// Reconstructs a live-boss view from the persisted `current_boss` tables
+/// when no attack event has been received yet since the backend last
+/// restarted -- see `raid_event_service::live_boss_from_persisted`.
+async fn build_live_boss_fallback(
+    state: &Arc<AppState>,
+) -> Result<Option<LiveAttackBossView>, AppError> {
+    let Some(db) = state.optional_db() else {
+        return Ok(None);
+    };
+    let Some(loaded) = boss_repo::load(db).await? else {
+        return Ok(None);
+    };
+    let Some(raid_id) = loaded.source_raid_id else {
+        return Ok(None);
+    };
+    let clan_code: Option<String> =
+        sqlx::query_scalar("SELECT clan_code FROM raid_current_state WHERE raid_id=$1")
+            .bind(raid_id)
+            .fetch_optional(db)
+            .await?;
+    let cycle: Option<i32> = sqlx::query_scalar(
+        "SELECT cycle FROM raid_attack_logs WHERE raid_id=$1 ORDER BY attack_datetime DESC LIMIT 1",
+    )
+    .bind(raid_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(raid_event_service::live_boss_from_persisted(
+        &loaded,
+        clan_code.unwrap_or_default(),
+        cycle.unwrap_or_default(),
+    ))
 }
