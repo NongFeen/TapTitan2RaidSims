@@ -164,6 +164,57 @@ fn sub_cycle_raid_is_used_only_when_sub_start_is_missing() {
 }
 
 #[test]
+fn first_titan_enemy_id_follows_spawn_order_not_titan_list_order() {
+    let sub_start: SubStartEvent = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap();
+
+    // spawn_sequence[0] is "Jukk", which is Enemy3 in the titans list -- not
+    // Enemy2 (Takedar), which happens to be listed first in `titans`.
+    assert_eq!(sub_start.raid.spawn_sequence[0], "Jukk");
+    assert_eq!(sub_start.raid.titans[0].enemy_id, "Enemy2");
+    assert_eq!(first_titan_enemy_id(&sub_start.raid).unwrap(), "Enemy3");
+}
+
+#[test]
+fn first_titan_enemy_id_falls_back_to_first_titan_when_spawn_sequence_is_empty() {
+    let sub_start: SubStartEvent = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap();
+    let mut raid = sub_start.raid;
+    raid.spawn_sequence.clear();
+
+    assert_eq!(first_titan_enemy_id(&raid).unwrap(), "Enemy2");
+}
+
+#[test]
+fn a_brand_new_raids_first_sub_start_has_no_locked_in_target_yet() {
+    // The real sample: every part reports state "0" on the very first
+    // sub_start of a raid -- nothing has been targeted yet in-game.
+    let sub_start: SubStartEvent = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap();
+    assert!(
+        sub_start
+            .titan_target
+            .iter()
+            .all(|target| target.state.iter().all(|part| part.state == "0"))
+    );
+
+    // Previously this would fail with "sub_cycle selected no attackable
+    // titan parts"; now it should default to every part being attackable so
+    // a boss can still be set up immediately from sub_start alone.
+    let enemy_id = first_titan_enemy_id(&sub_start.raid).unwrap().to_string();
+    let (_, attackable_parts) =
+        boss_from_raid_snapshot(&sub_start.raid, &sub_start.titan_target, &enemy_id, false)
+            .expect("should default to all parts attackable, not error");
+    assert_eq!(attackable_parts.len(), 8);
+}
+
+#[test]
 fn attack_part_values_flip_game_left_and_right() {
     let live = AttackCurrentBoss {
         enemy_id: "Enemy8".to_string(),
