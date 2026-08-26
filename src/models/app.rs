@@ -151,6 +151,29 @@ pub struct LiveBossDisplayPart {
     pub is_targeted: bool,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct LiveAttackingCard {
+    pub card_id: String,
+    pub display_name: String,
+    pub image_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct LiveAttackingPlayer {
+    pub player_code: String,
+    pub name: String,
+    pub cards: Vec<LiveAttackingCard>,
+    pub started_at: DateTime<Utc>,
+    pub duration_seconds: f64,
+}
+
+impl LiveAttackingPlayer {
+    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+        let elapsed = (now - self.started_at).num_milliseconds() as f64 / 1000.0;
+        elapsed >= self.duration_seconds
+    }
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct RecommendationView {
     pub id: Uuid,
