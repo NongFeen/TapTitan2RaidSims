@@ -123,15 +123,121 @@ async fn handle_sub_start(
 
     let titan_count = event.raid.titans.len();
     let sequence_count = event.raid.spawn_sequence.len();
-    sqlx::query(
-        "INSERT INTO raid_current_state (raid_id,clan_code,raid_data,raw_sub_start,received_at) VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code,raid_data=EXCLUDED.raid_data,raw_sub_start=EXCLUDED.raw_sub_start,received_at=NOW(),updated_at=NOW()",
+    let raid_json = serde_json::to_value(&event.raid)?;
+    let titan_target_json = serde_json::to_value(&event.titan_target)?;
+
+    let mut tx = state.db()?.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(RAID_STATE_LOCK)
+        .execute(&mut *tx)
+        .await?;
+    // Held across every check and write below so a concurrent attack event
+    // (which takes the same lock) can't observe or leave things half-updated.
+    let is_new_raid_row = !sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM raid_current_state WHERE raid_id=$1)",
     )
     .bind(event.raid_id)
-    .bind(&event.clan_code)
-    .bind(serde_json::to_value(&event.raid)?)
-    .bind(raw_payload)
-    .execute(state.db()?)
+    .fetch_one(&mut *tx)
     .await?;
+    let current = boss_repo::load_for_update(&mut tx).await?;
+    // Not just "raid_id never seen before": even for an already-tracked
+    // raid_id, the sims boss can still be pointed at a different raid (e.g.
+    // events arriving out of order across a reconnect). Either way, the boss
+    // needs to be (re)established for *this* raid_id.
+    let boss_matches_raid = current
+        .as_ref()
+        .is_some_and(|boss| boss.source_raid_id == Some(event.raid_id));
+
+    let new_boss_version = if !boss_matches_raid {
+        // Set up a fresh sims boss starting from the first titan in this
+        // raid's own spawn sequence -- also establishes
+        // `resulting_titan_index`/`current_enemy_id` immediately (normally
+        // only an `attack` event sets these) so a `sub_cycle` arriving
+        // before the first attack doesn't hit "arrived before an attack
+        // established raid state".
+        let enemy_id = first_titan_enemy_id(&event.raid)?.to_string();
+        // recommend_1_to_2_part_patterns_only is an admin preference, not
+        // tied to any one raid -- carry it over rather than silently
+        // resetting it just because the boss is being re-established.
+        let preserve_narrow = current
+            .map(|previous| previous.boss.recommend_1_to_2_part_patterns_only)
+            .unwrap_or(false);
+        let (boss, attackable_parts) = boss_from_raid_snapshot(
+            &event.raid,
+            &event.titan_target,
+            &enemy_id,
+            preserve_narrow,
+        )?;
+
+        if is_new_raid_row {
+            sqlx::query(
+                "INSERT INTO raid_current_state (raid_id,clan_code,resulting_titan_index,current_enemy_id,raid_data,titan_targets,raw_sub_start,received_at) VALUES ($1,$2,0,$3,$4,$5,$6,NOW())",
+            )
+            .bind(event.raid_id)
+            .bind(&event.clan_code)
+            .bind(&enemy_id)
+            .bind(&raid_json)
+            .bind(&titan_target_json)
+            .bind(&raw_payload)
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE raid_current_state SET clan_code=$2,resulting_titan_index=0,current_enemy_id=$3,raid_data=$4,titan_targets=$5,raw_sub_start=$6,received_at=NOW(),updated_at=NOW() WHERE raid_id=$1",
+            )
+            .bind(event.raid_id)
+            .bind(&event.clan_code)
+            .bind(&enemy_id)
+            .bind(&raid_json)
+            .bind(&titan_target_json)
+            .bind(&raw_payload)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        let boss_version = boss_repo::store(
+            &mut tx,
+            boss_repo::BossWrite {
+                boss: &boss,
+                attackable_parts: Some(&attackable_parts),
+                source_raid_id: Some(event.raid_id),
+                source_titan_index: Some(0),
+                source_enemy_id: Some(&enemy_id),
+                bump_version: true,
+            },
+        )
+        .await?;
+        Some(boss_version)
+    } else {
+        // Boss already belongs to this raid -- refresh the stored raw data
+        // unconditionally (a later sub_start can carry a real target
+        // selection even when an earlier one for this same raid didn't),
+        // and update the boss's attackable_parts to match if so.
+        sqlx::query(
+            "UPDATE raid_current_state SET clan_code=$2,raid_data=$3,titan_targets=$4,raw_sub_start=$5,received_at=NOW(),updated_at=NOW() WHERE raid_id=$1",
+        )
+        .bind(event.raid_id)
+        .bind(&event.clan_code)
+        .bind(&raid_json)
+        .bind(&titan_target_json)
+        .bind(&raw_payload)
+        .execute(&mut *tx)
+        .await?;
+
+        match current.and_then(|boss| boss.source_enemy_id) {
+            Some(enemy_id) => {
+                update_boss_targets_from_titan_target(&mut tx, &event.titan_target, &enemy_id)
+                    .await?
+            }
+            None => None,
+        }
+    };
+    tx.commit().await?;
+
+    if let Some(boss_version) = new_boss_version {
+        job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+        queue_auto_simulations(state, None).await?;
+    }
 
     tracing::info!(
         raid_id = event.raid_id,
@@ -140,6 +246,8 @@ async fn handle_sub_start(
         morale = event.morale.bonus_amount,
         titan_count,
         sequence_count,
+        is_new_raid_row,
+        boss_matches_raid,
         "stored TT2 sub_start base raid data"
     );
     Ok(())
@@ -935,23 +1043,25 @@ fn boss_from_raid_snapshot(
         .iter()
         .find(|titan| titan.enemy_id == enemy_id)
         .ok_or_else(|| AppError::BadRequest(format!("base raid has no titan {enemy_id}")))?;
-    let target = titan_targets
+    // A brand new raid's first sub_start reports every part as "0" (no
+    // target locked in yet) -- and titan_target can be entirely absent from
+    // some events. Rather than fail, treat "no selection reported" as
+    // "everything is attackable"; a later sub_cycle (or sub_start) with a
+    // real selection will narrow this down as soon as it arrives.
+    let attackable_parts = titan_targets
         .iter()
         .find(|target| target.enemy_id == enemy_id)
-        .ok_or_else(|| {
-            AppError::BadRequest(format!("sub_cycle has no target data for {enemy_id}"))
-        })?;
-    let attackable_parts = target
-        .state
-        .iter()
-        .filter(|part| part.state == "2")
-        .map(|part| target_part_name(&part.id))
-        .collect::<Result<Vec<_>, _>>()?;
-    if attackable_parts.is_empty() {
-        return Err(AppError::BadRequest(
-            "sub_cycle selected no attackable titan parts".into(),
-        ));
-    }
+        .map(|target| {
+            target
+                .state
+                .iter()
+                .filter(|part| part.state == "2")
+                .map(|part| target_part_name(&part.id))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .filter(|parts| !parts.is_empty())
+        .unwrap_or_else(|| BossPartName::all().to_vec());
 
     if raid.area_buffs.len() > 1 || titan.cursed_debuffs.len() > 1 {
         return Err(AppError::BadRequest(
@@ -1034,6 +1144,63 @@ fn boss_from_raid_snapshot(
         "damage_results": [],
     }))?;
     Ok((boss, attackable_parts))
+}
+
+/// The titan a brand new raid starts on: whichever enemy_name the spawn
+/// order lists first (falling back to the first titan definition if the
+/// spawn order is empty), always at titan_index 0.
+fn first_titan_enemy_id(raid: &RaidSnapshot) -> Result<&str, AppError> {
+    raid.spawn_sequence
+        .first()
+        .and_then(|name| raid.titans.iter().find(|titan| &titan.enemy_name == name))
+        .or_else(|| raid.titans.first())
+        .map(|titan| titan.enemy_id.as_str())
+        .ok_or_else(|| AppError::BadRequest("sub_start raid has no titans".into()))
+}
+
+/// Refreshes the sims boss's `attackable_parts` when `titan_target` reveals
+/// a real selection for `enemy_id` that differs from what's currently
+/// stored -- used when a sub_start for an already-known raid carries target
+/// data an earlier one for the same raid didn't have yet. Returns the new
+/// boss version if anything actually changed.
+async fn update_boss_targets_from_titan_target(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    titan_target: &[TitanTarget],
+    enemy_id: &str,
+) -> Result<Option<i64>, AppError> {
+    let Some(target) = titan_target.iter().find(|target| target.enemy_id == enemy_id) else {
+        return Ok(None);
+    };
+    let attackable_parts = target
+        .state
+        .iter()
+        .filter(|part| part.state == "2")
+        .map(|part| target_part_name(&part.id))
+        .collect::<Result<Vec<_>, _>>()?;
+    if attackable_parts.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(current) = boss_repo::load_for_update(tx).await? else {
+        return Ok(None);
+    };
+    if current.attackable_parts == attackable_parts {
+        return Ok(None);
+    }
+
+    let boss_version = boss_repo::store(
+        tx,
+        boss_repo::BossWrite {
+            boss: &current.boss,
+            attackable_parts: Some(&attackable_parts),
+            source_raid_id: current.source_raid_id,
+            source_titan_index: current.source_titan_index,
+            source_enemy_id: current.source_enemy_id.as_deref(),
+            bump_version: true,
+        },
+    )
+    .await?;
+    Ok(Some(boss_version))
 }
 
 fn select_base_raid(
@@ -1244,6 +1411,11 @@ struct SubStartEvent {
     morale: RaidMorale,
     raid: RaidSnapshot,
     start_at: DateTime<Utc>,
+    /// Usually all "0" (no target locked in yet) on the very first sub_start
+    /// of a raid, but a later sub_start (e.g. a reconnect resend) can carry
+    /// real target selections -- see `handle_sub_start`.
+    #[serde(default)]
+    titan_target: Vec<TitanTarget>,
 }
 
 #[derive(Debug, Deserialize)]
