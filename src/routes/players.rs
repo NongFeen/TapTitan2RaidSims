@@ -9,7 +9,6 @@ use axum::{
     http::StatusCode,
 };
 use chrono::{DateTime, Duration, Utc};
-use uuid::Uuid;
 
 use crate::{
     error::AppError,
@@ -29,7 +28,7 @@ pub async fn list(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<PlayerSummary>>, AppError> {
     let players = sqlx::query_as(
-        "SELECT p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, p.player_token_ciphertext IS NOT NULL AS has_player_token, p.tt2_token_status AS player_token_status, p.tt2_last_fetched_at, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.id ORDER BY p.display_name",
+        "SELECT p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, p.player_token_ciphertext IS NOT NULL AS has_player_token, p.tt2_token_status AS player_token_status, p.tt2_last_fetched_at, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.player_id ORDER BY p.display_name",
     )
     .fetch_all(state.db()?)
     .await?;
@@ -38,7 +37,6 @@ pub async fn list(
 
 #[derive(sqlx::FromRow)]
 struct PlayerDetailRow {
-    id: Uuid,
     player_id: String,
     display_name: String,
     auto_sims: bool,
@@ -55,13 +53,13 @@ pub async fn get(
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerDetail>, AppError> {
     let row: PlayerDetailRow = sqlx::query_as(
-        "SELECT p.id, p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, p.player_token_ciphertext IS NOT NULL AS has_player_token, p.tt2_token_status AS player_token_status, p.tt2_last_fetched_at, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.id WHERE p.player_id=$1",
+        "SELECT p.player_id, p.display_name, p.auto_sims, s.revision AS stats_revision, p.player_token_ciphertext IS NOT NULL AS has_player_token, p.tt2_token_status AS player_token_status, p.tt2_last_fetched_at, p.created_at, p.updated_at FROM players p LEFT JOIN player_stats s ON s.player_id=p.player_id WHERE p.player_id=$1",
     )
     .bind(player_id)
     .fetch_optional(state.db()?)
     .await?
     .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let stats = player_stats_repo::load(state.db()?, row.id)
+    let stats = player_stats_repo::load(state.db()?, &row.player_id)
         .await?
         .map(|loaded| serde_json::to_value(&loaded.data))
         .transpose()?;
@@ -99,16 +97,15 @@ async fn store_stats(
     stats: PlayerRaidData,
 ) -> Result<PlayerStatsVersion, AppError> {
     let mut tx = state.db()?.begin().await?;
-    let internal_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1 FOR UPDATE")
+    let locked: Option<String> =
+        sqlx::query_scalar("SELECT player_id FROM players WHERE player_id=$1 FOR UPDATE")
             .bind(player_id)
             .fetch_optional(&mut *tx)
             .await?;
-    let internal_id =
-        internal_id.ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let stored = player_stats_repo::store(&mut tx, internal_id, &stats).await?;
-    sqlx::query("UPDATE players SET updated_at=NOW() WHERE id=$1")
-        .bind(internal_id)
+    locked.ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
+    let stored = player_stats_repo::store(&mut tx, player_id, &stats).await?;
+    sqlx::query("UPDATE players SET updated_at=NOW() WHERE player_id=$1")
+        .bind(player_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -124,12 +121,14 @@ pub async fn current_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerStatsVersion>, AppError> {
-    let internal_id: Uuid = sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1")
+    let player_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
         .bind(&player_id)
-        .fetch_optional(state.db()?)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let loaded = player_stats_repo::load(state.db()?, internal_id)
+        .fetch_one(state.db()?)
+        .await?;
+    if !player_exists {
+        return Err(AppError::NotFound("Player not found".to_string()));
+    }
+    let loaded = player_stats_repo::load(state.db()?, &player_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Player has no current stats".to_string()))?;
     Ok(Json(PlayerStatsVersion {
@@ -146,7 +145,7 @@ pub async fn update_auto_sims(
     Json(request): Json<UpdateAutoSimsRequest>,
 ) -> Result<Json<PlayerSummary>, AppError> {
     let player = sqlx::query_as(
-        "UPDATE players SET auto_sims=$2, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.id) AS stats_revision, player_token_ciphertext IS NOT NULL AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
+        "UPDATE players SET auto_sims=$2, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.player_id) AS stats_revision, player_token_ciphertext IS NOT NULL AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
     )
     .bind(&player_id)
     .bind(request.auto_sims)
@@ -175,7 +174,7 @@ pub async fn update_token(
     })?;
     let (ciphertext, nonce) = tt2.cipher().encrypt(token)?;
     let player = sqlx::query_as(
-        "UPDATE players SET player_token_ciphertext=$2, player_token_nonce=$3, tt2_token_status='configured', tt2_last_fetched_at=NULL, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.id) AS stats_revision, TRUE AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
+        "UPDATE players SET player_token_ciphertext=$2, player_token_nonce=$3, tt2_token_status='configured', tt2_last_fetched_at=NULL, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.player_id) AS stats_revision, TRUE AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
     )
     .bind(&player_id).bind(ciphertext).bind(nonce)
     .fetch_optional(state.db()?).await?
@@ -188,7 +187,7 @@ pub async fn clear_token(
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerSummary>, AppError> {
     let player = sqlx::query_as(
-        "UPDATE players SET player_token_ciphertext=NULL, player_token_nonce=NULL, tt2_token_status='missing', tt2_last_fetched_at=NULL, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.id) AS stats_revision, FALSE AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
+        "UPDATE players SET player_token_ciphertext=NULL, player_token_nonce=NULL, tt2_token_status='missing', tt2_last_fetched_at=NULL, updated_at=NOW() WHERE player_id=$1 RETURNING player_id, display_name, auto_sims, (SELECT revision FROM player_stats WHERE player_id=players.player_id) AS stats_revision, FALSE AS has_player_token, tt2_token_status AS player_token_status, tt2_last_fetched_at, created_at, updated_at",
     )
     .bind(&player_id).fetch_optional(state.db()?).await?
     .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
@@ -260,16 +259,14 @@ pub async fn fetch_tt2_clan_stats(
         ));
     }
 
-    let player_rows: Vec<(String, Uuid)> = sqlx::query_as("SELECT p.player_id, p.id FROM players p")
+    let existing_codes: HashSet<String> = sqlx::query_scalar("SELECT player_id FROM players")
         .fetch_all(state.db()?)
-        .await?;
-    let existing_codes = player_rows
-        .iter()
-        .map(|(player_code, _)| player_code.clone())
-        .collect::<HashSet<_>>();
+        .await?
+        .into_iter()
+        .collect();
     let mut existing_stats = HashMap::new();
-    for (player_code, internal_id) in &player_rows {
-        if let Some(loaded) = player_stats_repo::load(state.db()?, *internal_id).await? {
+    for player_code in &existing_codes {
+        if let Some(loaded) = player_stats_repo::load(state.db()?, player_code).await? {
             existing_stats.insert(player_code.clone(), loaded.data);
         }
     }
@@ -310,15 +307,14 @@ pub async fn fetch_tt2_clan_stats(
     let clan_name = clan.clan_name.trim().to_string();
     let mut tx = state.db()?.begin().await?;
     for (player_code, display_name, stats) in prepared_players {
-        let internal_id: Uuid = sqlx::query_scalar(
-            "INSERT INTO players (id, player_id, display_name, auto_sims) VALUES ($1,$2,$3,FALSE) ON CONFLICT (player_id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=NOW() RETURNING id",
+        sqlx::query(
+            "INSERT INTO players (player_id, display_name, auto_sims) VALUES ($1,$2,FALSE) ON CONFLICT (player_id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=NOW()",
         )
-        .bind(Uuid::new_v4())
         .bind(&player_code)
         .bind(display_name)
-        .fetch_one(&mut *tx)
+        .execute(&mut *tx)
         .await?;
-        player_stats_repo::store(&mut tx, internal_id, &stats).await?;
+        player_stats_repo::store(&mut tx, &player_code, &stats).await?;
     }
     sqlx::query(
         "UPDATE tt2_clan_sync_state SET clan_code=$1, clan_name=$2, last_fetched_at=$3, last_player_count=$4, updated_at=NOW() WHERE singleton=TRUE",
@@ -403,11 +399,7 @@ pub async fn fetch_tt2_stats(
             public.player_code, player_id
         )));
     }
-    let internal_id: Uuid = sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1")
-        .bind(&player_id)
-        .fetch_one(state.db()?)
-        .await?;
-    let existing_stats = player_stats_repo::load(state.db()?, internal_id)
+    let existing_stats = player_stats_repo::load(state.db()?, &player_id)
         .await?
         .map(|loaded| loaded.data);
     let title = existing_stats.as_ref().map_or(0.0, |stats| stats.title);

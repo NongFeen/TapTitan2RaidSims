@@ -65,7 +65,7 @@ async fn replace_current_boss(
     let mut created_jobs = Vec::new();
     if trigger_simulations {
         let player_ids: Vec<String> = sqlx::query_scalar(
-            "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
+            "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.player_id)",
         )
         .fetch_all(state.db()?)
         .await?;

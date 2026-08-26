@@ -177,12 +177,15 @@ async fn create_job_with_mode(
     request: CreateSimulationJobRequest,
     phase_change_mask: Option<u8>,
 ) -> Result<(Uuid, bool), AppError> {
-    let internal_player_id: Uuid = sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1")
-        .bind(request.player_id.trim())
-        .fetch_optional(state.db()?)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Player not found".to_string()))?;
-    let loaded_stats = crate::services::player_stats_repo::load(state.db()?, internal_player_id)
+    let player_id = request.player_id.trim().to_string();
+    let player_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
+        .bind(&player_id)
+        .fetch_one(state.db()?)
+        .await?;
+    if !player_exists {
+        return Err(AppError::NotFound("Player not found".to_string()));
+    }
+    let loaded_stats = crate::services::player_stats_repo::load(state.db()?, &player_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Player has no stored stats".to_string()))?;
     let stats_revision = loaded_stats.revision;
@@ -216,7 +219,7 @@ async fn create_job_with_mode(
     };
     let deduplication_key = format!(
         "{}:{}:{}:{}:{}:{:.6}",
-        internal_player_id,
+        player_id,
         stats_revision,
         boss_version,
         SIMULATOR_VERSION,
@@ -228,7 +231,7 @@ async fn create_job_with_mode(
         "INSERT INTO simulation_jobs (id, player_id, boss_version, deduplication_key, simulator_version, status, payload, recompute_mode, phase_change_mask) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,$8) ON CONFLICT (deduplication_key) DO NOTHING RETURNING id",
     )
     .bind(job_id)
-    .bind(internal_player_id)
+    .bind(&player_id)
     .bind(boss_version)
     .bind(&deduplication_key)
     .bind(SIMULATOR_VERSION)
@@ -331,7 +334,7 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
         .await
         .map_err(|_| AppError::Internal("Simulation worker is shutting down".to_string()))?;
 
-    let payload: Option<(serde_json::Value, RecomputeMode, i16, Uuid, i64)> = sqlx::query_as(
+    let payload: Option<(serde_json::Value, RecomputeMode, i16, String, i64)> = sqlx::query_as(
         "UPDATE simulation_jobs SET status='running', attempts=attempts+1, started_at=NOW(), error_message=NULL, updated_at=NOW() WHERE id=$1 AND status IN ('pending','failed') RETURNING payload,recompute_mode,phase_change_mask,player_id,boss_version",
     )
     .bind(job_id)
@@ -452,7 +455,7 @@ struct IncrementalRun {
 
 async fn try_incremental_run(
     state: &Arc<AppState>,
-    player_id: Uuid,
+    player_id: String,
     boss_version: i64,
     requested_mask: u8,
     payload: &SimPayLoad,
@@ -460,7 +463,7 @@ async fn try_incremental_run(
     let candidates: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
         "SELECT id,payload FROM simulation_jobs WHERE player_id=$1 AND status='completed' AND boss_version < $2 AND simulator_version=$3 ORDER BY boss_version DESC,completed_at DESC LIMIT 10",
     )
-    .bind(player_id)
+    .bind(&player_id)
     .bind(boss_version)
     .bind(SIMULATOR_VERSION)
     .fetch_all(state.db()?)
@@ -796,7 +799,7 @@ pub async fn generate_deck_recommendations(
         RecommendationPhase::Current
     };
     let job_id: Uuid = sqlx::query_scalar(
-        "SELECT j.id FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
+        "SELECT j.id FROM simulation_jobs j WHERE j.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(recommendation_phase)
@@ -883,7 +886,7 @@ pub async fn generate_deck_recommendations(
 }
 
 pub async fn get_job(state: &AppState, job_id: Uuid) -> Result<SimulationJobView, AppError> {
-    sqlx::query_as("SELECT j.id, p.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE j.id=$1")
+    sqlx::query_as("SELECT j.id, j.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j WHERE j.id=$1")
         .bind(job_id)
         .fetch_optional(state.db()?)
         .await?
@@ -894,7 +897,7 @@ pub async fn list_player_jobs(
     state: &AppState,
     player_id: &str,
 ) -> Result<Vec<SimulationJobView>, AppError> {
-    let jobs = sqlx::query_as("SELECT j.id, p.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j JOIN players p ON p.id=j.player_id WHERE p.player_id=$1 ORDER BY j.created_at DESC LIMIT 100")
+    let jobs = sqlx::query_as("SELECT j.id, j.player_id, j.simulator_version, j.status, j.result, j.error_message, j.attempts, j.created_at, j.started_at, j.completed_at, j.updated_at FROM simulation_jobs j WHERE j.player_id=$1 ORDER BY j.created_at DESC LIMIT 100")
         .bind(player_id)
         .fetch_all(state.db()?)
         .await?;

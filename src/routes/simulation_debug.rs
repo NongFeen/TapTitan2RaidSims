@@ -75,7 +75,7 @@ pub async fn run(
     }
 
     let stats_json: serde_json::Value = sqlx::query_scalar(
-        "SELECT s.stats FROM player_stats s JOIN players p ON p.id=s.player_id WHERE p.player_id=$1",
+        "SELECT s.stats FROM player_stats s WHERE s.player_id=$1",
     )
     .bind(request.player_id.trim())
     .fetch_optional(state.db()?)

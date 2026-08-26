@@ -297,51 +297,71 @@ async fn handle_attack(
         .execute(&mut *tx)
         .await?;
 
-    let attack_id = Uuid::new_v4();
-    let inserted: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO raid_attack_logs (id,raid_id,clan_code,player_id,player_code,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage,raw_payload) VALUES ($1,$2,$3,(SELECT id FROM players WHERE player_id=$4),$4,$5,$6,$7,$8,$9,$10,CAST($11 AS NUMERIC),CAST($12 AS NUMERIC),$13) ON CONFLICT (raid_id,player_code,attack_datetime) DO NOTHING RETURNING id",
-    )
-    .bind(attack_id)
-    .bind(attack.raid_id)
-    .bind(&attack.clan_code)
-    .bind(&attack.player.player_code)
-    .bind(&attack.player.name)
-    .bind(attack.cycle)
-    .bind(attack.attack_log.attack_datetime)
-    .bind(attacked_titan_index)
-    .bind(attack.raid_state.titan_index)
-    .bind(&attack.raid_state.current.enemy_id)
-    .bind(tap_damage.to_string())
-    .bind(total_damage.to_string())
-    .bind(raw_payload)
-    .fetch_optional(&mut *tx)
-    .await?;
+    // Attacks can arrive for a player who isn't in `players` yet (they've
+    // never been through a clan-stats sync). Rather than store an
+    // orphaned/unlinked log row, skip logging this one attack (and its
+    // card-damage breakdown) entirely -- boss HP tracking below is driven
+    // by the live raid_state snapshot regardless, so it isn't affected.
+    let player_known: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
+        .bind(&attack.player.player_code)
+        .fetch_one(&mut *tx)
+        .await?;
 
-    if inserted.is_none() {
-        tx.commit().await?;
-        sync_sims_boss_on_phase_transition(state, &attack).await?;
-        return Ok(());
-    }
-
-    for (position, component) in components.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO raid_attack_components (attack_log_id,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC),$8)",
+    let logged = if player_known {
+        let attack_id = Uuid::new_v4();
+        let inserted: Option<Uuid> = sqlx::query_scalar(
+            "INSERT INTO raid_attack_logs (id,raid_id,clan_code,player_id,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage,raw_payload) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CAST($11 AS NUMERIC),CAST($12 AS NUMERIC),$13) ON CONFLICT (raid_id,player_id,attack_datetime) DO NOTHING RETURNING id",
         )
         .bind(attack_id)
-        .bind(position as i32)
-        .bind(if component.card_id.is_some() {
-            ComponentKind::Card
-        } else {
-            ComponentKind::Tap
-        })
-        .bind(&component.card_id)
-        .bind(&component.card_name)
-        .bind(component.card_level)
-        .bind(component.total_damage.to_string())
-        .bind(&component.part_damage)
-        .execute(&mut *tx)
+        .bind(attack.raid_id)
+        .bind(&attack.clan_code)
+        .bind(&attack.player.player_code)
+        .bind(&attack.player.name)
+        .bind(attack.cycle)
+        .bind(attack.attack_log.attack_datetime)
+        .bind(attacked_titan_index)
+        .bind(attack.raid_state.titan_index)
+        .bind(&attack.raid_state.current.enemy_id)
+        .bind(tap_damage.to_string())
+        .bind(total_damage.to_string())
+        .bind(raw_payload)
+        .fetch_optional(&mut *tx)
         .await?;
-    }
+
+        if inserted.is_none() {
+            tx.commit().await?;
+            sync_sims_boss_on_phase_transition(state, &attack).await?;
+            return Ok(());
+        }
+
+        for (position, component) in components.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO raid_attack_components (attack_log_id,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC),$8)",
+            )
+            .bind(attack_id)
+            .bind(position as i32)
+            .bind(if component.card_id.is_some() {
+                ComponentKind::Card
+            } else {
+                ComponentKind::Tap
+            })
+            .bind(&component.card_id)
+            .bind(&component.card_name)
+            .bind(component.card_level)
+            .bind(component.total_damage.to_string())
+            .bind(&component.part_damage)
+            .execute(&mut *tx)
+            .await?;
+        }
+        true
+    } else {
+        tracing::debug!(
+            raid_id = attack.raid_id,
+            player_code = attack.player.player_code,
+            "skipping raid_attack_logs insert; player is not tracked in players yet"
+        );
+        false
+    };
 
     sqlx::query(
         "INSERT INTO raid_current_state (raid_id,clan_code,resulting_titan_index,current_enemy_id,refresh_required) VALUES ($1,$2,$3,$4,FALSE) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code, resulting_titan_index=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.resulting_titan_index ELSE raid_current_state.resulting_titan_index END, current_enemy_id=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.current_enemy_id ELSE raid_current_state.current_enemy_id END, refresh_required=FALSE, updated_at=NOW()",
@@ -361,6 +381,7 @@ async fn handle_attack(
         attacked_titan_index,
         resulting_titan_index = attack.raid_state.titan_index,
         total_damage,
+        logged,
         "stored TT2 raid attack"
     );
     sync_sims_boss_on_phase_transition(state, &attack).await?;
@@ -946,7 +967,7 @@ async fn queue_auto_simulations(
     phase_change_mask: Option<u8>,
 ) -> Result<(), AppError> {
     let player_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
+        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.player_id)",
     )
     .fetch_all(state.db()?)
     .await?;

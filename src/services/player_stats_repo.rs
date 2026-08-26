@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use sqlx::{PgExecutor, Postgres, Transaction};
-use uuid::Uuid;
 
 use crate::models::{
     cards::{Card, CardName},
@@ -266,7 +265,7 @@ fn row_to_titan_soul_research(row: &PlayerStatsRow) -> TitanSoulResearch {
 /// Load a player's normalized stats + card list and reassemble the exact
 /// `PlayerRaidData` shape the rest of the app (and the frontend, via
 /// `serde_json::to_value`) expects.
-pub async fn load<'e, E>(executor: E, player_id: Uuid) -> Result<Option<LoadedPlayerStats>, sqlx::Error>
+pub async fn load<'e, E>(executor: E, player_id: &str) -> Result<Option<LoadedPlayerStats>, sqlx::Error>
 where
     E: PgExecutor<'e> + Copy,
 {
@@ -329,7 +328,7 @@ where
 /// transaction, bumping `revision` the same way the old JSONB upsert did.
 pub async fn store(
     tx: &mut Transaction<'_, Postgres>,
-    player_id: Uuid,
+    player_id: &str,
     data: &PlayerRaidData,
 ) -> Result<LoadedPlayerStats, sqlx::Error> {
     let research = &data.raid_card_research;
