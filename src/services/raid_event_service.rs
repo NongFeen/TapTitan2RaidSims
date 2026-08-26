@@ -301,6 +301,7 @@ async fn sync_sims_boss_on_phase_transition(
     let refresh = classify_phase_refresh(&boss, &targets, &incoming);
 
     if let Some(refresh) = refresh {
+        let target_count = targets.len();
         let boss_version = boss_repo::store(
             &mut tx,
             boss_repo::BossWrite {
@@ -316,12 +317,18 @@ async fn sync_sims_boss_on_phase_transition(
         tx.commit().await?;
 
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+        let snapshot = job_service::PreloadedBossSnapshot {
+            boss: incoming,
+            attackable_parts: targets,
+            version: boss_version,
+        };
         queue_auto_simulations(
             state,
             match refresh {
                 PhaseRefresh::Full => None,
                 PhaseRefresh::Incremental(mask) => Some(mask),
             },
+            Some(&snapshot),
         )
         .await?;
         tracing::info!(
@@ -329,7 +336,7 @@ async fn sync_sims_boss_on_phase_transition(
             titan_index = attack.raid_state.titan_index,
             enemy_id = %attack.raid_state.current.enemy_id,
             boss_version,
-            target_count = targets.len(),
+            target_count,
             refresh_mode = ?refresh,
             "boss target phase changed; updated sims boss and queued auto simulations"
         );
@@ -714,7 +721,12 @@ async fn handle_sub_cycle(
 
     if needs_simulation {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-        queue_auto_simulations(state, None).await?;
+        let snapshot = job_service::PreloadedBossSnapshot {
+            boss,
+            attackable_parts,
+            version: boss_version,
+        };
+        queue_auto_simulations(state, None, Some(&snapshot)).await?;
     }
     tracing::info!(
         event.raid_id,
@@ -745,7 +757,7 @@ async fn handle_cycle_reset(state: &Arc<AppState>, event: CycleResetEvent) -> Re
     )
     .await?;
     if mirror_changed {
-        queue_auto_simulations(state, None).await?;
+        queue_auto_simulations(state, None, None).await?;
     }
     Ok(())
 }
@@ -836,6 +848,7 @@ async fn store_cycle_state(
 async fn queue_auto_simulations(
     state: &Arc<AppState>,
     phase_change_mask: Option<u8>,
+    preloaded_boss: Option<&job_service::PreloadedBossSnapshot>,
 ) -> Result<(), AppError> {
     let player_ids: Vec<String> = sqlx::query_scalar(
         "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
@@ -847,10 +860,16 @@ async fn queue_auto_simulations(
             player_id: player_id.clone(),
             include_body_phase: true,
         };
-        let result = if let Some(mask) = phase_change_mask {
-            job_service::create_phase_aware_job(state, request, mask).await
-        } else {
-            job_service::create_job(state, request).await
+        let result = match (phase_change_mask, preloaded_boss) {
+            (Some(mask), Some(snapshot)) => {
+                job_service::create_phase_aware_job_with_snapshot(state, request, mask, snapshot)
+                    .await
+            }
+            (Some(mask), None) => job_service::create_phase_aware_job(state, request, mask).await,
+            (None, Some(snapshot)) => {
+                job_service::create_job_with_snapshot(state, request, snapshot).await
+            }
+            (None, None) => job_service::create_job(state, request).await,
         };
         if let Err(error) = result {
             tracing::error!(

@@ -25,6 +25,17 @@ const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
 
+/// The exact boss snapshot that justified queuing a resim, passed straight
+/// through instead of re-reading `current_boss` afterward -- a concurrent
+/// attack event can otherwise clear a target's armor in the gap between
+/// "we decided this needs a resim" and "the job captured its own snapshot",
+/// silently losing the one shot at a void-phase (Insanity Void) simulation.
+pub struct PreloadedBossSnapshot {
+    pub boss: Boss,
+    pub attackable_parts: Vec<BossPartName>,
+    pub version: i64,
+}
+
 struct PreparedRecommendation {
     deck_count: usize,
     must_include_mirror_force: bool,
@@ -161,7 +172,7 @@ pub async fn create_job(
     state: &Arc<AppState>,
     request: CreateSimulationJobRequest,
 ) -> Result<(Uuid, bool), AppError> {
-    create_job_with_mode(state, request, None).await
+    create_job_with_mode(state, request, None, None).await
 }
 
 pub async fn create_phase_aware_job(
@@ -169,13 +180,35 @@ pub async fn create_phase_aware_job(
     request: CreateSimulationJobRequest,
     phase_change_mask: u8,
 ) -> Result<(Uuid, bool), AppError> {
-    create_job_with_mode(state, request, Some(phase_change_mask)).await
+    create_job_with_mode(state, request, Some(phase_change_mask), None).await
+}
+
+/// Same as `create_job`, but reuses `preloaded_boss` instead of re-reading
+/// `current_boss` -- see `PreloadedBossSnapshot`.
+pub async fn create_job_with_snapshot(
+    state: &Arc<AppState>,
+    request: CreateSimulationJobRequest,
+    preloaded_boss: &PreloadedBossSnapshot,
+) -> Result<(Uuid, bool), AppError> {
+    create_job_with_mode(state, request, None, Some(preloaded_boss)).await
+}
+
+/// Same as `create_phase_aware_job`, but reuses `preloaded_boss` instead of
+/// re-reading `current_boss` -- see `PreloadedBossSnapshot`.
+pub async fn create_phase_aware_job_with_snapshot(
+    state: &Arc<AppState>,
+    request: CreateSimulationJobRequest,
+    phase_change_mask: u8,
+    preloaded_boss: &PreloadedBossSnapshot,
+) -> Result<(Uuid, bool), AppError> {
+    create_job_with_mode(state, request, Some(phase_change_mask), Some(preloaded_boss)).await
 }
 
 async fn create_job_with_mode(
     state: &Arc<AppState>,
     request: CreateSimulationJobRequest,
     phase_change_mask: Option<u8>,
+    preloaded_boss: Option<&PreloadedBossSnapshot>,
 ) -> Result<(Uuid, bool), AppError> {
     let internal_player_id: Uuid = sqlx::query_scalar("SELECT id FROM players WHERE player_id=$1")
         .bind(request.player_id.trim())
@@ -188,12 +221,23 @@ async fn create_job_with_mode(
     let stats_revision = loaded_stats.revision;
     let player_stats: PlayerRaidData = loaded_stats.data;
 
-    let loaded_boss = crate::services::boss_repo::load(state.db()?)
-        .await?
-        .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
-    let boss_version = loaded_boss.version;
-    let boss_data: Boss = loaded_boss.boss;
-    let attackable_part: Vec<BossPartName> = loaded_boss.attackable_parts;
+    let (boss_version, boss_data, attackable_part) = match preloaded_boss {
+        Some(snapshot) => (
+            snapshot.version,
+            snapshot.boss.clone(),
+            snapshot.attackable_parts.clone(),
+        ),
+        None => {
+            let loaded_boss = crate::services::boss_repo::load(state.db()?)
+                .await?
+                .ok_or_else(|| AppError::NotFound("No sims boss data".to_string()))?;
+            (
+                loaded_boss.version,
+                loaded_boss.boss,
+                loaded_boss.attackable_parts,
+            )
+        }
+    };
     let usable_card: Vec<CardName> = player_stats
         .card_list
         .iter()
