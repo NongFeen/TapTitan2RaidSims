@@ -13,7 +13,6 @@ use crate::{
         },
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
-        db_enums::ComponentKind,
     },
     services::{boss_repo, job_service},
     state::AppState,
@@ -325,27 +324,25 @@ async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(),
             return Ok(());
         }
 
-        for (position, component) in components.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO raid_attack_components (raid_id,player_id,attack_datetime,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,CAST($9 AS NUMERIC),$10)",
-            )
-            .bind(attack.raid_id)
-            .bind(&attack.player.player_code)
-            .bind(attack.attack_log.attack_datetime)
-            .bind(position as i32)
-            .bind(if component.card_id.is_some() {
-                ComponentKind::Card
-            } else {
-                ComponentKind::Tap
-            })
-            .bind(&component.card_id)
-            .bind(&component.card_name)
-            .bind(component.card_level)
-            .bind(component.total_damage.to_string())
-            .bind(&component.part_damage)
-            .execute(&mut *tx)
-            .await?;
-        }
+        let cards = aggregate_card_components(&components);
+        sqlx::query(
+            "INSERT INTO raid_attack_components (raid_id,player_id,attack_datetime,tap_damage,card1,card1_level,card1_damage,card2,card2_level,card2_damage,card3,card3_level,card3_damage) VALUES ($1,$2,$3,CAST($4 AS NUMERIC),$5,$6,CAST($7 AS NUMERIC),$8,$9,CAST($10 AS NUMERIC),$11,$12,CAST($13 AS NUMERIC))",
+        )
+        .bind(attack.raid_id)
+        .bind(&attack.player.player_code)
+        .bind(attack.attack_log.attack_datetime)
+        .bind(tap_damage.to_string())
+        .bind(cards.first().map(|card| card.card_id.as_str()))
+        .bind(cards.first().and_then(|card| card.card_level))
+        .bind(cards.first().map_or("0".to_string(), |card| card.damage.to_string()))
+        .bind(cards.get(1).map(|card| card.card_id.as_str()))
+        .bind(cards.get(1).and_then(|card| card.card_level))
+        .bind(cards.get(1).map_or("0".to_string(), |card| card.damage.to_string()))
+        .bind(cards.get(2).map(|card| card.card_id.as_str()))
+        .bind(cards.get(2).and_then(|card| card.card_level))
+        .bind(cards.get(2).map_or("0".to_string(), |card| card.damage.to_string()))
+        .execute(&mut *tx)
+        .await?;
         true
     } else {
         tracing::debug!(
@@ -997,29 +994,11 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
         .cards_damage
         .iter()
         .map(|component| {
-            let part_damage = component
+            let total_damage = component
                 .damage_log
                 .iter()
-                .map(|damage| {
-                    Ok(serde_json::json!({
-                        "part_id": damage.id,
-                        "damage": rounded_u64(damage.value, "attack damage")?,
-                    }))
-                })
-                .collect::<Result<Vec<_>, AppError>>()?;
-            let total_damage = part_damage
-                .iter()
-                .filter_map(|damage| damage.get("damage").and_then(Value::as_u64))
-                .sum();
-            let card_name = component.card_id.as_deref().map_or_else(
-                || "Tap".to_string(),
-                |card_id| {
-                    CardName::from_str(card_id).map_or_else(
-                        |_| card_id.to_string(),
-                        |card| card.display_name().to_string(),
-                    )
-                },
-            );
+                .map(|damage| rounded_u64(damage.value, "attack damage"))
+                .sum::<Result<u64, AppError>>()?;
             Ok(AttackComponent {
                 titan_index: component.titan_index,
                 card_level: component
@@ -1027,12 +1006,40 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
                     .as_deref()
                     .and_then(|card_id| levels.get(card_id).copied()),
                 card_id: component.card_id.clone(),
-                card_name,
                 total_damage,
-                part_damage: Value::Array(part_damage),
             })
         })
         .collect()
+}
+
+struct AggregatedCardComponent {
+    card_id: String,
+    card_level: Option<i32>,
+    damage: u64,
+}
+
+/// A raid deck is always exactly 3 cards, but the same card can appear as
+/// more than one component in a single attack (TT2 splits a hit into
+/// separate Body/Armor components when a limb's cursed state flips
+/// mid-attack) -- fold those back into one damage total per card, in the
+/// order each card first appeared.
+fn aggregate_card_components(components: &[AttackComponent]) -> Vec<AggregatedCardComponent> {
+    let mut cards: Vec<AggregatedCardComponent> = Vec::with_capacity(3);
+    for component in components {
+        let Some(card_id) = &component.card_id else {
+            continue;
+        };
+        if let Some(existing) = cards.iter_mut().find(|card| &card.card_id == card_id) {
+            existing.damage += component.total_damage;
+        } else {
+            cards.push(AggregatedCardComponent {
+                card_id: card_id.clone(),
+                card_level: component.card_level,
+                damage: component.total_damage,
+            });
+        }
+    }
+    cards
 }
 
 
@@ -1345,7 +1352,6 @@ struct AttackCardDamage {
 
 #[derive(Debug, Deserialize)]
 struct AttackPartDamage {
-    id: String,
     value: f64,
 }
 
@@ -1390,10 +1396,8 @@ struct AttackCurrentBossPart {
 struct AttackComponent {
     titan_index: i32,
     card_id: Option<String>,
-    card_name: String,
     card_level: Option<i32>,
     total_damage: u64,
-    part_damage: Value,
 }
 
 #[derive(Debug, Deserialize)]

@@ -26,7 +26,7 @@ fn supplied_attack_samples_have_expected_totals_and_transition_indices() {
             components.iter().map(|part| part.total_damage).sum::<u64>(),
             expected_total
         );
-        assert_eq!(components[0].card_name, "Tap");
+        assert!(components[0].card_id.is_none());
         assert_eq!(components[0].titan_index, 1);
         assert_eq!(event.raid_state.titan_index, resulting_index);
     }
