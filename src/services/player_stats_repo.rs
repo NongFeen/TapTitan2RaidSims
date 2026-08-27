@@ -1,5 +1,8 @@
+use std::collections::{HashMap, HashSet};
+
 use chrono::{DateTime, Utc};
 use sqlx::{PgExecutor, Postgres, Transaction};
+use strum::IntoEnumIterator;
 
 use crate::models::{
     cards::{Card, CardName},
@@ -152,10 +155,103 @@ const PLAYER_STATS_COLUMNS: &str = "revision, created_at, updated_at, \
     gem_affliction_terro_damage, gem_affliction_klonk_damage, gem_affliction_priker_damage";
 
 #[derive(sqlx::FromRow)]
-struct PlayerCardRow {
-    card_id: CardName,
-    level: i32,
-    enabled: bool,
+struct PlayerCardsRow {
+    moon_beam_level: Option<i32>,
+    fragmentize_level: Option<i32>,
+    skull_bash_level: Option<i32>,
+    razor_wind_level: Option<i32>,
+    whip_of_lightning_level: Option<i32>,
+    clanship_barrage_level: Option<i32>,
+    purifying_blast_level: Option<i32>,
+    psychic_shackles_level: Option<i32>,
+    flak_shot_level: Option<i32>,
+    cosmic_haymaker_level: Option<i32>,
+    chain_of_vengeance_level: Option<i32>,
+    mirror_force_level: Option<i32>,
+    celestial_static_level: Option<i32>,
+    guard_break_level: Option<i32>,
+    barbed_morningstar_level: Option<i32>,
+    blazing_inferno_level: Option<i32>,
+    acid_drench_level: Option<i32>,
+    decaying_strike_level: Option<i32>,
+    fusion_bomb_level: Option<i32>,
+    grim_shadow_level: Option<i32>,
+    thriving_plague_level: Option<i32>,
+    radioactivity_level: Option<i32>,
+    ravenous_swarm_level: Option<i32>,
+    ruinous_rain_level: Option<i32>,
+    corrosive_bubbles_level: Option<i32>,
+    maelstrom_level: Option<i32>,
+    amplify_level: Option<i32>,
+    sands_of_time_level: Option<i32>,
+    electro_zap_level: Option<i32>,
+    crushing_instinct_level: Option<i32>,
+    insanity_void_level: Option<i32>,
+    rancid_gas_level: Option<i32>,
+    inspiring_force_level: Option<i32>,
+    soul_fire_level: Option<i32>,
+    victory_march_level: Option<i32>,
+    prismatic_rift_level: Option<i32>,
+    ancestral_favor_level: Option<i32>,
+    grasping_vines_level: Option<i32>,
+    totem_of_power_level: Option<i32>,
+    team_tactics_level: Option<i32>,
+    skeletal_smash_level: Option<i32>,
+    astral_echo_level: Option<i32>,
+    radiant_kaleidoscope_level: Option<i32>,
+    battle_drums_level: Option<i32>,
+    disabled_card_mask: i64,
+}
+
+const PLAYER_CARDS_COLUMNS: &str = "moon_beam_level, fragmentize_level, skull_bash_level, razor_wind_level, whip_of_lightning_level, clanship_barrage_level, purifying_blast_level, psychic_shackles_level, flak_shot_level, cosmic_haymaker_level, chain_of_vengeance_level, mirror_force_level, celestial_static_level, guard_break_level, barbed_morningstar_level, blazing_inferno_level, acid_drench_level, decaying_strike_level, fusion_bomb_level, grim_shadow_level, thriving_plague_level, radioactivity_level, ravenous_swarm_level, ruinous_rain_level, corrosive_bubbles_level, maelstrom_level, amplify_level, sands_of_time_level, electro_zap_level, crushing_instinct_level, insanity_void_level, rancid_gas_level, inspiring_force_level, soul_fire_level, victory_march_level, prismatic_rift_level, ancestral_favor_level, grasping_vines_level, totem_of_power_level, team_tactics_level, skeletal_smash_level, astral_echo_level, radiant_kaleidoscope_level, battle_drums_level, disabled_card_mask";
+
+fn card_level(row: &PlayerCardsRow, card: CardName) -> Option<i32> {
+    match card {
+        CardName::MoonBeam => row.moon_beam_level,
+        CardName::Fragmentize => row.fragmentize_level,
+        CardName::SkullBash => row.skull_bash_level,
+        CardName::RazorWind => row.razor_wind_level,
+        CardName::WhipOfLightning => row.whip_of_lightning_level,
+        CardName::ClanshipBarrage => row.clanship_barrage_level,
+        CardName::PurifyingBlast => row.purifying_blast_level,
+        CardName::PsychicShackles => row.psychic_shackles_level,
+        CardName::FlakShot => row.flak_shot_level,
+        CardName::CosmicHaymaker => row.cosmic_haymaker_level,
+        CardName::ChainOfVengeance => row.chain_of_vengeance_level,
+        CardName::MirrorForce => row.mirror_force_level,
+        CardName::CelestialStatic => row.celestial_static_level,
+        CardName::GuardBreak => row.guard_break_level,
+        CardName::BarbedMorningstar => row.barbed_morningstar_level,
+        CardName::BlazingInferno => row.blazing_inferno_level,
+        CardName::AcidDrench => row.acid_drench_level,
+        CardName::DecayingStrike => row.decaying_strike_level,
+        CardName::FusionBomb => row.fusion_bomb_level,
+        CardName::GrimShadow => row.grim_shadow_level,
+        CardName::ThrivingPlague => row.thriving_plague_level,
+        CardName::Radioactivity => row.radioactivity_level,
+        CardName::RavenousSwarm => row.ravenous_swarm_level,
+        CardName::RuinousRain => row.ruinous_rain_level,
+        CardName::CorrosiveBubbles => row.corrosive_bubbles_level,
+        CardName::Maelstrom => row.maelstrom_level,
+        CardName::Amplify => row.amplify_level,
+        CardName::SandsOfTime => row.sands_of_time_level,
+        CardName::ElectroZap => row.electro_zap_level,
+        CardName::CrushingInstinct => row.crushing_instinct_level,
+        CardName::InsanityVoid => row.insanity_void_level,
+        CardName::RancidGas => row.rancid_gas_level,
+        CardName::InspiringForce => row.inspiring_force_level,
+        CardName::SoulFire => row.soul_fire_level,
+        CardName::VictoryMarch => row.victory_march_level,
+        CardName::PrismaticRift => row.prismatic_rift_level,
+        CardName::AncestralFavor => row.ancestral_favor_level,
+        CardName::GraspingVines => row.grasping_vines_level,
+        CardName::TotemOfPower => row.totem_of_power_level,
+        CardName::TeamTactics => row.team_tactics_level,
+        CardName::SkeletalSmash => row.skeletal_smash_level,
+        CardName::AstralEcho => row.astral_echo_level,
+        CardName::RadiantKaleidoscope => row.radiant_kaleidoscope_level,
+        CardName::BattleDrums => row.battle_drums_level,
+    }
 }
 
 fn row_to_raid_card_research(row: &PlayerStatsRow) -> RaidCardResearch {
@@ -279,25 +375,31 @@ where
         return Ok(None);
     };
 
-    let card_rows: Vec<PlayerCardRow> =
-        sqlx::query_as("SELECT card_id, level, enabled FROM player_cards WHERE player_id = $1")
-            .bind(player_id)
-            .fetch_all(executor)
-            .await?;
-    let card_list = card_rows
-        .into_iter()
-        .map(|card_row| Card {
-            card_id: card_row.card_id,
-            cardtype: card_row.card_id.card_type(),
-            level: card_row.level as u16,
-            enabled: card_row.enabled,
-            tap_count: 0,
-            chained_parts: Vec::new(),
-            celestial_stacks: 0,
-            skill: Default::default(),
-            proc_chance_cache: 0.0,
-        })
-        .collect();
+    let cards_row: Option<PlayerCardsRow> = sqlx::query_as(&format!(
+        "SELECT {PLAYER_CARDS_COLUMNS} FROM player_cards WHERE player_id = $1"
+    ))
+    .bind(player_id)
+    .fetch_optional(executor)
+    .await?;
+    let card_list = cards_row.map_or_else(Vec::new, |cards_row| {
+        CardName::iter()
+            .enumerate()
+            .filter_map(|(bit_index, card)| {
+                let level = card_level(&cards_row, card)?;
+                Some(Card {
+                    card_id: card,
+                    cardtype: card.card_type(),
+                    level: level as u16,
+                    enabled: cards_row.disabled_card_mask & (1i64 << bit_index) == 0,
+                    tap_count: 0,
+                    chained_parts: Vec::new(),
+                    celestial_stacks: 0,
+                    skill: Default::default(),
+                    proc_chance_cache: 0.0,
+                })
+            })
+            .collect()
+    });
 
     let data = PlayerRaidData {
         player_raid_level: row.player_raid_level as u16,
@@ -577,21 +679,121 @@ pub async fn store(
     .fetch_one(&mut **tx)
     .await?;
 
-    sqlx::query("DELETE FROM player_cards WHERE player_id = $1")
-        .bind(player_id)
-        .execute(&mut **tx)
-        .await?;
-    for card in &data.card_list {
-        sqlx::query(
-            "INSERT INTO player_cards (player_id, card_id, level, enabled) VALUES ($1,$2,$3,$4)",
-        )
-        .bind(player_id)
-        .bind(card.card_id)
-        .bind(card.level as i32)
-        .bind(card.enabled)
-        .execute(&mut **tx)
-        .await?;
-    }
+    let levels: HashMap<CardName, i32> = data
+        .card_list
+        .iter()
+        .map(|card| (card.card_id, card.level as i32))
+        .collect();
+    let disabled: HashSet<CardName> = data
+        .card_list
+        .iter()
+        .filter(|card| !card.enabled)
+        .map(|card| card.card_id)
+        .collect();
+    let disabled_card_mask: i64 = CardName::iter()
+        .enumerate()
+        .filter(|(_, card)| disabled.contains(card))
+        .map(|(bit_index, _)| 1i64 << bit_index)
+        .sum();
+
+    sqlx::query(
+        "INSERT INTO player_cards (player_id, moon_beam_level, fragmentize_level, skull_bash_level, razor_wind_level, whip_of_lightning_level, clanship_barrage_level, purifying_blast_level, psychic_shackles_level, flak_shot_level, cosmic_haymaker_level, chain_of_vengeance_level, mirror_force_level, celestial_static_level, guard_break_level, barbed_morningstar_level, blazing_inferno_level, acid_drench_level, decaying_strike_level, fusion_bomb_level, grim_shadow_level, thriving_plague_level, radioactivity_level, ravenous_swarm_level, ruinous_rain_level, corrosive_bubbles_level, maelstrom_level, amplify_level, sands_of_time_level, electro_zap_level, crushing_instinct_level, insanity_void_level, rancid_gas_level, inspiring_force_level, soul_fire_level, victory_march_level, prismatic_rift_level, ancestral_favor_level, grasping_vines_level, totem_of_power_level, team_tactics_level, skeletal_smash_level, astral_echo_level, radiant_kaleidoscope_level, battle_drums_level, disabled_card_mask) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46) \
+         ON CONFLICT (player_id) DO UPDATE SET \
+            moon_beam_level = EXCLUDED.moon_beam_level, \
+            fragmentize_level = EXCLUDED.fragmentize_level, \
+            skull_bash_level = EXCLUDED.skull_bash_level, \
+            razor_wind_level = EXCLUDED.razor_wind_level, \
+            whip_of_lightning_level = EXCLUDED.whip_of_lightning_level, \
+            clanship_barrage_level = EXCLUDED.clanship_barrage_level, \
+            purifying_blast_level = EXCLUDED.purifying_blast_level, \
+            psychic_shackles_level = EXCLUDED.psychic_shackles_level, \
+            flak_shot_level = EXCLUDED.flak_shot_level, \
+            cosmic_haymaker_level = EXCLUDED.cosmic_haymaker_level, \
+            chain_of_vengeance_level = EXCLUDED.chain_of_vengeance_level, \
+            mirror_force_level = EXCLUDED.mirror_force_level, \
+            celestial_static_level = EXCLUDED.celestial_static_level, \
+            guard_break_level = EXCLUDED.guard_break_level, \
+            barbed_morningstar_level = EXCLUDED.barbed_morningstar_level, \
+            blazing_inferno_level = EXCLUDED.blazing_inferno_level, \
+            acid_drench_level = EXCLUDED.acid_drench_level, \
+            decaying_strike_level = EXCLUDED.decaying_strike_level, \
+            fusion_bomb_level = EXCLUDED.fusion_bomb_level, \
+            grim_shadow_level = EXCLUDED.grim_shadow_level, \
+            thriving_plague_level = EXCLUDED.thriving_plague_level, \
+            radioactivity_level = EXCLUDED.radioactivity_level, \
+            ravenous_swarm_level = EXCLUDED.ravenous_swarm_level, \
+            ruinous_rain_level = EXCLUDED.ruinous_rain_level, \
+            corrosive_bubbles_level = EXCLUDED.corrosive_bubbles_level, \
+            maelstrom_level = EXCLUDED.maelstrom_level, \
+            amplify_level = EXCLUDED.amplify_level, \
+            sands_of_time_level = EXCLUDED.sands_of_time_level, \
+            electro_zap_level = EXCLUDED.electro_zap_level, \
+            crushing_instinct_level = EXCLUDED.crushing_instinct_level, \
+            insanity_void_level = EXCLUDED.insanity_void_level, \
+            rancid_gas_level = EXCLUDED.rancid_gas_level, \
+            inspiring_force_level = EXCLUDED.inspiring_force_level, \
+            soul_fire_level = EXCLUDED.soul_fire_level, \
+            victory_march_level = EXCLUDED.victory_march_level, \
+            prismatic_rift_level = EXCLUDED.prismatic_rift_level, \
+            ancestral_favor_level = EXCLUDED.ancestral_favor_level, \
+            grasping_vines_level = EXCLUDED.grasping_vines_level, \
+            totem_of_power_level = EXCLUDED.totem_of_power_level, \
+            team_tactics_level = EXCLUDED.team_tactics_level, \
+            skeletal_smash_level = EXCLUDED.skeletal_smash_level, \
+            astral_echo_level = EXCLUDED.astral_echo_level, \
+            radiant_kaleidoscope_level = EXCLUDED.radiant_kaleidoscope_level, \
+            battle_drums_level = EXCLUDED.battle_drums_level, \
+            disabled_card_mask = EXCLUDED.disabled_card_mask",
+    )
+    .bind(player_id)
+    .bind(levels.get(&CardName::MoonBeam).copied())
+    .bind(levels.get(&CardName::Fragmentize).copied())
+    .bind(levels.get(&CardName::SkullBash).copied())
+    .bind(levels.get(&CardName::RazorWind).copied())
+    .bind(levels.get(&CardName::WhipOfLightning).copied())
+    .bind(levels.get(&CardName::ClanshipBarrage).copied())
+    .bind(levels.get(&CardName::PurifyingBlast).copied())
+    .bind(levels.get(&CardName::PsychicShackles).copied())
+    .bind(levels.get(&CardName::FlakShot).copied())
+    .bind(levels.get(&CardName::CosmicHaymaker).copied())
+    .bind(levels.get(&CardName::ChainOfVengeance).copied())
+    .bind(levels.get(&CardName::MirrorForce).copied())
+    .bind(levels.get(&CardName::CelestialStatic).copied())
+    .bind(levels.get(&CardName::GuardBreak).copied())
+    .bind(levels.get(&CardName::BarbedMorningstar).copied())
+    .bind(levels.get(&CardName::BlazingInferno).copied())
+    .bind(levels.get(&CardName::AcidDrench).copied())
+    .bind(levels.get(&CardName::DecayingStrike).copied())
+    .bind(levels.get(&CardName::FusionBomb).copied())
+    .bind(levels.get(&CardName::GrimShadow).copied())
+    .bind(levels.get(&CardName::ThrivingPlague).copied())
+    .bind(levels.get(&CardName::Radioactivity).copied())
+    .bind(levels.get(&CardName::RavenousSwarm).copied())
+    .bind(levels.get(&CardName::RuinousRain).copied())
+    .bind(levels.get(&CardName::CorrosiveBubbles).copied())
+    .bind(levels.get(&CardName::Maelstrom).copied())
+    .bind(levels.get(&CardName::Amplify).copied())
+    .bind(levels.get(&CardName::SandsOfTime).copied())
+    .bind(levels.get(&CardName::ElectroZap).copied())
+    .bind(levels.get(&CardName::CrushingInstinct).copied())
+    .bind(levels.get(&CardName::InsanityVoid).copied())
+    .bind(levels.get(&CardName::RancidGas).copied())
+    .bind(levels.get(&CardName::InspiringForce).copied())
+    .bind(levels.get(&CardName::SoulFire).copied())
+    .bind(levels.get(&CardName::VictoryMarch).copied())
+    .bind(levels.get(&CardName::PrismaticRift).copied())
+    .bind(levels.get(&CardName::AncestralFavor).copied())
+    .bind(levels.get(&CardName::GraspingVines).copied())
+    .bind(levels.get(&CardName::TotemOfPower).copied())
+    .bind(levels.get(&CardName::TeamTactics).copied())
+    .bind(levels.get(&CardName::SkeletalSmash).copied())
+    .bind(levels.get(&CardName::AstralEcho).copied())
+    .bind(levels.get(&CardName::RadiantKaleidoscope).copied())
+    .bind(levels.get(&CardName::BattleDrums).copied())
+    .bind(disabled_card_mask)
+    .execute(&mut **tx)
+    .await?;
 
     Ok(LoadedPlayerStats {
         revision: row.revision,
