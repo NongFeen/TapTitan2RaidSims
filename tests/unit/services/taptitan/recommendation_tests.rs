@@ -147,3 +147,18 @@ fn handles_a_full_card_pool() {
         mask(&[CardName::MirrorForce, CardName::TeamTactics]),
     );
 }
+
+#[test]
+fn cards_from_mask_round_trips_with_the_encode_direction() {
+    let cards = [CardName::MoonBeam, CardName::TeamTactics, CardName::BattleDrums];
+    let round_tripped = cards_from_mask(mask(&cards));
+    assert_eq!(round_tripped.len(), 3);
+    for card in cards {
+        assert!(round_tripped.contains(&card));
+    }
+}
+
+#[test]
+fn cards_from_mask_of_zero_is_empty() {
+    assert!(cards_from_mask(0).is_empty());
+}

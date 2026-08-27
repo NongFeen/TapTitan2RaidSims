@@ -91,3 +91,37 @@ fn public_player_data_maps_all_supported_raid_fields() {
     assert_eq!(cleaned.raid_card_research.base_damage, 156);
     assert_eq!(cleaned.gem_stone_research.burst_lojak_damage, 10);
 }
+
+#[test]
+fn clan_data_equipment_set_names_are_normalized_to_match_manual_import() {
+    let cards = CardName::iter()
+        .map(|card| PublicCard {
+            level: 10,
+            skill_name: card.id().to_string(),
+        })
+        .collect();
+    let data = PublicClanPlayerData {
+        name: "Test Player".to_string(),
+        player_code: "eqw9d34".to_string(),
+        player_raid_level: serde_json::json!("1395"),
+        boosted_cards: Vec::new(),
+        raid_research_tree: HashMap::new(),
+        raid_research_bonuses: HashMap::new(),
+        gemstone_research_tree_raid_bonuses: HashMap::new(),
+        // /raid/clan_data reports these under different names than the
+        // manual-import export format uses ("Scorpion" for Dancer Venom,
+        // "Runestone" for Jukk Juggernaut) and never reports Rose
+        // Anniversary at all, even though every player has it.
+        equipment_set: vec!["Jade", "Runestone", "Airforce", "Scorpion"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        cards,
+    };
+    let cleaned = data.into_raid_data(1.0).unwrap();
+    assert!(cleaned.raid_set.jade_anniversary);
+    assert!(cleaned.raid_set.jukk_juggernaut);
+    assert!(cleaned.raid_set.airforce_ace);
+    assert!(cleaned.raid_set.dancer_venom);
+    assert!(cleaned.raid_set.rose_anniversary);
+}

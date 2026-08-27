@@ -11,7 +11,10 @@ use crate::{
         player_raid_data::PlayerRaidData,
         sim_payload::SimPayLoad,
     },
-    services::taptitan::sim_service::{SimDeckResult, SimService},
+    services::{
+        player_stats_repo,
+        taptitan::sim_service::{SimDeckResult, SimService},
+    },
     state::AppState,
 };
 
@@ -74,14 +77,11 @@ pub async fn run(
         ));
     }
 
-    let stats_json: serde_json::Value = sqlx::query_scalar(
-        "SELECT s.stats FROM player_stats s JOIN players p ON p.id=s.player_id WHERE p.player_id=$1",
-    )
-    .bind(request.player_id.trim())
-    .fetch_optional(state.db()?)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Player has no current stats".to_string()))?;
-    let player_raid_data: PlayerRaidData = serde_json::from_value(stats_json)?;
+    let player_raid_data: PlayerRaidData =
+        player_stats_repo::load(state.db()?, request.player_id.trim())
+            .await?
+            .ok_or_else(|| AppError::NotFound("Player has no current stats".to_string()))?
+            .data;
     for card_name in &request.deck {
         let available = player_raid_data
             .card_list

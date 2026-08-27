@@ -26,24 +26,10 @@ fn supplied_attack_samples_have_expected_totals_and_transition_indices() {
             components.iter().map(|part| part.total_damage).sum::<u64>(),
             expected_total
         );
-        assert_eq!(components[0].card_name, "Tap");
+        assert!(components[0].card_id.is_none());
         assert_eq!(components[0].titan_index, 1);
         assert_eq!(event.raid_state.titan_index, resulting_index);
     }
-}
-
-#[test]
-fn persisted_attack_payload_excludes_ephemeral_live_boss_hp() {
-    let raw: Value = serde_json::from_str(include_str!(
-        "../../../exampleSocketdatajson/afterbosstrans.json"
-    ))
-    .unwrap();
-    let sanitized = without_live_boss_data(raw);
-    assert!(sanitized.pointer("/raid_state/current").is_none());
-    assert_eq!(
-        sanitized.pointer("/raid_state/titan_index"),
-        Some(&serde_json::json!(2))
-    );
 }
 
 #[tokio::test]

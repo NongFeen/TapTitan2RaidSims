@@ -36,10 +36,3 @@ pub enum RecommendationPhase {
     Void,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "component_kind", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub enum ComponentKind {
-    Tap,
-    Card,
-}

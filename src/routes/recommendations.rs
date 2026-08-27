@@ -6,12 +6,14 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::{
     error::AppError,
     models::app::RecommendationView,
-    services::job_service::{DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_RECOMMENDATION_DECK_COUNT},
+    services::{
+        job_service::{DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_RECOMMENDATION_DECK_COUNT},
+        taptitan::recommendation::cards_from_mask,
+    },
     state::AppState,
 };
 
@@ -24,18 +26,6 @@ pub struct RecommendationQuery {
     #[serde(default)]
     must_include_team_tactics: bool,
     include_body_phase: Option<bool>,
-}
-
-#[derive(Deserialize)]
-pub struct DeckResultsQuery {
-    #[serde(default = "default_limit")]
-    limit: i64,
-    #[serde(default)]
-    offset: i64,
-}
-
-fn default_limit() -> i64 {
-    100
 }
 
 fn default_deck_count() -> i32 {
@@ -98,8 +88,8 @@ pub async fn current_for_player(
     if !player_exists {
         return Err(AppError::NotFound("Player not found".to_string()));
     }
-    let recommendation = sqlx::query_as(
-        "SELECT r.id, r.simulation_job_id, r.deck_count, r.must_include_mirror_force, r.must_include_team_tactics, r.total_average_damage::TEXT AS total_average_damage, (r.recommendation_phase='void') AS body_phase_ran, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'cards', d.cards, 'average_damage', d.average_damage::TEXT, 'result', d.result) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id JOIN players p ON p.id=j.player_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE p.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND r.deck_count=$2 AND r.must_include_mirror_force=$3 AND r.must_include_team_tactics=$4 AND r.recommendation_phase=(CASE WHEN COALESCE($5::BOOLEAN, FALSE) THEN 'void' ELSE 'current' END)::recommendation_phase GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
+    let mut recommendation: RecommendationView = sqlx::query_as(
+        "SELECT r.id, r.simulation_job_id, r.deck_count, r.must_include_mirror_force, r.must_include_team_tactics, r.total_average_damage::TEXT AS total_average_damage, (r.recommendation_phase='void') AS body_phase_ran, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'card_mask', d.card_mask, 'average_damage', d.average_damage::TEXT, 'result', jsonb_build_object('best_pattern', jsonb_build_object('pattern', d.pattern, 'lowest_round_damage', d.deck_lowest_damage, 'highest_round_damage', d.deck_highest_damage, 'card_damage', jsonb_build_array(jsonb_build_object('card', d.card1, 'average_damage', d.card1_damage), jsonb_build_object('card', d.card2, 'average_damage', d.card2_damage), jsonb_build_object('card', d.card3, 'average_damage', d.card3_damage))))) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r JOIN simulation_jobs j ON j.id=r.simulation_job_id LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE j.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND r.deck_count=$2 AND r.must_include_mirror_force=$3 AND r.must_include_team_tactics=$4 AND r.recommendation_phase=(CASE WHEN COALESCE($5::BOOLEAN, FALSE) THEN 'void' ELSE 'current' END)::recommendation_phase GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(query.deck_count)
@@ -109,36 +99,20 @@ pub async fn current_for_player(
     .fetch_optional(state.db()?)
     .await?
     .ok_or_else(|| AppError::NotFound("No completed recommendation found".to_string()))?;
-    Ok(Json(recommendation))
-}
 
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub struct DeckResultView {
-    id: Uuid,
-    cards: Value,
-    average_damage: String,
-    result: Value,
-}
-
-pub async fn deck_results(
-    State(state): State<Arc<AppState>>,
-    Path(job_id): Path<Uuid>,
-    Query(query): Query<DeckResultsQuery>,
-) -> Result<Json<Vec<DeckResultView>>, AppError> {
-    if !(1..=500).contains(&query.limit) || query.offset < 0 {
-        return Err(AppError::BadRequest(
-            "limit must be 1..500 and offset cannot be negative".to_string(),
-        ));
+    // `cards` isn't stored anywhere -- card_mask (a real column) is the sole
+    // source of truth for deck identity, decoded back into card ids here at
+    // response time instead of persisting a redundant copy.
+    if let Some(decks) = recommendation.decks.as_array_mut() {
+        for deck in decks.iter_mut() {
+            let mask = deck.get("card_mask").and_then(Value::as_u64).unwrap_or(0);
+            if let Some(deck) = deck.as_object_mut() {
+                deck.remove("card_mask");
+                deck.insert("cards".to_string(), serde_json::json!(cards_from_mask(mask)));
+            }
+        }
     }
-    let results = sqlx::query_as(
-        "SELECT id, cards, average_damage::TEXT AS average_damage, result FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY average_damage DESC LIMIT $2 OFFSET $3",
-    )
-    .bind(job_id)
-    .bind(query.limit)
-    .bind(query.offset)
-    .fetch_all(state.db()?)
-    .await?;
-    Ok(Json(results))
+    Ok(Json(recommendation))
 }
 
 #[cfg(test)]

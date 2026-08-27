@@ -620,11 +620,29 @@ impl PublicClanPlayerData {
             raid_research_tree: self.raid_research_tree,
             raid_research_bonuses: self.raid_research_bonuses,
             gemstone_research_tree_raid_bonuses: self.gemstone_research_tree_raid_bonuses,
-            equipment_set: self.equipment_set,
+            equipment_set: normalize_clan_equipment_set(self.equipment_set),
             cards: self.cards,
         }
         .into_raid_data(title)
     }
+}
+
+/// `/raid/clan_data` reports equipment set membership under different names
+/// than `clean_data`'s matching expects (which matches the per-player export
+/// format used by manual import): Dancer Venom shows up as "Scorpion" and
+/// Jukk Juggernaut as "Runestone". It also never reports Rose Anniversary at
+/// all even though every player has it, so that's forced on unconditionally.
+fn normalize_clan_equipment_set(equipment_set: Vec<String>) -> Vec<String> {
+    let mut normalized: Vec<String> = equipment_set
+        .into_iter()
+        .map(|set_name| match set_name.as_str() {
+            "Scorpion" => "Dancer".to_string(),
+            "Runestone" => "Jukk".to_string(),
+            _ => set_name,
+        })
+        .collect();
+    normalized.push("RoseAnniversary".to_string());
+    normalized
 }
 
 fn numeric_map_to_strings(

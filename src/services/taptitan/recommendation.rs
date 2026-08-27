@@ -52,6 +52,17 @@ pub fn candidates_from_results(results: &[SimDeckResult]) -> Vec<CandidateDeck> 
         .collect()
 }
 
+/// The inverse of `candidates_from_results`'s mask computation -- recovers a
+/// deck's card list from its `card_mask` alone. Safe as long as `CardName`
+/// stays append-only (never reordered), which `card_name_declaration_order_is_pinned`
+/// guards against.
+pub fn cards_from_mask(mask: u64) -> Vec<CardName> {
+    CardName::iter()
+        .enumerate()
+        .filter_map(|(index, card)| (mask & (1u64 << index) != 0).then_some(card))
+        .collect()
+}
+
 pub fn optimize_decks(
     candidates: &[CandidateDeck],
     deck_count: usize,

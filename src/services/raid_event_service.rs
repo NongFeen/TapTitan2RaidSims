@@ -3,7 +3,6 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::{
     error::AppError,
@@ -14,7 +13,6 @@ use crate::{
         },
         boss::{Boss, BossName, BossPartName, CurseType, GlobalRaidModifier, PartState},
         cards::CardName,
-        db_enums::ComponentKind,
     },
     services::{boss_repo, job_service},
     state::AppState,
@@ -25,7 +23,7 @@ const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
     match event {
-        "attack" => handle_attack(state, serde_json::from_value(data.clone())?, data).await,
+        "attack" => handle_attack(state, serde_json::from_value(data)?).await,
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
@@ -253,11 +251,7 @@ async fn handle_sub_start(
     Ok(())
 }
 
-async fn handle_attack(
-    state: &Arc<AppState>,
-    attack: AttackEvent,
-    raw_payload: Value,
-) -> Result<(), AppError> {
+async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(), AppError> {
     *state.live_attack_boss.write().await = Some(LiveAttackBossView {
         clan_code: attack.clan_code.clone(),
         raid_id: attack.raid_id,
@@ -274,7 +268,6 @@ async fn handle_attack(
         enemy_id = %attack.raid_state.current.enemy_id,
         "updated live current boss from TT2 attack event"
     );
-    let raw_payload = without_live_boss_data(raw_payload);
     let components = attack_components(&attack)?;
     let attacked_titan_index = components
         .first()
@@ -297,51 +290,68 @@ async fn handle_attack(
         .execute(&mut *tx)
         .await?;
 
-    let attack_id = Uuid::new_v4();
-    let inserted: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO raid_attack_logs (id,raid_id,clan_code,player_id,player_code,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage,raw_payload) VALUES ($1,$2,$3,(SELECT id FROM players WHERE player_id=$4),$4,$5,$6,$7,$8,$9,$10,CAST($11 AS NUMERIC),CAST($12 AS NUMERIC),$13) ON CONFLICT (raid_id,player_code,attack_datetime) DO NOTHING RETURNING id",
-    )
-    .bind(attack_id)
-    .bind(attack.raid_id)
-    .bind(&attack.clan_code)
-    .bind(&attack.player.player_code)
-    .bind(&attack.player.name)
-    .bind(attack.cycle)
-    .bind(attack.attack_log.attack_datetime)
-    .bind(attacked_titan_index)
-    .bind(attack.raid_state.titan_index)
-    .bind(&attack.raid_state.current.enemy_id)
-    .bind(tap_damage.to_string())
-    .bind(total_damage.to_string())
-    .bind(raw_payload)
-    .fetch_optional(&mut *tx)
-    .await?;
+    // Attacks can arrive for a player who isn't in `players` yet (they've
+    // never been through a clan-stats sync). Rather than store an
+    // orphaned/unlinked log row, skip logging this one attack (and its
+    // card-damage breakdown) entirely -- boss HP tracking below is driven
+    // by the live raid_state snapshot regardless, so it isn't affected.
+    let player_known: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
+        .bind(&attack.player.player_code)
+        .fetch_one(&mut *tx)
+        .await?;
 
-    if inserted.is_none() {
-        tx.commit().await?;
-        sync_sims_boss_on_phase_transition(state, &attack).await?;
-        return Ok(());
-    }
-
-    for (position, component) in components.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO raid_attack_components (attack_log_id,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC),$8)",
+    let logged = if player_known {
+        let inserted = sqlx::query(
+            "INSERT INTO raid_attack_logs (raid_id,clan_code,player_id,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CAST($10 AS NUMERIC),CAST($11 AS NUMERIC)) ON CONFLICT (raid_id,player_id,attack_datetime) DO NOTHING",
         )
-        .bind(attack_id)
-        .bind(position as i32)
-        .bind(if component.card_id.is_some() {
-            ComponentKind::Card
-        } else {
-            ComponentKind::Tap
-        })
-        .bind(&component.card_id)
-        .bind(&component.card_name)
-        .bind(component.card_level)
-        .bind(component.total_damage.to_string())
-        .bind(&component.part_damage)
+        .bind(attack.raid_id)
+        .bind(&attack.clan_code)
+        .bind(&attack.player.player_code)
+        .bind(&attack.player.name)
+        .bind(attack.cycle)
+        .bind(attack.attack_log.attack_datetime)
+        .bind(attacked_titan_index)
+        .bind(attack.raid_state.titan_index)
+        .bind(&attack.raid_state.current.enemy_id)
+        .bind(tap_damage.to_string())
+        .bind(total_damage.to_string())
         .execute(&mut *tx)
         .await?;
-    }
+
+        if inserted.rows_affected() == 0 {
+            tx.commit().await?;
+            sync_sims_boss_on_phase_transition(state, &attack).await?;
+            return Ok(());
+        }
+
+        let cards = aggregate_card_components(&components);
+        sqlx::query(
+            "INSERT INTO raid_attack_components (raid_id,player_id,attack_datetime,tap_damage,card1,card1_level,card1_damage,card2,card2_level,card2_damage,card3,card3_level,card3_damage) VALUES ($1,$2,$3,CAST($4 AS NUMERIC),$5,$6,CAST($7 AS NUMERIC),$8,$9,CAST($10 AS NUMERIC),$11,$12,CAST($13 AS NUMERIC))",
+        )
+        .bind(attack.raid_id)
+        .bind(&attack.player.player_code)
+        .bind(attack.attack_log.attack_datetime)
+        .bind(tap_damage.to_string())
+        .bind(cards.first().map(|card| card.card_id.as_str()))
+        .bind(cards.first().and_then(|card| card.card_level))
+        .bind(cards.first().map_or("0".to_string(), |card| card.damage.to_string()))
+        .bind(cards.get(1).map(|card| card.card_id.as_str()))
+        .bind(cards.get(1).and_then(|card| card.card_level))
+        .bind(cards.get(1).map_or("0".to_string(), |card| card.damage.to_string()))
+        .bind(cards.get(2).map(|card| card.card_id.as_str()))
+        .bind(cards.get(2).and_then(|card| card.card_level))
+        .bind(cards.get(2).map_or("0".to_string(), |card| card.damage.to_string()))
+        .execute(&mut *tx)
+        .await?;
+        true
+    } else {
+        tracing::debug!(
+            raid_id = attack.raid_id,
+            player_code = attack.player.player_code,
+            "skipping raid_attack_logs insert; player is not tracked in players yet"
+        );
+        false
+    };
 
     sqlx::query(
         "INSERT INTO raid_current_state (raid_id,clan_code,resulting_titan_index,current_enemy_id,refresh_required) VALUES ($1,$2,$3,$4,FALSE) ON CONFLICT (raid_id) DO UPDATE SET clan_code=EXCLUDED.clan_code, resulting_titan_index=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.resulting_titan_index ELSE raid_current_state.resulting_titan_index END, current_enemy_id=CASE WHEN EXCLUDED.resulting_titan_index >= COALESCE(raid_current_state.resulting_titan_index,-1) THEN EXCLUDED.current_enemy_id ELSE raid_current_state.current_enemy_id END, refresh_required=FALSE, updated_at=NOW()",
@@ -361,6 +371,7 @@ async fn handle_attack(
         attacked_titan_index,
         resulting_titan_index = attack.raid_state.titan_index,
         total_damage,
+        logged,
         "stored TT2 raid attack"
     );
     sync_sims_boss_on_phase_transition(state, &attack).await?;
@@ -946,7 +957,7 @@ async fn queue_auto_simulations(
     phase_change_mask: Option<u8>,
 ) -> Result<(), AppError> {
     let player_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.id)",
+        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.player_id)",
     )
     .fetch_all(state.db()?)
     .await?;
@@ -983,29 +994,11 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
         .cards_damage
         .iter()
         .map(|component| {
-            let part_damage = component
+            let total_damage = component
                 .damage_log
                 .iter()
-                .map(|damage| {
-                    Ok(serde_json::json!({
-                        "part_id": damage.id,
-                        "damage": rounded_u64(damage.value, "attack damage")?,
-                    }))
-                })
-                .collect::<Result<Vec<_>, AppError>>()?;
-            let total_damage = part_damage
-                .iter()
-                .filter_map(|damage| damage.get("damage").and_then(Value::as_u64))
-                .sum();
-            let card_name = component.card_id.as_deref().map_or_else(
-                || "Tap".to_string(),
-                |card_id| {
-                    CardName::from_str(card_id).map_or_else(
-                        |_| card_id.to_string(),
-                        |card| card.display_name().to_string(),
-                    )
-                },
-            );
+                .map(|damage| rounded_u64(damage.value, "attack damage"))
+                .sum::<Result<u64, AppError>>()?;
             Ok(AttackComponent {
                 titan_index: component.titan_index,
                 card_level: component
@@ -1013,24 +1006,42 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
                     .as_deref()
                     .and_then(|card_id| levels.get(card_id).copied()),
                 card_id: component.card_id.clone(),
-                card_name,
                 total_damage,
-                part_damage: Value::Array(part_damage),
             })
         })
         .collect()
 }
 
-fn without_live_boss_data(mut payload: Value) -> Value {
-    if let Some(raid_state) = payload
-        .as_object_mut()
-        .and_then(|root| root.get_mut("raid_state"))
-        .and_then(Value::as_object_mut)
-    {
-        raid_state.remove("current");
-    }
-    payload
+struct AggregatedCardComponent {
+    card_id: String,
+    card_level: Option<i32>,
+    damage: u64,
 }
+
+/// A raid deck is always exactly 3 cards, but the same card can appear as
+/// more than one component in a single attack (TT2 splits a hit into
+/// separate Body/Armor components when a limb's cursed state flips
+/// mid-attack) -- fold those back into one damage total per card, in the
+/// order each card first appeared.
+fn aggregate_card_components(components: &[AttackComponent]) -> Vec<AggregatedCardComponent> {
+    let mut cards: Vec<AggregatedCardComponent> = Vec::with_capacity(3);
+    for component in components {
+        let Some(card_id) = &component.card_id else {
+            continue;
+        };
+        if let Some(existing) = cards.iter_mut().find(|card| &card.card_id == card_id) {
+            existing.damage += component.total_damage;
+        } else {
+            cards.push(AggregatedCardComponent {
+                card_id: card_id.clone(),
+                card_level: component.card_level,
+                damage: component.total_damage,
+            });
+        }
+    }
+    cards
+}
+
 
 fn boss_from_raid_snapshot(
     raid: &RaidSnapshot,
@@ -1341,7 +1352,6 @@ struct AttackCardDamage {
 
 #[derive(Debug, Deserialize)]
 struct AttackPartDamage {
-    id: String,
     value: f64,
 }
 
@@ -1386,10 +1396,8 @@ struct AttackCurrentBossPart {
 struct AttackComponent {
     titan_index: i32,
     card_id: Option<String>,
-    card_name: String,
     card_level: Option<i32>,
     total_damage: u64,
-    part_damage: Value,
 }
 
 #[derive(Debug, Deserialize)]

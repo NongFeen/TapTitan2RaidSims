@@ -33,8 +33,16 @@ pub use proc_cache::{PreDeterminedProc, ProcScenario, configure_sim_worker_count
 use types::*;
 pub use types::{
     SIMS_ROUNDS, SimCardDamageResult, SimDeckResult, SimPatternResult, SimProgress, SimRunResult,
-    SimStats,
+    SimStats, SimulationPhase,
 };
+
+/// Public wrapper around `helpers::format_compact` -- that module stays
+/// private, but the persisted-deck-result codec (outside this module tree)
+/// needs to regenerate the same `_display` formatting when reconstructing a
+/// full `SimDeckResult` from a narrowed, persisted row.
+pub fn format_compact(damage: u64) -> String {
+    helpers::format_compact(damage)
+}
 
 //release version 20R all cards 2m 1.56 sec
 pub struct SimService;
