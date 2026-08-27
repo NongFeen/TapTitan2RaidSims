@@ -81,11 +81,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(routes::recommendations::generate_for_player),
         )
 
-        //UNUSED
-        // .route(
-        //     "/api/simulation-jobs/{job_id}/deck-results",
-        //     get(routes::recommendations::deck_results),
-        // )
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
         //POST UNUSED
         // .route(

@@ -12,11 +12,15 @@ use crate::{
         player_raid_data::PlayerRaidData,
         sim_payload::SimPayLoad,
     },
-    services::taptitan::{
-        recommendation::{
-            CandidateDeck, DeckRecommendation, optimize_decks, optimize_decks_with_required_cards,
+    services::{
+        sim_deck_result_codec,
+        taptitan::{
+            recommendation::{
+                CandidateDeck, DeckRecommendation, cards_from_mask, optimize_decks,
+                optimize_decks_with_required_cards,
+            },
+            sim_service::{SIMS_ROUNDS, SimRunResult, SimService},
         },
-        sim_service::{SIMS_ROUNDS, SimRunResult, SimService},
     },
     state::AppState,
 };
@@ -109,14 +113,28 @@ fn prepare_results(
     for candidate in &candidates {
         let id = Uuid::new_v4();
         result_ids[candidate.source_index] = Some(id);
+        let deck_result = &result.decks[candidate.source_index];
+        let best_pattern = deck_result
+            .best_pattern
+            .as_ref()
+            .expect("candidates_from_results only keeps decks with Some(best_pattern)");
+        let narrowed = sim_deck_result_codec::narrow_for_persist(best_pattern);
         rows.push(serde_json::json!({
             "id": id,
-            "cards": candidate.cards,
             "card_mask": candidate.card_mask as i64,
             "average_damage": candidate.average_damage.to_string(),
             "recommendation_phase": recommendation_phase,
-            "dependency_part_mask": result.decks[candidate.source_index].dependency_part_mask,
-            "result": result.decks[candidate.source_index],
+            "dependency_part_mask": deck_result.dependency_part_mask,
+            "total_attack_patterns": deck_result.total_attack_patterns as i64,
+            "pattern": narrowed.pattern,
+            "card1": narrowed.card1,
+            "card2": narrowed.card2,
+            "card3": narrowed.card3,
+            "card1_damage": narrowed.card1_damage,
+            "card2_damage": narrowed.card2_damage,
+            "card3_damage": narrowed.card3_damage,
+            "deck_lowest_damage": narrowed.deck_lowest_damage,
+            "deck_highest_damage": narrowed.deck_highest_damage,
         }));
     }
     let row_chunks = rows
@@ -453,6 +471,24 @@ struct IncrementalRun {
     rerun_decks: usize,
 }
 
+#[derive(Clone, sqlx::FromRow)]
+struct DeckResultRow {
+    pattern: String,
+    card1: String,
+    card2: String,
+    card3: String,
+    card1_damage: i64,
+    card2_damage: i64,
+    card3_damage: i64,
+    deck_lowest_damage: i64,
+    deck_highest_damage: i64,
+    dependency_part_mask: Option<i16>,
+    recommendation_phase: RecommendationPhase,
+    card_mask: i64,
+    average_damage: String,
+    total_attack_patterns: i32,
+}
+
 async fn try_incremental_run(
     state: &Arc<AppState>,
     player_id: String,
@@ -485,24 +521,24 @@ async fn try_incremental_run(
         return Ok(None);
     };
 
-    let rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)> = sqlx::query_as(
-        "SELECT result,dependency_part_mask,recommendation_phase FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY recommendation_phase,card_mask",
+    let rows: Vec<DeckResultRow> = sqlx::query_as(
+        "SELECT pattern,card1,card2,card3,card1_damage,card2_damage,card3_damage,deck_lowest_damage,deck_highest_damage,dependency_part_mask,recommendation_phase,card_mask,average_damage::TEXT,total_attack_patterns FROM simulation_deck_results WHERE simulation_job_id=$1 ORDER BY recommendation_phase,card_mask",
     )
     .bind(base_job_id)
     .fetch_all(state.db()?)
     .await?;
-    if rows.is_empty() || rows.iter().any(|(_, mask, _)| mask.is_none()) {
+    if rows.is_empty() || rows.iter().any(|row| row.dependency_part_mask.is_none()) {
         return Ok(None);
     }
 
     let current_rows = rows
         .iter()
-        .filter(|(_, _, phase)| *phase == RecommendationPhase::Current)
+        .filter(|row| row.recommendation_phase == RecommendationPhase::Current)
         .cloned()
         .collect::<Vec<_>>();
     let void_rows = rows
         .iter()
-        .filter(|(_, _, phase)| *phase == RecommendationPhase::Void)
+        .filter(|row| row.recommendation_phase == RecommendationPhase::Void)
         .cloned()
         .collect::<Vec<_>>();
     let should_have_void = payload.include_body_phase
@@ -560,7 +596,7 @@ async fn try_incremental_run(
 fn rebuild_incremental_void_phase(
     payload: &SimPayLoad,
     current: &SimRunResult,
-    base_void_rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)>,
+    base_void_rows: Vec<DeckResultRow>,
 ) -> Option<(SimRunResult, usize, usize)> {
     let mut decks = current
         .decks
@@ -571,16 +607,15 @@ fn rebuild_incremental_void_phase(
     let reused = decks.len();
     let mut rerun = 0usize;
 
-    for (result, dependency_mask, _) in base_void_rows {
-        dependency_mask?;
-        let result: crate::services::taptitan::sim_service::SimDeckResult =
-            serde_json::from_value(result).ok()?;
-        if !result.deck.contains(&CardName::InsanityVoid) {
+    for row in base_void_rows {
+        row.dependency_part_mask?;
+        let deck = cards_from_mask(row.card_mask as u64);
+        if !deck.contains(&CardName::InsanityVoid) {
             continue;
         }
         rerun += 1;
         let mut deck_payload = payload.clone();
-        deck_payload.usable_card = result.deck;
+        deck_payload.usable_card = deck;
         if let Some(result) = SimService::run_exact_deck_for_phase(deck_payload, true, SIMS_ROUNDS)
         {
             decks.push(result);
@@ -643,27 +678,42 @@ fn incremental_boss_change_mask(base: &Boss, current: &Boss) -> Option<u8> {
 
 fn rebuild_incremental_phase(
     payload: &SimPayLoad,
-    rows: Vec<(serde_json::Value, Option<i16>, RecommendationPhase)>,
+    rows: Vec<DeckResultRow>,
     changed_mask: u8,
     body_phase: bool,
 ) -> Option<(SimRunResult, usize, usize)> {
     let mut decks = Vec::with_capacity(rows.len());
     let mut reused = 0usize;
     let mut rerun = 0usize;
-    for (result, dependency_mask, _) in rows {
-        let dependency_mask = dependency_mask? as u8;
-        let mut result: crate::services::taptitan::sim_service::SimDeckResult =
-            serde_json::from_value(result).ok()?;
-        result.dependency_part_mask = dependency_mask;
+    for row in rows {
+        let dependency_mask = row.dependency_part_mask? as u8;
         if dependency_mask & changed_mask == 0 {
             reused += 1;
+            let average_damage: u64 = row.average_damage.parse().ok()?;
+            let mut result = sim_deck_result_codec::rebuild_from_persisted(
+                row.pattern,
+                row.card1.parse().ok()?,
+                row.card2.parse().ok()?,
+                row.card3.parse().ok()?,
+                row.card1_damage,
+                row.card2_damage,
+                row.card3_damage,
+                row.deck_lowest_damage,
+                row.deck_highest_damage,
+                row.card_mask as u64,
+                average_damage,
+                row.total_attack_patterns,
+                row.recommendation_phase,
+            );
+            result.dependency_part_mask = dependency_mask;
             decks.push(result);
             continue;
         }
 
         rerun += 1;
+        let deck = cards_from_mask(row.card_mask as u64);
         let mut deck_payload = payload.clone();
-        deck_payload.usable_card = result.deck;
+        deck_payload.usable_card = deck;
         if let Some(result) =
             SimService::run_exact_deck_for_phase(deck_payload, body_phase, SIMS_ROUNDS)
         {
@@ -716,7 +766,7 @@ async fn persist_results(
     );
     for (index, chunk) in row_chunks.into_iter().enumerate() {
         sqlx::query(
-            "INSERT INTO simulation_deck_results (id, simulation_job_id, cards, card_mask, average_damage, recommendation_phase, dependency_part_mask, result) SELECT (row->>'id')::UUID, $1, row->'cards', (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, (row->>'recommendation_phase')::recommendation_phase, (row->>'dependency_part_mask')::SMALLINT, row->'result' FROM jsonb_array_elements($2::JSONB) AS row",
+            "INSERT INTO simulation_deck_results (id, simulation_job_id, card_mask, average_damage, recommendation_phase, dependency_part_mask, total_attack_patterns, pattern, card1, card2, card3, card1_damage, card2_damage, card3_damage, deck_lowest_damage, deck_highest_damage) SELECT (row->>'id')::UUID, $1, (row->>'card_mask')::BIGINT, (row->>'average_damage')::NUMERIC, (row->>'recommendation_phase')::recommendation_phase, (row->>'dependency_part_mask')::SMALLINT, (row->>'total_attack_patterns')::INTEGER, row->>'pattern', row->>'card1', row->>'card2', row->>'card3', (row->>'card1_damage')::BIGINT, (row->>'card2_damage')::BIGINT, (row->>'card3_damage')::BIGINT, (row->>'deck_lowest_damage')::BIGINT, (row->>'deck_highest_damage')::BIGINT FROM jsonb_array_elements($2::JSONB) AS row",
         )
         .bind(job_id)
         .bind(chunk)
@@ -819,8 +869,10 @@ pub async fn generate_deck_recommendations(
         return Ok(false);
     }
 
-    let stored_results: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
-        "SELECT id, result FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2 ORDER BY average_damage DESC",
+    // Only card_mask + average_damage are needed to rank/select decks here --
+    // no need to deserialize the full stored result for this.
+    let stored_results: Vec<(Uuid, i64, String)> = sqlx::query_as(
+        "SELECT id, card_mask, average_damage::TEXT FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2 ORDER BY average_damage DESC",
     )
     .bind(job_id)
     .bind(recommendation_phase)
@@ -834,13 +886,18 @@ pub async fn generate_deck_recommendations(
 
     let (result_ids, recommendations) = tokio::task::spawn_blocking(move || {
         let mut ids = Vec::with_capacity(stored_results.len());
-        let mut results = Vec::with_capacity(stored_results.len());
-        for (id, result) in stored_results {
+        let mut candidates = Vec::with_capacity(stored_results.len());
+        for (source_index, (id, card_mask, average_damage)) in
+            stored_results.into_iter().enumerate()
+        {
             ids.push(Some(id));
-            results.push(serde_json::from_value(result)?);
+            candidates.push(CandidateDeck {
+                source_index,
+                cards: cards_from_mask(card_mask as u64),
+                card_mask: card_mask as u64,
+                average_damage: average_damage.parse().unwrap_or(0),
+            });
         }
-        let candidates =
-            crate::services::taptitan::recommendation::candidates_from_results(&results);
         let recommendations =
             prepare_recommendations(&candidates, &[deck_count], recommendation_phase);
         Ok::<_, serde_json::Error>((ids, recommendations))
