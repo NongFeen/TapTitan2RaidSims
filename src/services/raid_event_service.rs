@@ -22,14 +22,21 @@ const RAID_STATE_LOCK: i64 = 721_934_762;
 const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
-    match event {
+    let affects_live_boss = matches!(event, "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
+    let result = match event {
         "attack" => handle_attack(state, serde_json::from_value(data)?).await,
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
         "start_attack" => handle_start_attack(state, serde_json::from_value(data)?).await,
         _ => Ok(()),
+    };
+    // Pings any open live-boss SSE streams to rebuild and re-check their view
+    // -- see `routes::raids::live_current_boss_stream`.
+    if result.is_ok() && affects_live_boss {
+        let _ = state.live_boss_tx.send(());
     }
+    result
 }
 
 const BASE_ATTACK_DURATION_SECONDS: f64 = 33.0;
@@ -101,7 +108,11 @@ async fn handle_start_attack(
     let mut players = state.live_attacking_players.write().await;
     let now = Utc::now();
     players.retain(|_, existing| !existing.is_expired(now));
-    players.insert(event.player.player_code, player);
+    players.insert(event.player.player_code, player.clone());
+    drop(players);
+    // No receivers (no widget currently open anywhere) just drops the send --
+    // that's fine, the next SSE connection gets the full snapshot anyway.
+    let _ = state.live_attacking_players_tx.send(player);
     Ok(())
 }
 

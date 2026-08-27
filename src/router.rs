@@ -68,8 +68,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(routes::raids::live_from_attack),
         )
         .route(
+            "/api/live-current-boss/stream",
+            get(routes::raids::live_current_boss_stream),
+        )
+        .route(
             "/api/live-attacking-players",
             get(routes::raids::live_attacking_players),
+        )
+        .route(
+            "/api/live-attacking-players/stream",
+            get(routes::raids::live_attacking_players_stream),
         )
         .route("/api/raid-cycle/current", get(routes::raid_cycle::current))
         .route(
