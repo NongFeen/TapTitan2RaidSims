@@ -32,20 +32,6 @@ fn supplied_attack_samples_have_expected_totals_and_transition_indices() {
     }
 }
 
-#[test]
-fn persisted_attack_payload_excludes_ephemeral_live_boss_hp() {
-    let raw: Value = serde_json::from_str(include_str!(
-        "../../../exampleSocketdatajson/afterbosstrans.json"
-    ))
-    .unwrap();
-    let sanitized = without_live_boss_data(raw);
-    assert!(sanitized.pointer("/raid_state/current").is_none());
-    assert_eq!(
-        sanitized.pointer("/raid_state/titan_index"),
-        Some(&serde_json::json!(2))
-    );
-}
-
 #[tokio::test]
 async fn attack_updates_ephemeral_live_boss_without_a_database() {
     let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));

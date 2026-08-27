@@ -3,7 +3,6 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::{
     error::AppError,
@@ -25,7 +24,7 @@ const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
     match event {
-        "attack" => handle_attack(state, serde_json::from_value(data.clone())?, data).await,
+        "attack" => handle_attack(state, serde_json::from_value(data)?).await,
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
@@ -253,11 +252,7 @@ async fn handle_sub_start(
     Ok(())
 }
 
-async fn handle_attack(
-    state: &Arc<AppState>,
-    attack: AttackEvent,
-    raw_payload: Value,
-) -> Result<(), AppError> {
+async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(), AppError> {
     *state.live_attack_boss.write().await = Some(LiveAttackBossView {
         clan_code: attack.clan_code.clone(),
         raid_id: attack.raid_id,
@@ -274,7 +269,6 @@ async fn handle_attack(
         enemy_id = %attack.raid_state.current.enemy_id,
         "updated live current boss from TT2 attack event"
     );
-    let raw_payload = without_live_boss_data(raw_payload);
     let components = attack_components(&attack)?;
     let attacked_titan_index = components
         .first()
@@ -308,11 +302,9 @@ async fn handle_attack(
         .await?;
 
     let logged = if player_known {
-        let attack_id = Uuid::new_v4();
-        let inserted: Option<Uuid> = sqlx::query_scalar(
-            "INSERT INTO raid_attack_logs (id,raid_id,clan_code,player_id,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage,raw_payload) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CAST($11 AS NUMERIC),CAST($12 AS NUMERIC),$13) ON CONFLICT (raid_id,player_id,attack_datetime) DO NOTHING RETURNING id",
+        let inserted = sqlx::query(
+            "INSERT INTO raid_attack_logs (raid_id,clan_code,player_id,player_name,cycle,attack_datetime,attacked_titan_index,resulting_titan_index,enemy_id,tap_damage,total_damage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CAST($10 AS NUMERIC),CAST($11 AS NUMERIC)) ON CONFLICT (raid_id,player_id,attack_datetime) DO NOTHING",
         )
-        .bind(attack_id)
         .bind(attack.raid_id)
         .bind(&attack.clan_code)
         .bind(&attack.player.player_code)
@@ -324,11 +316,10 @@ async fn handle_attack(
         .bind(&attack.raid_state.current.enemy_id)
         .bind(tap_damage.to_string())
         .bind(total_damage.to_string())
-        .bind(raw_payload)
-        .fetch_optional(&mut *tx)
+        .execute(&mut *tx)
         .await?;
 
-        if inserted.is_none() {
+        if inserted.rows_affected() == 0 {
             tx.commit().await?;
             sync_sims_boss_on_phase_transition(state, &attack).await?;
             return Ok(());
@@ -336,9 +327,11 @@ async fn handle_attack(
 
         for (position, component) in components.iter().enumerate() {
             sqlx::query(
-                "INSERT INTO raid_attack_components (attack_log_id,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC),$8)",
+                "INSERT INTO raid_attack_components (raid_id,player_id,attack_datetime,position,component_kind,card_id,card_name,card_level,total_damage,part_damage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,CAST($9 AS NUMERIC),$10)",
             )
-            .bind(attack_id)
+            .bind(attack.raid_id)
+            .bind(&attack.player.player_code)
+            .bind(attack.attack_log.attack_datetime)
             .bind(position as i32)
             .bind(if component.card_id.is_some() {
                 ComponentKind::Card
@@ -1042,16 +1035,6 @@ fn attack_components(attack: &AttackEvent) -> Result<Vec<AttackComponent>, AppEr
         .collect()
 }
 
-fn without_live_boss_data(mut payload: Value) -> Value {
-    if let Some(raid_state) = payload
-        .as_object_mut()
-        .and_then(|root| root.get_mut("raid_state"))
-        .and_then(Value::as_object_mut)
-    {
-        raid_state.remove("current");
-    }
-    payload
-}
 
 fn boss_from_raid_snapshot(
     raid: &RaidSnapshot,
