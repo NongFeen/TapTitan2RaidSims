@@ -20,6 +20,7 @@ use std::sync::{
 use strum::IntoEnumIterator;
 
 mod deck_rules;
+mod deterministic_rng;
 mod fast_runner;
 mod helpers;
 mod proc_cache;
@@ -27,6 +28,7 @@ mod runner;
 mod types;
 
 use deck_rules::*;
+use deterministic_rng::SimRng;
 use helpers::*;
 use proc_cache::*;
 pub use proc_cache::{PreDeterminedProc, ProcScenario, configure_sim_worker_count};
@@ -46,3 +48,7 @@ pub fn format_compact(damage: u64) -> String {
 
 //release version 20R all cards 2m 1.56 sec
 pub struct SimService;
+
+#[cfg(test)]
+#[path = "../../../tests/unit/services/taptitan/sim_service/sim_to_real_tests.rs"]
+mod sim_to_real_tests;

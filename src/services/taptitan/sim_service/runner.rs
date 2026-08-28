@@ -226,6 +226,7 @@ impl SimService {
                 None,
                 None,
                 false,
+                false,
             )
         }
     }
@@ -303,6 +304,7 @@ impl SimService {
                 None,
                 None,
                 false,
+                false,
             )
         };
         if body_phase {
@@ -312,9 +314,23 @@ impl SimService {
     }
 
     pub fn run_deck_debug_simulation(
+        payload: SimPayLoad,
+        total_taps: u32,
+        rounds_per_pattern: u64,
+    ) -> Option<SimDeckResult> {
+        Self::run_deck_debug_simulation_with_rng(payload, total_taps, rounds_per_pattern, false)
+    }
+
+    /// Same as `run_deck_debug_simulation`, but `force_guaranteed_procs`
+    /// swaps in `SimRng::AlwaysSucceed` for the whole run -- used only by
+    /// deterministic "sim-to-real" golden tests (see
+    /// `run_deterministic_single_tap_simulation`), never by the real
+    /// `/simulation-debug` route.
+    fn run_deck_debug_simulation_with_rng(
         mut payload: SimPayLoad,
         total_taps: u32,
         rounds_per_pattern: u64,
+        force_guaranteed_procs: bool,
     ) -> Option<SimDeckResult> {
         payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
@@ -359,7 +375,21 @@ impl SimService {
             Some(TICKS_PER_ROUND),
             Some(total_taps),
             true,
+            force_guaranteed_procs,
         ))
+    }
+
+    /// Sim-to-real golden-test entry point: taps exactly once (guaranteed to
+    /// proc every card with a nonzero proc chance -- see `SimRng`), then lets
+    /// the full 600-tick round play out with no further taps so
+    /// afflictions/DoTs tick to completion. Matches the methodology of
+    /// measuring a real single TT2 attack by hand and comparing its damage
+    /// to what this produces.
+    pub fn run_deterministic_single_tap_simulation(
+        payload: SimPayLoad,
+        rounds_per_pattern: u64,
+    ) -> Option<SimDeckResult> {
+        Self::run_deck_debug_simulation_with_rng(payload, 1, rounds_per_pattern, true)
     }
 
     pub fn run_deck_sim(
@@ -372,6 +402,7 @@ impl SimService {
         fixed_tick_count: Option<u32>,
         total_tap_limit: Option<u32>,
         include_all_patterns: bool,
+        force_guaranteed_procs: bool,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck, &sim_stats.boss_stat);
@@ -422,9 +453,14 @@ impl SimService {
 
             for _ in 1..=sim_rounds {
                 // Keep one RNG for the whole round so the hot loop does not repeatedly
-                // acquire the thread-local generator. Tests can pass a seeded RNG through
-                // the same call chain.
-                let mut rng = rand::rng();
+                // acquire the thread-local generator. `force_guaranteed_procs` swaps in a
+                // roll that always succeeds -- see `SimRng` -- for deterministic
+                // "sim-to-real" golden tests; every real caller keeps the real RNG.
+                let mut rng = if force_guaranteed_procs {
+                    SimRng::AlwaysSucceed
+                } else {
+                    SimRng::Real(rand::rng())
+                };
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_result_target_parts(&sim_stats.attackable_part);
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
