@@ -563,3 +563,159 @@ async fn repeated_start_attack_for_the_same_player_refreshes_started_at() {
     assert!(second_started_at > first_started_at);
     assert_eq!(state.live_attacking_players.read().await.len(), 1);
 }
+
+fn enemy8_boss_with_four_cursed_parts() -> (Boss, [BossPartName; 4]) {
+    let sub_cycle: SubCycleEvent = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_cycle_example.json"
+    ))
+    .unwrap();
+    // Enemy8 in this sample has exactly 4 cursed parts: LeftShoulder,
+    // RightShoulder, LeftHand, RightHand (see ArmorArmUpperRight/Left and
+    // ArmorHandRight/Left, all cursed:true).
+    let (boss, _) =
+        boss_from_raid_snapshot(&sub_cycle.raid, &sub_cycle.titan_target, "Enemy8", false)
+            .unwrap();
+    let cursed_parts = [
+        BossPartName::LeftShoulder,
+        BossPartName::RightShoulder,
+        BossPartName::LeftHand,
+        BossPartName::RightHand,
+    ];
+    for part_name in cursed_parts {
+        assert_eq!(boss.part(part_name).part_state, PartState::Cursed);
+    }
+    (boss, cursed_parts)
+}
+
+/// Live "attack" payload where the armor on every part in `broken_parts`
+/// drops to 0 (body survives) and nothing else on `boss` changes. Mirrors
+/// TT2's convention of omitting the armor entry once it's destroyed (see
+/// `attack_part_values`).
+fn attack_breaking_parts(boss: &Boss, broken_parts: &[BossPartName]) -> AttackCurrentBoss {
+    let mut live_parts = Vec::new();
+    for part_name in BossPartName::all() {
+        let (body_id, armor_id) = match part_name {
+            BossPartName::Head => ("BodyHead", "ArmorHead"),
+            BossPartName::Torso => ("BodyChestUpper", "ArmorChestUpper"),
+            BossPartName::RightShoulder => ("BodyArmUpperLeft", "ArmorArmUpperLeft"),
+            BossPartName::LeftShoulder => ("BodyArmUpperRight", "ArmorArmUpperRight"),
+            BossPartName::RightHand => ("BodyHandLeft", "ArmorHandLeft"),
+            BossPartName::LeftHand => ("BodyHandRight", "ArmorHandRight"),
+            BossPartName::RightLeg => ("BodyLegUpperLeft", "ArmorLegUpperLeft"),
+            BossPartName::LeftLeg => ("BodyLegUpperRight", "ArmorLegUpperRight"),
+        };
+        let part = boss.part(part_name);
+        live_parts.push(AttackCurrentBossPart {
+            part_id: body_id.to_string(),
+            current_hp: part.current_health as f64,
+        });
+        let armor_hp = if broken_parts.contains(&part_name) {
+            0.0
+        } else {
+            part.current_armor as f64
+        };
+        if armor_hp > 0.0 {
+            live_parts.push(AttackCurrentBossPart {
+                part_id: armor_id.to_string(),
+                current_hp: armor_hp,
+            });
+        }
+    }
+    AttackCurrentBoss {
+        enemy_id: "Enemy8".to_string(),
+        current_hp: 0.0,
+        parts: live_parts,
+    }
+}
+
+#[test]
+fn every_targeted_curse_part_breaking_at_once_triggers_full_refresh() {
+    let (boss, cursed_parts) = enemy8_boss_with_four_cursed_parts();
+    let targets = cursed_parts.to_vec();
+    let live = attack_breaking_parts(&boss, &cursed_parts);
+
+    let incoming = boss_from_attack_snapshot(&boss, &live).unwrap();
+    for part_name in cursed_parts {
+        assert_eq!(incoming.part(part_name).part_state, PartState::Body);
+    }
+
+    assert_eq!(
+        classify_phase_refresh(&boss, &targets, &incoming),
+        Some(PhaseRefresh::Full)
+    );
+}
+
+#[test]
+fn boss_from_attack_snapshot_applies_present_parts_even_when_one_is_missing() {
+    let (boss, cursed_parts) = enemy8_boss_with_four_cursed_parts();
+    let mut live = attack_breaking_parts(&boss, &cursed_parts);
+    // Drop every entry for Head (both body and armor) as if TT2 omitted it
+    // from this attack's payload entirely.
+    live.parts
+        .retain(|part| part.part_id != "BodyHead" && part.part_id != "ArmorHead");
+
+    let incoming = boss_from_attack_snapshot(&boss, &live).unwrap();
+
+    // The 4 cursed parts this attack actually reported still update...
+    for part_name in cursed_parts {
+        assert_eq!(incoming.part(part_name).part_state, PartState::Body);
+    }
+    // ...and Head, missing from the payload, is left exactly as it was
+    // rather than the whole update being dropped.
+    assert_eq!(incoming.head.current_armor, boss.head.current_armor);
+    assert_eq!(incoming.head.current_health, boss.head.current_health);
+    assert_eq!(incoming.head.part_state, boss.head.part_state);
+}
+
+#[test]
+fn stale_reading_on_an_untargeted_part_does_not_suppress_a_targeted_curse_break() {
+    let (boss, cursed_parts) = enemy8_boss_with_four_cursed_parts();
+    let targets = cursed_parts.to_vec();
+    let live = attack_breaking_parts(&boss, &cursed_parts);
+    let incoming = boss_from_attack_snapshot(&boss, &live).unwrap();
+
+    // Head (untargeted) is already dead going into this attack...
+    let mut current = boss.clone();
+    current.head.current_armor = 0;
+    current.head.current_health = 0;
+    current.head.sync_state_from_current_values();
+    assert_eq!(current.head.part_state, PartState::Skeleton);
+
+    // ...but this snapshot reports it alive again -- a stale/out-of-order
+    // read from another clan member's overlapping attack. That must not
+    // suppress the real phase change on the targeted curse parts.
+    let mut incoming = incoming;
+    incoming.head.current_health = 5;
+
+    assert_eq!(
+        classify_phase_refresh(&current, &targets, &incoming),
+        Some(PhaseRefresh::Full)
+    );
+}
+
+#[test]
+fn stale_reading_on_an_untargeted_part_does_not_suppress_a_plain_armor_break() {
+    // Same shape as the curse-break case above, but the targeted part that
+    // breaks carries no curse at all -- confirms the fix isn't curse-specific.
+    let (base_boss, _) = enemy8_boss_with_four_cursed_parts();
+    let mut boss = base_boss.clone();
+    boss.torso.part_state = PartState::Armor; // plain armor, not cursed
+    let targets = vec![BossPartName::Torso];
+    let live = attack_breaking_parts(&boss, &[BossPartName::Torso]);
+
+    let incoming = boss_from_attack_snapshot(&boss, &live).unwrap();
+    assert_eq!(incoming.torso.part_state, PartState::Body);
+
+    let mut current = boss.clone();
+    current.head.current_armor = 0;
+    current.head.current_health = 0;
+    current.head.sync_state_from_current_values();
+
+    let mut incoming = incoming;
+    incoming.head.current_health = 5; // stale: untargeted Head looks alive again
+
+    assert_eq!(
+        classify_phase_refresh(&current, &targets, &incoming),
+        Some(PhaseRefresh::Full)
+    );
+}

@@ -133,6 +133,12 @@ async fn handle_sub_start(
     let titan_count = event.raid.titans.len();
     let sequence_count = event.raid.spawn_sequence.len();
     let raid_json = serde_json::to_value(&event.raid)?;
+    // sub_start's own titan_target is unreliable (usually every part reports
+    // "0" -- nothing locked in yet) and is never used to drive targeting;
+    // `sub_cycle` is the sole authority for that. Only stored once, to seed
+    // the `titan_targets` column non-null before the first sub_cycle arrives
+    // -- never written here again after a raid is already established (see
+    // the `else` branch below).
     let titan_target_json = serde_json::to_value(&event.titan_target)?;
 
     let mut tx = state.db()?.begin().await?;
@@ -171,12 +177,10 @@ async fn handle_sub_start(
         let preserve_narrow = current
             .map(|previous| previous.boss.recommend_1_to_2_part_patterns_only)
             .unwrap_or(false);
-        let (boss, attackable_parts) = boss_from_raid_snapshot(
-            &event.raid,
-            &event.titan_target,
-            &enemy_id,
-            preserve_narrow,
-        )?;
+        // No real target selection is known yet -- default to every part
+        // attackable; the first sub_cycle narrows it down.
+        let (boss, attackable_parts) =
+            boss_from_raid_snapshot(&event.raid, &[], &enemy_id, preserve_narrow)?;
 
         if is_new_raid_row {
             sqlx::query(
@@ -218,28 +222,21 @@ async fn handle_sub_start(
         .await?;
         Some(boss_version)
     } else {
-        // Boss already belongs to this raid -- refresh the stored raw data
-        // unconditionally (a later sub_start can carry a real target
-        // selection even when an earlier one for this same raid didn't),
-        // and update the boss's attackable_parts to match if so.
+        // Boss already belongs to this raid -- refresh the stored base raid
+        // data (a later sub_start can carry newer data for titans not yet
+        // reached), but leave `titan_targets` alone: sub_cycle owns that
+        // column, and sub_start's own copy is unreliable and must never
+        // clobber a real selection sub_cycle already established.
         sqlx::query(
-            "UPDATE raid_current_state SET clan_code=$2,raid_data=$3,titan_targets=$4,raw_sub_start=$5,received_at=NOW(),updated_at=NOW() WHERE raid_id=$1",
+            "UPDATE raid_current_state SET clan_code=$2,raid_data=$3,raw_sub_start=$4,received_at=NOW(),updated_at=NOW() WHERE raid_id=$1",
         )
         .bind(event.raid_id)
         .bind(&event.clan_code)
         .bind(&raid_json)
-        .bind(&titan_target_json)
         .bind(&raw_payload)
         .execute(&mut *tx)
         .await?;
-
-        match current.and_then(|boss| boss.source_enemy_id) {
-            Some(enemy_id) => {
-                update_boss_targets_from_titan_target(&mut tx, &event.titan_target, &enemy_id)
-                    .await?
-            }
-            None => None,
-        }
+        None
     };
     tx.commit().await?;
 
@@ -422,20 +419,85 @@ async fn sync_sims_boss_on_phase_transition(
         && source_raid_id.is_none_or(|raid_id| raid_id == attack.raid_id)
         && source_titan_index
             .is_none_or(|titan_index| titan_index == attack.raid_state.titan_index);
-    let Some(incoming) = boss_from_attack_snapshot(&boss, &attack.raid_state.current)? else {
-        return Ok(false);
+
+    let (incoming, attackable_parts_override) = if source_matches {
+        (
+            boss_from_attack_snapshot(&boss, &attack.raid_state.current)?,
+            None,
+        )
+    } else {
+        // Titan/raid changed and no sub_cycle has caught up yet -- every
+        // titan in the raid was already given to us up front by sub_start,
+        // so rebuild the new one's base stats right now from that stored
+        // data instead of leaving the persisted boss frozen on the old
+        // titan until the next sub_cycle arrives.
+        let stored: Option<(Option<Value>, Option<Value>)> = sqlx::query_as(
+            "SELECT raid_data, titan_targets FROM raid_current_state WHERE raid_id=$1",
+        )
+        .bind(attack.raid_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((Some(raid_data), titan_targets)) = stored else {
+            tracing::warn!(
+                raid_id = attack.raid_id,
+                titan_index = attack.raid_state.titan_index,
+                enemy_id = %attack.raid_state.current.enemy_id,
+                expected_raid_id = ?source_raid_id,
+                expected_titan_index = ?source_titan_index,
+                expected_enemy_id = ?source_enemy_id,
+                "attack titan/raid mismatch but no stored raid data to self-heal from; skipping sync"
+            );
+            return Ok(false);
+        };
+        let raid: RaidSnapshot = serde_json::from_value(raid_data)?;
+        let titan_targets: Vec<TitanTarget> = titan_targets
+            .map(serde_json::from_value)
+            .transpose()?
+            .unwrap_or_default();
+        let (rebuilt_boss, attackable_parts) = match boss_from_raid_snapshot(
+            &raid,
+            &titan_targets,
+            &attack.raid_state.current.enemy_id,
+            boss.recommend_1_to_2_part_patterns_only,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(
+                    raid_id = attack.raid_id,
+                    enemy_id = %attack.raid_state.current.enemy_id,
+                    ?error,
+                    "attack reported a titan not present in stored raid data; skipping sync"
+                );
+                return Ok(false);
+            }
+        };
+        tracing::warn!(
+            raid_id = attack.raid_id,
+            titan_index = attack.raid_state.titan_index,
+            enemy_id = %attack.raid_state.current.enemy_id,
+            expected_raid_id = ?source_raid_id,
+            expected_titan_index = ?source_titan_index,
+            expected_enemy_id = ?source_enemy_id,
+            "attack revealed a titan/raid change; rebuilt sims boss from stored raid data instead of waiting for sub_cycle"
+        );
+        (
+            boss_from_attack_snapshot(&rebuilt_boss, &attack.raid_state.current)?,
+            Some(attackable_parts),
+        )
     };
-    if !source_matches {
-        return Ok(false);
-    }
-    let refresh = classify_phase_refresh(&boss, &targets, &incoming);
+
+    let refresh = if attackable_parts_override.is_some() {
+        Some(PhaseRefresh::Full)
+    } else {
+        classify_phase_refresh(&boss, &targets, &incoming)
+    };
 
     if let Some(refresh) = refresh {
         let boss_version = boss_repo::store(
             &mut tx,
             boss_repo::BossWrite {
                 boss: &incoming,
-                attackable_parts: None,
+                attackable_parts: attackable_parts_override.as_deref(),
                 source_raid_id: Some(attack.raid_id),
                 source_titan_index: Some(attack.raid_state.titan_index),
                 source_enemy_id: Some(&attack.raid_state.current.enemy_id),
@@ -459,7 +521,7 @@ async fn sync_sims_boss_on_phase_transition(
             titan_index = attack.raid_state.titan_index,
             enemy_id = %attack.raid_state.current.enemy_id,
             boss_version,
-            target_count = targets.len(),
+            target_count = attackable_parts_override.as_ref().map_or(targets.len(), Vec::len),
             refresh_mode = ?refresh,
             "boss target phase changed; updated sims boss and queued auto simulations"
         );
@@ -489,21 +551,22 @@ async fn sync_sims_boss_on_phase_transition(
     }
 }
 
-fn boss_from_attack_snapshot(
-    boss: &Boss,
-    live: &AttackCurrentBoss,
-) -> Result<Option<Boss>, AppError> {
+/// Overlays whichever parts `live` actually reports onto a clone of `boss`.
+/// Tolerant of a part being entirely absent from the attack payload (applies
+/// every other part rather than dropping the whole update) -- real TT2
+/// samples always carry all 16 entries, but there's no reason to let one
+/// missing one blank out the other 7.
+fn boss_from_attack_snapshot(boss: &Boss, live: &AttackCurrentBoss) -> Result<Boss, AppError> {
     let mut incoming = boss.clone();
     for part_name in BossPartName::all() {
-        let Some((current_armor, current_health)) = attack_part_values(live, part_name)? else {
-            return Ok(None);
-        };
-        let part = incoming.part_mut(part_name);
-        part.current_armor = current_armor;
-        part.current_health = current_health;
+        if let Some((current_armor, current_health)) = attack_part_values(live, part_name)? {
+            let part = incoming.part_mut(part_name);
+            part.current_armor = current_armor;
+            part.current_health = current_health;
+        }
     }
     incoming.sync_part_states_from_current_values();
-    Ok(Some(incoming))
+    Ok(incoming)
 }
 
 fn classify_phase_refresh(
@@ -511,14 +574,18 @@ fn classify_phase_refresh(
     targets: &[BossPartName],
     incoming: &Boss,
 ) -> Option<PhaseRefresh> {
-    // A part appearing to regress here means an `attack` event arrived out
-    // of order relative to another (concurrent players, network jitter) --
-    // not a real boss reset. Real resets (new titan, new cycle) go through
-    // `handle_sub_cycle` instead, which is authoritative and not subject to
-    // this per-tap reordering risk. Treat any regression here as stale and
-    // ignore it, rather than resimulating against a phantom rollback.
+    // A targeted part appearing to regress here means an `attack` event
+    // arrived out of order relative to another (concurrent players, network
+    // jitter) -- not a real boss reset. Real resets (new titan, new cycle) go
+    // through `handle_sub_cycle` instead, which is authoritative and not
+    // subject to this per-tap reordering risk. Treat any regression here as
+    // stale and ignore it, rather than resimulating against a phantom
+    // rollback. Scoped to `targets` only: a stale/out-of-order reading on an
+    // unrelated, non-targeted part (e.g. from another clan member's attack
+    // landing out of order) must not suppress a legitimate phase change --
+    // such as every targeted curse part breaking in this same attack.
     if targets.is_empty()
-        || BossPartName::all().iter().any(|part_name| {
+        || targets.iter().any(|part_name| {
             phase_rank(incoming.part(*part_name).part_state)
                 < phase_rank(current.part(*part_name).part_state)
         })
@@ -744,12 +811,13 @@ async fn handle_sub_cycle(
     event: SubCycleEvent,
     raw_payload: Value,
 ) -> Result<(), AppError> {
-    let previous_next_reset_at: Option<DateTime<Utc>> =
-        sqlx::query_scalar("SELECT next_reset_at FROM raid_cycle_state WHERE raid_id=$1")
-            .bind(event.raid_id)
-            .fetch_optional(state.db()?)
-            .await?;
-    let cycle_changed = previous_next_reset_at != Some(event.next_reset_at);
+    // `attack` is the sole owner of current HP/part_state -- nothing about a
+    // cycle boundary resets boss HP, so sub_cycle never touches it. It's
+    // only authoritative for `MirrorForceBoost`/`TeamTacticsClanMoraleBoost`
+    // (handled entirely by `store_cycle_state`, below) and for targeting
+    // (`titan_target`), plus rebuilding base stats when the titan itself
+    // changes -- since sub_start already gave us every titan in the spawn
+    // roster up front, that rebuild never needs to wait on anything else.
     let mirror_changed = store_cycle_state(
         state,
         &event.clan_code,
@@ -779,39 +847,6 @@ async fn handle_sub_cycle(
         .ok_or_else(|| AppError::Conflict("No attack has identified the current titan".into()))?;
     let titan_index = titan_index.unwrap_or_default();
 
-    let previous_boss = boss_repo::load(state.db()?).await?;
-    let preserve_narrow = previous_boss
-        .as_ref()
-        .map(|previous| previous.boss.recommend_1_to_2_part_patterns_only)
-        .unwrap_or(false);
-    let (mut boss, attackable_parts) =
-        boss_from_raid_snapshot(&base_raid, &event.titan_target, &enemy_id, preserve_narrow)?;
-    let enemy_changed = previous_boss
-        .as_ref()
-        .and_then(|previous| previous.source_enemy_id.as_deref())
-        != Some(enemy_id.as_str());
-    let targets_changed = previous_boss
-        .as_ref()
-        .is_none_or(|previous| previous.attackable_parts != attackable_parts);
-    // Only trust attack-tracked HP over this snapshot within the same cycle
-    // against the same titan -- sub_cycle reports periodically and can lag
-    // behind more frequent attack events, but a new cycle or a new titan is
-    // exactly when parts are expected to legitimately reset/regenerate, and
-    // the fresh snapshot must be allowed through rather than silently
-    // reverted back to the old, already-depleted values.
-    if !enemy_changed && !cycle_changed {
-        if let Some(previous) = &previous_boss {
-            preserve_current_boss_values(&mut boss, &previous.boss);
-        }
-    }
-    let parts_changed = previous_boss.as_ref().is_none_or(|previous| {
-        BossPartName::all()
-            .iter()
-            .any(|part_name| boss.part(*part_name).part_state != previous.boss.part(*part_name).part_state)
-    });
-    let needs_simulation =
-        cycle_changed || enemy_changed || targets_changed || mirror_changed || parts_changed;
-
     let mut tx = state.db()?.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
         .bind(RAID_STATE_LOCK)
@@ -828,22 +863,51 @@ async fn handle_sub_cycle(
     .execute(&mut *tx)
     .await?;
 
-    let boss_version = boss_repo::store(
-        &mut tx,
-        boss_repo::BossWrite {
-            boss: &boss,
-            attackable_parts: Some(&attackable_parts),
-            source_raid_id: Some(event.raid_id),
-            source_titan_index: Some(titan_index),
-            source_enemy_id: Some(&enemy_id),
-            bump_version: needs_simulation,
-        },
-    )
-    .await?;
-    tx.commit().await?;
+    let previous_boss = boss_repo::load_for_update(&mut tx).await?;
+    let enemy_changed = previous_boss
+        .as_ref()
+        .and_then(|previous| previous.source_enemy_id.as_deref())
+        != Some(enemy_id.as_str());
+
+    let mut needs_simulation = mirror_changed;
+    let mut targets_changed = None;
+    if enemy_changed {
+        // Genuine titan transition -- rebuild base stats fresh. A new titan
+        // always starts undamaged, so there's nothing to preserve.
+        let preserve_narrow = previous_boss
+            .as_ref()
+            .map(|previous| previous.boss.recommend_1_to_2_part_patterns_only)
+            .unwrap_or(false);
+        let (boss, attackable_parts) =
+            boss_from_raid_snapshot(&base_raid, &event.titan_target, &enemy_id, preserve_narrow)?;
+        let boss_version = boss_repo::store(
+            &mut tx,
+            boss_repo::BossWrite {
+                boss: &boss,
+                attackable_parts: Some(&attackable_parts),
+                source_raid_id: Some(event.raid_id),
+                source_titan_index: Some(titan_index),
+                source_enemy_id: Some(&enemy_id),
+                bump_version: true,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+        needs_simulation = true;
+    } else {
+        // Same titan -- only ever touch targeting here, never current
+        // HP/part_state (that stays `attack`'s job exclusively).
+        targets_changed =
+            update_boss_targets_from_titan_target(&mut tx, &event.titan_target, &enemy_id).await?;
+        tx.commit().await?;
+        if let Some(boss_version) = targets_changed {
+            job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+            needs_simulation = true;
+        }
+    }
 
     if needs_simulation {
-        job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
         queue_auto_simulations(state, None).await?;
     }
     tracing::info!(
@@ -851,8 +915,7 @@ async fn handle_sub_cycle(
         titan_index,
         enemy_id,
         enemy_changed,
-        targets_changed,
-        cycle_changed,
+        targets_changed = targets_changed.is_some(),
         mirror_changed,
         needs_simulation,
         used_sub_cycle_fallback,
@@ -1236,17 +1299,6 @@ fn select_base_raid(
     let stored_base_raid = stored_base_raid
         .ok_or_else(|| AppError::Conflict("sub_start did not contain base raid data".into()))?;
     Ok((serde_json::from_value(stored_base_raid)?, false))
-}
-
-fn preserve_current_boss_values(boss: &mut Boss, current: &Boss) {
-    for part_name in BossPartName::all() {
-        let current_part = current.part(part_name);
-        let part = boss.part_mut(part_name);
-        part.current_armor = current_part.current_armor;
-        part.current_health = current_part.current_health;
-        part.radioactivity_afflicted_seconds = current_part.radioactivity_afflicted_seconds;
-        part.sync_state_from_current_values();
-    }
 }
 
 fn rounded_u64(value: f64, field: &str) -> Result<u64, AppError> {
