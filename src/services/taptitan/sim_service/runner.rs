@@ -449,6 +449,7 @@ impl SimService {
             let mut lowest_round_damage = u64::MAX;
             let mut highest_round_damage = 0;
             let mut card_damage_totals = vec![0u64; select_deck.len()];
+            let mut tap_damage_totals: u64 = 0;
             let mut card_proc_totals = vec![0u64; select_deck.len()];
 
             for _ in 1..=sim_rounds {
@@ -560,6 +561,7 @@ impl SimService {
                 total_sim_damage += round_damage;
                 lowest_round_damage = lowest_round_damage.min(round_damage);
                 highest_round_damage = highest_round_damage.max(round_damage);
+                tap_damage_totals = tap_damage_totals.saturating_add(boss.tap_damage_total());
 
                 for (card_index, card_name) in deck_card_names.iter().enumerate() {
                     let damage = boss.card_damage_total(*card_name);
@@ -571,6 +573,7 @@ impl SimService {
             }
 
             let average_damage = total_sim_damage / sim_rounds;
+            let tap_damage = tap_damage_totals / sim_rounds;
             let lowest_round_damage = if lowest_round_damage == u64::MAX {
                 0
             } else {
@@ -599,6 +602,8 @@ impl SimService {
                 lowest_round_damage_display: format_compact(lowest_round_damage),
                 highest_round_damage,
                 highest_round_damage_display: format_compact(highest_round_damage),
+                tap_damage,
+                tap_damage_display: format_compact(tap_damage),
                 card_damage,
             };
 

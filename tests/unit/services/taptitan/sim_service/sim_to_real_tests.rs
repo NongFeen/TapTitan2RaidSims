@@ -137,8 +137,8 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
         .as_ref()
         .unwrap_or_else(|| panic!("case '{}': simulation produced no pattern result", case.name));
 
-    let card_damage_sum: u64 = pattern.card_damage.iter().map(|card| card.average_damage).sum();
-    let actual_tap_damage = pattern.average_damage.saturating_sub(card_damage_sum);
+    
+    let actual_tap_damage = pattern.tap_damage;
 
     println!(
         "[sim-to-real] case '{}': sim total={} tap={} (expected {}) cards={:?}",
