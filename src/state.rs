@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore, broadcast};
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -18,6 +18,18 @@ pub struct AppState {
     pub clan_fetch_lock: Arc<Mutex<()>>,
     pub live_attack_boss: Arc<RwLock<Option<LiveAttackBossView>>>,
     pub live_attacking_players: Arc<RwLock<HashMap<String, LiveAttackingPlayer>>>,
+    /// Fans out newly-started attacks to any SSE listeners (see
+    /// `routes::raids::live_attacking_players_stream`) so the frontend widget
+    /// can be pushed new entries instead of polling for them. Expiry is
+    /// handled client-side per player, so only additions need to be pushed.
+    pub live_attacking_players_tx: broadcast::Sender<LiveAttackingPlayer>,
+    /// Pings SSE listeners (see `routes::raids::live_current_boss_stream`)
+    /// whenever a raid event that could change the live boss has been
+    /// processed. Carries no payload -- each listener rebuilds and compares
+    /// its own enriched view via `build_live_boss_view` on wake, since that
+    /// view depends on more than just `live_attack_boss` (it's also merged
+    /// with `raid_current_state` for `display_parts`).
+    pub live_boss_tx: broadcast::Sender<()>,
 }
 
 impl AppState {
@@ -36,6 +48,8 @@ impl AppState {
             clan_fetch_lock: Arc::new(Mutex::new(())),
             live_attack_boss: Arc::new(RwLock::new(None)),
             live_attacking_players: Arc::new(RwLock::new(HashMap::new())),
+            live_attacking_players_tx: broadcast::channel(32).0,
+            live_boss_tx: broadcast::channel(16).0,
         }
     }
 

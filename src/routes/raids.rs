@@ -1,8 +1,19 @@
+use std::convert::Infallible;
 use std::sync::Arc;
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
+};
 
 use chrono::Utc;
+use futures_util::{
+    StreamExt,
+    stream::{self, Stream},
+};
+use tokio::sync::broadcast;
 
 use crate::{
     error::AppError,
@@ -135,18 +146,23 @@ pub async fn current(
 pub async fn live_from_attack(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiveAttackBossView>, AppError> {
+    build_live_boss_view(&state).await?.map(Json).ok_or_else(|| {
+        AppError::NotFound("No live current boss has been received from an attack event".to_string())
+    })
+}
+
+/// Shared by the plain GET handler and the SSE stream: reads the in-memory
+/// live boss (falling back to reconstructing one from persisted state if the
+/// backend hasn't seen an `attack` event since it last restarted), then
+/// enriches it with `display_parts` the same way either path needs.
+async fn build_live_boss_view(state: &Arc<AppState>) -> Result<Option<LiveAttackBossView>, AppError> {
     let cached = state.live_attack_boss.read().await.clone();
     let (mut boss, from_cache) = match cached {
         Some(boss) => (boss, true),
-        None => {
-            let fallback = build_live_boss_fallback(&state).await?;
-            let boss = fallback.ok_or_else(|| {
-                AppError::NotFound(
-                    "No live current boss has been received from an attack event".to_string(),
-                )
-            })?;
-            (boss, false)
-        }
+        None => match build_live_boss_fallback(state).await? {
+            Some(boss) => (boss, false),
+            None => return Ok(None),
+        },
     };
     // The DB-reconstructed fallback already computes display_parts directly
     // from normalized data; only the real in-memory path needs this extra
@@ -172,7 +188,47 @@ pub async fn live_from_attack(
                 .flatten();
         }
     }
-    Ok(Json(boss))
+    Ok(Some(boss))
+}
+
+/// Pushes the live boss over SSE instead of making the widget poll for it:
+/// the connection opens with a `boss` event carrying the current view (or
+/// `null` if none has been established yet), then a fresh `boss` event each
+/// time a raid event that could change it (attack/sub_start/sub_cycle/
+/// cycle_reset) has been processed -- see
+/// `raid_event_service::handle_event`'s ping to `live_boss_tx`.
+pub async fn live_current_boss_stream(
+    State(state): State<Arc<AppState>>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
+    let initial_event = boss_sse_event(build_live_boss_view(&state).await?);
+
+    let receiver = state.live_boss_tx.subscribe();
+    let updates = stream::unfold((receiver, state), |(mut receiver, state)| async move {
+        loop {
+            return match receiver.recv().await {
+                Ok(()) => match build_live_boss_view(&state).await {
+                    Ok(view) => Some((boss_sse_event(view), (receiver, state))),
+                    Err(_) => continue,
+                },
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => None,
+            };
+        }
+    })
+    .map(Ok);
+
+    let stream = stream::once(async move { Ok(initial_event) }).chain(updates);
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+fn boss_sse_event(view: Option<LiveAttackBossView>) -> Event {
+    match view {
+        Some(view) => Event::default()
+            .event("boss")
+            .json_data(&view)
+            .unwrap_or_else(|_| Event::default().event("boss").data("null")),
+        None => Event::default().event("boss").data("null"),
+    }
 }
 
 pub async fn live_attacking_players(
@@ -184,6 +240,48 @@ pub async fn live_attacking_players(
     let mut list: Vec<LiveAttackingPlayer> = players.values().cloned().collect();
     list.sort_by_key(|player| player.started_at);
     Json(list)
+}
+
+/// Pushes attacking-player updates over SSE instead of making the widget poll
+/// for them: the connection opens with a `snapshot` event carrying the
+/// current list, then a `player` event for each subsequent attack as it
+/// starts. Expiry is handled entirely client-side (each player carries its
+/// own `duration_seconds`), so no "player removed" event is needed.
+pub async fn live_attacking_players_stream(
+    State(state): State<Arc<AppState>>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let now = Utc::now();
+    let snapshot = {
+        let mut players = state.live_attacking_players.write().await;
+        players.retain(|_, player| !player.is_expired(now));
+        let mut list: Vec<LiveAttackingPlayer> = players.values().cloned().collect();
+        list.sort_by_key(|player| player.started_at);
+        list
+    };
+    let snapshot_event = Event::default()
+        .event("snapshot")
+        .json_data(&snapshot)
+        .unwrap_or_else(|_| Event::default().event("snapshot").data("[]"));
+
+    let receiver = state.live_attacking_players_tx.subscribe();
+    let updates = stream::unfold(receiver, |mut receiver| async move {
+        loop {
+            return match receiver.recv().await {
+                Ok(player) => {
+                    let Ok(event) = Event::default().event("player").json_data(&player) else {
+                        continue;
+                    };
+                    Some((event, receiver))
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => None,
+            };
+        }
+    })
+    .map(Ok);
+
+    let stream = stream::once(async move { Ok(snapshot_event) }).chain(updates);
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 /// Reconstructs a live-boss view from the persisted `current_boss` tables
