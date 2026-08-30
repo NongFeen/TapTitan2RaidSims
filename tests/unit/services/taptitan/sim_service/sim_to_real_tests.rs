@@ -1,7 +1,6 @@
 use super::*;
 use crate::models::player_data::PlayerData;
 use crate::services::taptitan::player_service::clean_data;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Proves the deterministic single-tap machinery (`SimRng`, the tap-once
@@ -29,8 +28,8 @@ fn deterministic_single_tap_simulation_runs_end_to_end() {
     );
 }
 
-/// Deserializes `tests/fixtures/sim_to_real/cases.toml` -- see that file for
-/// the field-by-field format.
+/// Deserializes one `.toml` file under `tests/fixtures/sim_to_real/cases/`
+/// -- see `cases/README.md` for the field-by-field format.
 #[derive(Debug, serde::Deserialize)]
 struct CasesFile {
     #[serde(default, rename = "case")]
@@ -52,14 +51,15 @@ struct Case {
     /// Real damage measured in-game from the player's own tap alone
     /// (excludes every card's contribution).
     expected_tap_damage: u64,
-    /// Real per-card damage measured in-game, keyed by card id. A card with
+    /// Real per-card damage measured in-game, positional: `expected_card_damage[i]`
+    /// is `deck[i]`'s damage. Must be the same length as `deck`. A card with
     /// no measurable contribution (e.g. a Support card, or one that can't
-    /// proc in this scenario) should still be listed with `0`.
-    expected_card_damage: HashMap<CardName, u64>,
+    /// proc in this scenario) should still have an entry, `0`.
+    expected_card_damage: Vec<u64>,
 }
 
 /// A raw player export + a `Boss` snapshot, as captured by hand from a real
-/// TT2 attack -- see `cases.toml`'s doc comment for how to produce one.
+/// TT2 attack -- see `cases/README.md` for how to produce one.
 /// `title` is `PlayerRaidData::title` (the player's title, an additive bonus
 /// to all raid damage -- see `damage_cache.rs`'s `raid_all_mult`) directly,
 /// not part of the raw export `clean_data` reads, so it's supplied
@@ -73,31 +73,56 @@ struct RawFixture {
 }
 
 const FIXTURES_DIR: &str = "tests/fixtures/sim_to_real";
+/// `payload` paths in case files are resolved against `FIXTURES_DIR`, not
+/// against this directory -- see `cases/README.md`.
+const CASES_DIR: &str = "tests/fixtures/sim_to_real/cases";
 
-/// Runs every case in `cases.toml` through the deterministic single-tap
-/// simulation and checks tap damage plus every card's damage against the
-/// real, human-measured TT2 numbers recorded for that case. Passes
-/// trivially (0 cases run) until a real, verified case is added.
+/// Runs every case from every `.toml` file under `cases/` through the
+/// deterministic single-tap simulation and checks tap damage plus every
+/// card's damage against the real, human-measured TT2 numbers recorded for
+/// that case. Passes trivially (0 cases run) until a real, verified case is
+/// added -- see `cases/README.md` for the format and how to split cases
+/// across files.
 #[test]
 fn sim_to_real_golden_cases() {
-    let cases_path = Path::new(FIXTURES_DIR).join("cases.toml");
-    let cases_toml = std::fs::read_to_string(&cases_path)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", cases_path.display()));
-    let cases_file: CasesFile = toml::from_str(&cases_toml)
-        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", cases_path.display()));
+    let cases = load_all_cases();
 
     // Run every case (even after one mismatches) so a single failing test
     // run shows the full picture across all parts/cards at once -- much
     // easier to spot a pattern (e.g. "always off by the same %") than
     // stopping at the first mismatch.
     let mut all_failures = Vec::new();
-    for case in &cases_file.cases {
+    for case in &cases {
         if let Err(failures) = run_case(case) {
             all_failures.push(format!("case '{}':\n{}", case.name, failures.join("\n")));
         }
     }
 
     assert!(all_failures.is_empty(), "\n{}", all_failures.join("\n\n"));
+}
+
+/// Loads and concatenates every `.toml` file directly under `CASES_DIR`
+/// (non-recursive; `README.md` and anything not ending in `.toml` is
+/// skipped). Files are read in sorted order purely for reproducible
+/// failure-message ordering -- case files are independent of each other.
+fn load_all_cases() -> Vec<Case> {
+    let cases_dir = Path::new(CASES_DIR);
+    let mut entries = std::fs::read_dir(cases_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", cases_dir.display()))
+        .map(|entry| entry.expect("directory entry should be readable").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .collect::<Vec<_>>();
+    entries.sort();
+
+    let mut cases = Vec::new();
+    for path in entries {
+        let toml_text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let file: CasesFile = toml::from_str(&toml_text)
+            .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()));
+        cases.extend(file.cases);
+    }
+    cases
 }
 
 fn run_case(case: &Case) -> Result<(), Vec<String>> {
@@ -137,7 +162,6 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
         .as_ref()
         .unwrap_or_else(|| panic!("case '{}': simulation produced no pattern result", case.name));
 
-    
     let actual_tap_damage = pattern.tap_damage;
 
     println!(
@@ -153,13 +177,22 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
             .collect::<Vec<_>>()
     );
 
+    assert_eq!(
+        case.deck.len(),
+        case.expected_card_damage.len(),
+        "case '{}': deck has {} cards but expected_card_damage has {} entries -- they're positional, must match 1:1",
+        case.name,
+        case.deck.len(),
+        case.expected_card_damage.len()
+    );
+
     let mut failures = Vec::new();
     check_component("tap", actual_tap_damage, case.expected_tap_damage, &mut failures);
-    for (&card_name, &expected) in &case.expected_card_damage {
+    for (card_name, &expected) in case.deck.iter().zip(&case.expected_card_damage) {
         let actual = pattern
             .card_damage
             .iter()
-            .find(|card| card.card == card_name)
+            .find(|card| card.card == *card_name)
             .map_or(0, |card| card.average_damage);
         check_component(&format!("{card_name:?}"), actual, expected, &mut failures);
     }
