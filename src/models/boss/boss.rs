@@ -418,7 +418,10 @@ impl Boss {
             * (1.0 + support_bonus + part_debuff_bonus) as f32
             * support_damage_mult as f32
             * curse_damage_mult;
-
+        //debug flakshot
+        if(DamageSource::Card(CardName::FlakShot) == *source){
+            println!("[DEBUG]flakshot damage {} raw {} mult {}", raw_damage*total_multiplier as f64, raw_damage, total_multiplier);
+        }
         (raw_damage * total_multiplier as f64).max(0.0)
     }
 
