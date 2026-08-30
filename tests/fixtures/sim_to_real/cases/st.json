@@ -1,4 +1,5 @@
-"MoonBeam",//tested
+{
+    "MoonBeam",//tested
 "Fragmentize",//tested
 "SkullBash", //tested
 "RazorWind",//tested
@@ -42,4 +43,4 @@
 "AstralEcho",
 "TriangleSupport",
 "BattleDrums"
-        
+}

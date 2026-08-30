@@ -1,47 +1,47 @@
 #:schema ./cases.schema.json
 
-# Lojak, deck = MoonBeam / Fragmentize / Radiant Kaleidoscope (RazorWind).
+# Lojak, deck = FlakShot / BarbedMorningstar / Radiant Kaleidoscope (WhipOfLightning).
 # Radiant Kaleidoscope is a Support card with no direct proc damage here --
 # expected 0 on every part. No area/seasonal/loyalty/clan damage bonuses.
 # See ./README.md for the field-by-field format. expected_card_damage is
-# positional, in deck order: [MoonBeam, Fragmentize, RazorWind].
+# positional, in deck order: [FlakShot, BarbedMorningstar, WhipOfLightning].
 
 [[case]]
 name = "lojak_head_armor"
 payload = "player_boss_sample.json"
-deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["Head"]
 expected_tap_damage = 4610
-expected_card_damage = [124980, 156040, 111510]
-
+expected_card_damage = [183470, 130530, 210010]
+#flak shot deal 94770 + 88700
 [[case]]
 name = "lojak_torso_armor"
 payload = "player_boss_sample.json"
-deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["Torso"]
 expected_tap_damage = 4509
-expected_card_damage = [183330, 152590, 109040]
+expected_card_damage = [181380, 127650, 205370]
 
 [[case]]
 name = "lojak_left_hand_armor"
 payload = "player_boss_sample.json"
-deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["LeftHand"]
 expected_tap_damage = 4315
-expected_card_damage = [175480, 146050, 104370]
+expected_card_damage = [177410, 122180, 196570]
 
 [[case]]
 name = "lojak_left_leg_cursed"
 payload = "player_boss_sample.json"
-deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["LeftLeg"]
 expected_tap_damage = 4315
-expected_card_damage = [116980, 182560, 104370]
+expected_card_damage = [177410, 122180, 196570]
 
 [[case]]
 name = "lojak_right_leg_body"
 payload = "player_boss_sample.json"
-deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["RightLeg"]
 expected_tap_damage = 4315
-expected_card_damage = [116980, 97370, 156560]
+expected_card_damage = [88700, 185930, 196570]
