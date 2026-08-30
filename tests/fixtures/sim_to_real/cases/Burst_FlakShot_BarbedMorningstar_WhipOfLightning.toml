@@ -21,7 +21,7 @@ payload = "player_boss_sample.json"
 deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
 attackable_part = ["Torso"]
 expected_tap_damage = 4509
-expected_card_damage = [1181380, 127650, 205370]
+expected_card_damage = [181380, 127650, 205370]
 #flak shot deal 92670 + 88700
 
 

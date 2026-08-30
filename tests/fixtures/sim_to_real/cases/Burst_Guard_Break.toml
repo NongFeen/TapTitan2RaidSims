@@ -1,0 +1,87 @@
+#:schema ./cases.schema.json
+
+# Lojak, deck = Skull Bash / Mirror Force / Psychic Shackle (LimbBurst).
+# expected_card_damage is positional, in deck order:
+# [SkullBash, MirrorForce, LimbBurst].
+#
+# TODO: expected_card_damage below is still a placeholder (0, 0, 0) --
+# real numbers haven't been measured in-game for this deck yet. Fill them
+# in the same way the moonbeam_fragmentize.toml cases were built. Also
+# double-check expected_tap_damage: tap damage only depends on the player,
+# boss, and target part (not the deck's cards), so the moonbeam_fragmentize
+# values were copied over as a starting point -- but verify none of these 3
+# cards modify tap damage via a passive/support effect before trusting them.
+
+[[case]]
+name = "weaken_mirrorforce_head_armor"
+payload = "player_boss_sample.json"
+deck = ["Weaken", "MirrorForce", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 25030
+expected_card_damage = [16290, 794050, 0]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "mirrorforce_weaken_head_armor"
+payload = "player_boss_sample.json"
+deck = ["MirrorForce","Weaken", "TriangleSupport" ]
+attackable_part = ["Head"]
+expected_tap_damage = 25030
+expected_card_damage = [146200, 16290, 0]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "weaken_mirrorforce_TeamTactics_head_armor"
+payload = "player_boss_sample.json"
+deck = ["Weaken","MirrorForce", "TeamTactics" ]
+attackable_part = ["Head"]
+expected_tap_damage = 38710
+expected_card_damage = [64590, 1220000, 0]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "skullbash_mirrorforce35_head_armor"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [185470, 197380, 108540]
+mirror_force_boost = 0.35
+
+[[case]]
+name = "skullbash_mirrorforce_torso_armor"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["Torso"]
+expected_tap_damage = 4509
+expected_card_damage = [120910, 142970, 106140]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "skullbash_mirrorforce_left_hand_armor"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["LeftHand"]
+expected_tap_damage = 4315
+expected_card_damage = [115730, 136850 , 152390]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "skullbash_mirrorforce_left_leg_cursed"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["LeftLeg"]
+expected_tap_damage = 4315
+expected_card_damage = [173600, 136850, 152390]
+mirror_force_boost = 0.0
+
+[[case]]
+name = "skullbash_mirrorforce_right_leg_body"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["RightLeg"]
+expected_tap_damage = 4315
+expected_card_damage = [173600, 136850, 152390]
+mirror_force_boost = 0.0
+
+

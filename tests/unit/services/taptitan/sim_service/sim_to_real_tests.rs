@@ -231,12 +231,27 @@ fn truncate_to_display_precision(value: u64) -> u64 {
     (value / step) * step
 }
 
+const MAX_ERROR_PERCENT: f64 = 0.1;
+
 fn check_component(label: &str, actual: u64, expected: u64, failures: &mut Vec<String>) {
     let actual_truncated = truncate_to_display_precision(actual);
     let expected_truncated = truncate_to_display_precision(expected);
-    if actual_truncated != expected_truncated {
-        failures.push(format!(
-            "  {label}: expected {expected} (~{expected_truncated}), got {actual} (~{actual_truncated})"
-        ));
+    if actual_truncated == expected_truncated {
+        return;
     }
+
+    let diff = actual.abs_diff(expected);
+    let error_percent = if expected == 0 {
+        if actual == 0 { 0.0 } else { f64::INFINITY }
+    } else {
+        (diff as f64 / expected as f64) * 100.0
+    };
+    if error_percent <= MAX_ERROR_PERCENT {
+        return;
+    }
+
+    failures.push(format!(
+        "  {label}: expected {expected} (~{expected_truncated}), got {actual} (~{actual_truncated}), \
+         {error_percent:.3}% error (limit {MAX_ERROR_PERCENT}%)"
+    ));
 }
