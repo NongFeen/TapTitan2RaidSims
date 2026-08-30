@@ -61,6 +61,11 @@
           "type": "number",
           "minimum": 0,
           "description": "Optional, default 0.0. Fractional clan boost (0.35 = Mirror Force deals 35% more)."
+        },
+        "tap_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional, default 1. Number of guaranteed-proc taps before the rest of the round plays out untapped. Almost always 1 (one real attack) -- the exception is a cadence-based card like Cosmic Haymaker (fires once every 70 taps), which needs enough taps to reach its own cadence since there's no chance roll to guarantee. Every other card in the deck is also tapped (and guaranteed-proc'd) this many times, so expected_tap_damage/expected_card_damage must be the totals across all tap_count taps."
         }
       }
     },
@@ -69,7 +74,7 @@
       "enum": [
         "MoonBeam",
         "Fragmentize",
-        "SkullBash", 
+        "SkullBash",
         "RazorWind",
         "WhipOfLightning",
         "BurstCount",

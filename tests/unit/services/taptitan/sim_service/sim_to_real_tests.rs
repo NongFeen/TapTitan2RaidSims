@@ -16,7 +16,7 @@ fn deterministic_single_tap_simulation_runs_end_to_end() {
     // Narrow to one target so there's no first-tap pattern ambiguity.
     payload.attackable_part = vec![BossPartName::Head];
 
-    let result = SimService::run_deterministic_single_tap_simulation(payload, 1)
+    let result = SimService::run_deterministic_single_tap_simulation(payload, 1, 1)
         .expect("sample deck should produce a valid attack pattern");
     let pattern = result
         .best_pattern
@@ -48,14 +48,30 @@ struct Case {
     attackable_part: Vec<BossPartName>,
     #[serde(default)]
     mirror_force_boost: f64,
+    /// Optional, default 1. Number of guaranteed-proc taps to run before the
+    /// rest of the round plays out untapped. Almost always leave this at 1
+    /// (one real attack) -- the exception is a card whose proc is
+    /// cadence-based rather than chance-based (e.g. Cosmic Haymaker, which
+    /// only fires once every 70 taps): guaranteeing procs doesn't help a
+    /// cadence card, it just needs enough taps to reach its own cadence.
+    /// Every other card in the deck also gets tapped (and guaranteed-proc'd)
+    /// this many times, so expected_tap_damage/expected_card_damage must
+    /// reflect the full tap_count taps, not a single one.
+    #[serde(default = "default_tap_count")]
+    tap_count: u32,
     /// Real damage measured in-game from the player's own tap alone
-    /// (excludes every card's contribution).
+    /// (excludes every card's contribution), summed across all `tap_count`
+    /// taps.
     expected_tap_damage: u64,
     /// Real per-card damage measured in-game, positional: `expected_card_damage[i]`
     /// is `deck[i]`'s damage. Must be the same length as `deck`. A card with
     /// no measurable contribution (e.g. a Support card, or one that can't
     /// proc in this scenario) should still have an entry, `0`.
     expected_card_damage: Vec<u64>,
+}
+
+fn default_tap_count() -> u32 {
+    1
 }
 
 /// A raw player export + a `Boss` snapshot, as captured by hand from a real
@@ -154,9 +170,10 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
         mirror_force_boost: case.mirror_force_boost,
     };
 
-    let result = SimService::run_deterministic_single_tap_simulation(payload, 1).unwrap_or_else(
-        || panic!("case '{}': deck has no valid attack patterns for this boss", case.name),
-    );
+    let result = SimService::run_deterministic_single_tap_simulation(payload, case.tap_count, 1)
+        .unwrap_or_else(|| {
+            panic!("case '{}': deck has no valid attack patterns for this boss", case.name)
+        });
     let pattern = result
         .best_pattern
         .as_ref()

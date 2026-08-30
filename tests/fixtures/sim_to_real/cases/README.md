@@ -5,11 +5,11 @@ is useful (one per boss, per deck, per mechanic being exercised, whatever
 makes it easy to find things). Each file can hold one or more `[[case]]`
 entries.
 
-Each case runs one deterministic attack -- exactly one tap, guaranteed to
-proc every card with a nonzero proc chance, then the rest of a 600-tick
-round plays out with no further taps (so affliction/DoT cards finish
-ticking) -- and compares the result, component by component, to damage
-numbers measured by hand in real TapTitan2. See
+Each case runs one deterministic attack -- `tap_count` taps (default 1, i.e.
+one real attack), each guaranteed to proc every card with a nonzero proc
+chance, then the rest of a 600-tick round plays out with no further taps (so
+affliction/DoT cards finish ticking) -- and compares the result, component
+by component, to damage numbers measured by hand in real TapTitan2. See
 `SimService::run_deterministic_single_tap_simulation` for the mechanism.
 
 ## Editor autocomplete / validation
@@ -62,6 +62,16 @@ ordinary comment, so it has zero effect on the test itself.
   just can't proc here) should still have an entry, `0`.
 - **mirror_force_boost** -- Optional, default `0.0`. Fractional clan boost
   (`0.35` = Mirror Force deals 35% more).
+- **tap_count** -- Optional, default `1`. Number of guaranteed-proc taps
+  before the rest of the round plays out untapped. Almost always leave this
+  at `1` (one real attack) -- the exception is a card whose proc is
+  cadence-based rather than chance-based, e.g. Cosmic Haymaker (`"Haymaker"`
+  in `deck`), which only fires once every 70 taps: guaranteeing procs
+  doesn't help it, there's no chance roll to force, it just needs enough
+  taps to reach its own cadence. Every other card in the deck is also
+  tapped (and guaranteed-proc'd) `tap_count` times, so
+  `expected_tap_damage`/`expected_card_damage` must be the totals across
+  all of them, not a single tap.
 
 No `tolerance_percent` field: TT2 only ever shows damage to 2 decimals of a
 K/M/B/T-shortened number, so every expected value here is already lossy and

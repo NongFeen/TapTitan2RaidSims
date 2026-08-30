@@ -379,17 +379,24 @@ impl SimService {
         ))
     }
 
-    /// Sim-to-real golden-test entry point: taps exactly once (guaranteed to
-    /// proc every card with a nonzero proc chance -- see `SimRng`), then lets
-    /// the full 600-tick round play out with no further taps so
-    /// afflictions/DoTs tick to completion. Matches the methodology of
-    /// measuring a real single TT2 attack by hand and comparing its damage
-    /// to what this produces.
+    /// Sim-to-real golden-test entry point: taps exactly `tap_count` times
+    /// (guaranteed to proc every card with a nonzero proc chance -- see
+    /// `SimRng`), then lets the full 600-tick round play out with no further
+    /// taps so afflictions/DoTs tick to completion. Matches the methodology
+    /// of measuring `tap_count` real TT2 attacks by hand and comparing the
+    /// total damage to what this produces. `tap_count` almost always wants
+    /// to be 1 (a single real attack) -- the one standing exception is a
+    /// card whose proc is cadence-based rather than chance-based (e.g.
+    /// Cosmic Haymaker, which only fires once every
+    /// `COSMIC_HAYMAKER_TAPS_PER_PROC` taps: `force_guaranteed_procs`
+    /// doesn't help it, since there's no chance roll to force, it just needs
+    /// enough taps to reach its own cadence).
     pub fn run_deterministic_single_tap_simulation(
         payload: SimPayLoad,
+        tap_count: u32,
         rounds_per_pattern: u64,
     ) -> Option<SimDeckResult> {
-        Self::run_deck_debug_simulation_with_rng(payload, 1, rounds_per_pattern, true)
+        Self::run_deck_debug_simulation_with_rng(payload, tap_count, rounds_per_pattern, true)
     }
 
     pub fn run_deck_sim(
