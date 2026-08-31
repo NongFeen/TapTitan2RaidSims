@@ -1,0 +1,14 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "PlagueAttack 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["Disease", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+error_percent = 0.5
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [94390, 0, 0]
+# 94210
+# 92850 
+# damage have vary base on time apply and game tick
