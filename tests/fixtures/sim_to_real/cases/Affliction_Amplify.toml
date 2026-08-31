@@ -1,0 +1,25 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Amplify 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["MagicPotion", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [134180, 0, 0]
+# 116640
+#per tick 4447
+# damage have vary base on time apply and game tick
+
+
+[[case]]
+name = "Amplify 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["MagicPotion", "MoonBeam", "Haymaker"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [134180, 132770, 0]
