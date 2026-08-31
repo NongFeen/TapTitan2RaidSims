@@ -12,7 +12,7 @@ expected_tap_damage = 322710
 expected_card_damage = [1_360_000, 0, 0]
 
 [[case]]
-name = "Purify after affliction"
+name = "Haymaker Astral Echo 70"
 payload = "player_boss_sample.json"
 deck = ["Haymaker", "AstralEcho", "TriangleSupport"]
 attackable_part = ["Head"]
@@ -21,7 +21,7 @@ expected_tap_damage = 1_310_000
 expected_card_damage = [5_550_000, 0, 0]
 
 [[case]]
-name = "Purify after affliction"
+name = "Haymaker Astral Echo 175"
 payload = "player_boss_sample.json"
 deck = ["Haymaker", "AstralEcho", "TriangleSupport"]
 attackable_part = ["Head"]
