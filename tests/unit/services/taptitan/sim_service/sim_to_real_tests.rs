@@ -16,7 +16,7 @@ fn deterministic_single_tap_simulation_runs_end_to_end() {
     // Narrow to one target so there's no first-tap pattern ambiguity.
     payload.attackable_part = vec![BossPartName::Head];
 
-    let result = SimService::run_deterministic_single_tap_simulation(payload, 1, 1)
+    let result = SimService::run_deterministic_single_tap_simulation(payload, 1, 1, None)
         .expect("sample deck should produce a valid attack pattern");
     let pattern = result
         .best_pattern
@@ -59,6 +59,30 @@ struct Case {
     /// reflect the full tap_count taps, not a single one.
     #[serde(default = "default_tap_count")]
     tap_count: u32,
+    /// Optional. Forces a specific `AttackPattern` instead of letting the
+    /// deck's normal pattern-selection logic pick one. Needed when
+    /// `attackable_part` is narrowed to a single real target for
+    /// determinism (see its own doc comment) but the deck's card needs a
+    /// wider candidate pool to even become "available" (e.g. Fuse's
+    /// `FusionBombSpread` requires 3+ candidates) -- rather than widening
+    /// `attackable_part` and losing first-tap determinism, force the
+    /// pattern directly. Matched by name against `AttackPattern`'s variants
+    /// in `attack_pattern.rs` (see `parse_attack_pattern` below);
+    /// `CycleParts(n)` isn't supported since it takes an argument.
+    #[serde(default)]
+    attack_pattern: Option<String>,
+    /// Optional, defaults to `DEFAULT_ERROR_PERCENT`. Overrides the percent
+    /// error ceiling for every component of this case only. Needed for a
+    /// card whose in-game damage isn't reproducible to begin with -- e.g.
+    /// Fuse (`FusionBomb`)'s on-remove damage recompute lands wherever the
+    /// tap happens to fall relative to the game's own 0.2s (4-tick)
+    /// affliction update cadence, so real measurements of the same card at
+    /// the same target vary run to run, unlike our sim which is perfectly
+    /// consistent every time. Raise this only for cards with a similar,
+    /// understood source of real-game variance -- not to paper over an
+    /// unexplained gap.
+    #[serde(default = "default_error_percent")]
+    error_percent: f64,
     /// Real damage measured in-game from the player's own tap alone
     /// (excludes every card's contribution), summed across all `tap_count`
     /// taps.
@@ -72,6 +96,42 @@ struct Case {
 
 fn default_tap_count() -> u32 {
     1
+}
+
+fn default_error_percent() -> f64 {
+    DEFAULT_ERROR_PERCENT
+}
+
+/// Maps a case's `attack_pattern` string to an `AttackPattern` by variant
+/// name -- kept here (test-only) rather than a real `Deserialize` impl on
+/// `AttackPattern` since nothing outside tests needs to parse one from text.
+fn parse_attack_pattern(name: &str) -> AttackPattern {
+    match name {
+        "SingleAny" => AttackPattern::SingleAny,
+        "SingleHead" => AttackPattern::SingleHead,
+        "SingleTorso" => AttackPattern::SingleTorso,
+        "SingleBody" => AttackPattern::SingleBody,
+        "SingleArmor" => AttackPattern::SingleArmor,
+        "SingleLimb" => AttackPattern::SingleLimb,
+        "SingleCursed" => AttackPattern::SingleCursed,
+        "CycleCursed" => AttackPattern::CycleCursed,
+        "CycleHeadTorso" => AttackPattern::CycleHeadTorso,
+        "CycleLimb" => AttackPattern::CycleLimb,
+        "CycleBody" => AttackPattern::CycleBody,
+        "CycleArmor" => AttackPattern::CycleArmor,
+        "CycleAllActive" => AttackPattern::CycleAllActive,
+        "FusionBombSpread" => AttackPattern::FusionBombSpread,
+        "ThrivingPlagueSpread" => AttackPattern::ThrivingPlagueSpread,
+        "RadioactivitySpread" => AttackPattern::RadioactivitySpread,
+        "DecayingStrikeFocus" => AttackPattern::DecayingStrikeFocus,
+        "BlazingInfernoStack" => AttackPattern::BlazingInfernoStack,
+        "CelestialStatic" => AttackPattern::CelestialStatic,
+        "WhipRuinousFocus" => AttackPattern::WhipRuinousFocus,
+        other => panic!(
+            "unknown attack_pattern '{other}' -- see the AttackPattern enum in attack_pattern.rs \
+             (CycleParts(n) isn't supported here, it takes an argument)"
+        ),
+    }
 }
 
 /// A raw player export + a `Boss` snapshot, as captured by hand from a real
@@ -170,8 +230,14 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
         mirror_force_boost: case.mirror_force_boost,
     };
 
-    let result = SimService::run_deterministic_single_tap_simulation(payload, case.tap_count, 1)
-        .unwrap_or_else(|| {
+    let forced_pattern = case.attack_pattern.as_deref().map(parse_attack_pattern);
+    let result = SimService::run_deterministic_single_tap_simulation(
+        payload,
+        case.tap_count,
+        1,
+        forced_pattern,
+    )
+    .unwrap_or_else(|| {
             panic!("case '{}': deck has no valid attack patterns for this boss", case.name)
         });
     let pattern = result
@@ -204,14 +270,26 @@ fn run_case(case: &Case) -> Result<(), Vec<String>> {
     );
 
     let mut failures = Vec::new();
-    check_component("tap", actual_tap_damage, case.expected_tap_damage, &mut failures);
+    check_component(
+        "tap",
+        actual_tap_damage,
+        case.expected_tap_damage,
+        case.error_percent,
+        &mut failures,
+    );
     for (card_name, &expected) in case.deck.iter().zip(&case.expected_card_damage) {
         let actual = pattern
             .card_damage
             .iter()
             .find(|card| card.card == *card_name)
             .map_or(0, |card| card.average_damage);
-        check_component(&format!("{card_name:?}"), actual, expected, &mut failures);
+        check_component(
+            &format!("{card_name:?}"),
+            actual,
+            expected,
+            case.error_percent,
+            &mut failures,
+        );
     }
 
     if failures.is_empty() { Ok(()) } else { Err(failures) }
@@ -248,9 +326,15 @@ fn truncate_to_display_precision(value: u64) -> u64 {
     (value / step) * step
 }
 
-const MAX_ERROR_PERCENT: f64 = 0.1;
+const DEFAULT_ERROR_PERCENT: f64 = 0.1;
 
-fn check_component(label: &str, actual: u64, expected: u64, failures: &mut Vec<String>) {
+fn check_component(
+    label: &str,
+    actual: u64,
+    expected: u64,
+    max_error_percent: f64,
+    failures: &mut Vec<String>,
+) {
     let actual_truncated = truncate_to_display_precision(actual);
     let expected_truncated = truncate_to_display_precision(expected);
     if actual_truncated == expected_truncated {
@@ -263,12 +347,12 @@ fn check_component(label: &str, actual: u64, expected: u64, failures: &mut Vec<S
     } else {
         (diff as f64 / expected as f64) * 100.0
     };
-    if error_percent <= MAX_ERROR_PERCENT {
+    if error_percent <= max_error_percent {
         return;
     }
 
     failures.push(format!(
         "  {label}: expected {expected} (~{expected_truncated}), got {actual} (~{actual_truncated}), \
-         {error_percent:.3}% error (limit {MAX_ERROR_PERCENT}%)"
+         {error_percent:.3}% error (limit {max_error_percent}%)"
     ));
 }

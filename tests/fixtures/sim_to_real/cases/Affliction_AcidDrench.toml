@@ -1,0 +1,10 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Acid Drench"
+payload = "player_boss_sample.json"
+deck = ["PoisonAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 4610
+expected_card_damage = [33450, 0, 0]

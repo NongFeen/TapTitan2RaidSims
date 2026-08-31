@@ -1,0 +1,38 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Shadow 1 tap"
+payload = "player_boss_sample.json"
+deck = ["Shadow", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [121270, 0, 0]
+
+[[case]]
+name = "Shadow 2 tap"
+payload = "player_boss_sample.json"
+deck = ["Shadow", "TriangleSupport", "TriangleSupport"]
+tap_count = 2
+attackable_part = ["Head"]
+expected_tap_damage = 9220
+expected_card_damage = [290800, 0, 0]
+
+[[case]]
+name = "Shadow 3 tap"
+payload = "player_boss_sample.json"
+deck = ["Shadow", "TriangleSupport", "TriangleSupport"]
+tap_count = 3
+attackable_part = ["Head"]
+expected_tap_damage = 13830
+expected_card_damage = [523600, 0, 0]
+
+# there is no way I can calculate 4 stack++
+# [[case]]
+# name = "Shadow 4 tap"
+# payload = "player_boss_sample.json"
+# deck = ["Shadow", "TriangleSupport", "TriangleSupport"]
+# tap_count = 4
+# attackable_part = ["Head"]
+# expected_tap_damage = 18440
+# expected_card_damage = [838000, 0, 0]

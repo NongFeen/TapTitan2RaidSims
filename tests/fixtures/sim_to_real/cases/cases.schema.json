@@ -66,6 +66,15 @@
           "type": "integer",
           "minimum": 1,
           "description": "Optional, default 1. Number of guaranteed-proc taps before the rest of the round plays out untapped. Almost always 1 (one real attack) -- the exception is a cadence-based card like Cosmic Haymaker (fires once every 70 taps), which needs enough taps to reach its own cadence since there's no chance roll to guarantee. Every other card in the deck is also tapped (and guaranteed-proc'd) this many times, so expected_tap_damage/expected_card_damage must be the totals across all tap_count taps."
+        },
+        "attack_pattern": {
+          "$ref": "#/$defs/attack_pattern",
+          "description": "Optional. Forces this attack pattern instead of letting the deck pick one. Needed when attackable_part is narrowed to a single real target for determinism but the deck's card needs a wider candidate pool to even be available (e.g. Fuse's FusionBombSpread needs 3+ candidates) -- widen attackable_part to the boss's real active parts and force the pattern here instead of losing first-tap determinism."
+        },
+        "error_percent": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Optional, default 0.1. Overrides the percent error ceiling for every component of this case only. Raise this only for a card with a known, understood source of in-game measurement variance (e.g. Fuse/FusionBomb's on-remove damage recompute lands wherever the tap falls relative to the game's own 0.2s affliction update cadence, so repeated real measurements vary run to run) -- not to paper over an unexplained mismatch."
         }
       }
     },
@@ -129,6 +138,32 @@
         "RightHand",
         "LeftLeg",
         "RightLeg"
+      ]
+    },
+    "attack_pattern": {
+      "type": "string",
+      "description": "AttackPattern variant name (attack_pattern.rs). CycleParts(n) isn't listed -- it takes an argument and isn't supported by the test's string parser.",
+      "enum": [
+        "SingleAny",
+        "SingleHead",
+        "SingleTorso",
+        "SingleBody",
+        "SingleArmor",
+        "SingleLimb",
+        "SingleCursed",
+        "CycleCursed",
+        "CycleHeadTorso",
+        "CycleLimb",
+        "CycleBody",
+        "CycleArmor",
+        "CycleAllActive",
+        "FusionBombSpread",
+        "ThrivingPlagueSpread",
+        "RadioactivitySpread",
+        "DecayingStrikeFocus",
+        "BlazingInfernoStack",
+        "CelestialStatic",
+        "WhipRuinousFocus"
       ]
     }
   }

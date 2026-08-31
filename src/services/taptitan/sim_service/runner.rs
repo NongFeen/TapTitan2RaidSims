@@ -318,19 +318,40 @@ impl SimService {
         total_taps: u32,
         rounds_per_pattern: u64,
     ) -> Option<SimDeckResult> {
-        Self::run_deck_debug_simulation_with_rng(payload, total_taps, rounds_per_pattern, false)
+        Self::run_deck_debug_simulation_with_rng(
+            payload,
+            total_taps,
+            rounds_per_pattern,
+            false,
+            true,
+            None,
+        )
     }
 
     /// Same as `run_deck_debug_simulation`, but `force_guaranteed_procs`
     /// swaps in `SimRng::AlwaysSucceed` for the whole run -- used only by
     /// deterministic "sim-to-real" golden tests (see
     /// `run_deterministic_single_tap_simulation`), never by the real
-    /// `/simulation-debug` route.
+    /// `/simulation-debug` route. `apply_seasonal_boosts` gates whether each
+    /// card's level gets bumped by `seasonal_card_boosts.json` before the
+    /// sim runs -- also real-route-only: a seasonal boost is a time-varying
+    /// external modifier, so a golden test comparing against a number
+    /// measured by hand at some other point in time must not have one
+    /// silently mixed in, whether or not the card involved happens to be on
+    /// the currently-configured seasonal list. `forced_pattern`, when
+    /// `Some`, skips `generate_all_attack_patterns`'s deck-based auto
+    /// selection entirely and runs exactly that one pattern instead -- for
+    /// a case where the "best" auto-selected pattern for a single-part
+    /// target doesn't exist or isn't the one a real single tap actually
+    /// used (e.g. a spread-oriented deck like Fuse/FusionBomb against a
+    /// one-part `attackable_part`).
     fn run_deck_debug_simulation_with_rng(
         mut payload: SimPayLoad,
         total_taps: u32,
         rounds_per_pattern: u64,
         force_guaranteed_procs: bool,
+        apply_seasonal_boosts: bool,
+        forced_pattern: Option<AttackPattern>,
     ) -> Option<SimDeckResult> {
         payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
@@ -351,7 +372,11 @@ impl SimService {
                     .find(|card| card.card_id == *card_name)
                     .cloned()
                     .map(|mut card| {
-                        crate::models::seasonal_card_boosts::apply_seasonal_level_boost(&mut card);
+                        if apply_seasonal_boosts {
+                            crate::models::seasonal_card_boosts::apply_seasonal_level_boost(
+                                &mut card,
+                            );
+                        }
                         card.ensure_skill_cache();
                         card
                     })
@@ -360,7 +385,10 @@ impl SimService {
         if select_deck.len() != 3 {
             return None;
         }
-        let attack_patterns = generate_all_attack_patterns(&sim_stats, &select_deck);
+        let attack_patterns = match forced_pattern {
+            Some(pattern) => vec![pattern],
+            None => generate_all_attack_patterns(&sim_stats, &select_deck),
+        };
         if attack_patterns.is_empty() {
             return None;
         }
@@ -390,13 +418,23 @@ impl SimService {
     /// Cosmic Haymaker, which only fires once every
     /// `COSMIC_HAYMAKER_TAPS_PER_PROC` taps: `force_guaranteed_procs`
     /// doesn't help it, since there's no chance roll to force, it just needs
-    /// enough taps to reach its own cadence).
+    /// enough taps to reach its own cadence). `forced_pattern`, when `Some`,
+    /// bypasses auto-selection entirely -- see
+    /// `run_deck_debug_simulation_with_rng`'s doc comment.
     pub fn run_deterministic_single_tap_simulation(
         payload: SimPayLoad,
         tap_count: u32,
         rounds_per_pattern: u64,
+        forced_pattern: Option<AttackPattern>,
     ) -> Option<SimDeckResult> {
-        Self::run_deck_debug_simulation_with_rng(payload, tap_count, rounds_per_pattern, true)
+        Self::run_deck_debug_simulation_with_rng(
+            payload,
+            tap_count,
+            rounds_per_pattern,
+            true,
+            false,
+            forced_pattern,
+        )
     }
 
     pub fn run_deck_sim(

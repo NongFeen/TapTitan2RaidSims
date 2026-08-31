@@ -72,6 +72,35 @@ ordinary comment, so it has zero effect on the test itself.
   tapped (and guaranteed-proc'd) `tap_count` times, so
   `expected_tap_damage`/`expected_card_damage` must be the totals across
   all of them, not a single tap.
+- **attack_pattern** -- Optional. Forces this `AttackPattern` (by variant
+  name, see `attack_pattern.rs`) instead of letting the deck's normal
+  pattern-selection logic pick one. Needed when a card's pattern requires
+  more candidate parts than `attackable_part` was narrowed down to for
+  first-tap determinism -- e.g. Fuse's `FusionBombSpread` pattern needs 3+
+  candidates to even be considered "available" for the deck, so a
+  single-part `attackable_part = ["Head"]` makes the deck produce *no*
+  valid pattern at all. Fix: widen `attackable_part` to the boss's real
+  active parts (so the pattern has enough candidates) and set
+  `attack_pattern` to force which one runs, instead of relying on
+  pattern-selection to guess right. `CycleParts(n)` isn't supported (it
+  takes an argument the string parser doesn't handle).
+- **error_percent** -- Optional, default `0.1`. Overrides the percent error
+  ceiling (see "Error limit" below) for every component of this case only.
+  Raise this only for a card with a known, understood source of in-game
+  measurement variance -- e.g. Fuse (`FusionBomb`)'s on-remove damage
+  recompute lands wherever the tap happens to fall relative to the game's
+  own 0.2s (4-tick) affliction update cadence, so repeated real
+  measurements of the same card/target vary run to run, unlike the sim
+  which is perfectly consistent every time -- not to paper over an
+  unexplained mismatch.
+
+Error limit: every value is compared to real TT2 numbers with two checks --
+first truncated to the same 2-decimal display precision TT2 itself shows
+(see below), and if that doesn't match, a raw percent-error ceiling
+(`DEFAULT_ERROR_PERCENT` in `sim_to_real_tests.rs`, currently 0.1%,
+overridable per case via `error_percent`) as a fallback for cases where the
+sim and the measured number are close enough that the gap is display/data
+noise, not a real bug.
 
 No `tolerance_percent` field: TT2 only ever shows damage to 2 decimals of a
 K/M/B/T-shortened number, so every expected value here is already lossy and
