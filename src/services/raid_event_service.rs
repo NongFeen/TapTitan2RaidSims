@@ -260,6 +260,10 @@ async fn handle_sub_start(
 }
 
 async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(), AppError> {
+    // area_bonus/cursed_part_count/curse_percent (like display_parts) aren't
+    // known from the raw attack payload alone -- left as placeholders here,
+    // filled in from the sims boss by `build_live_boss_view` whenever this
+    // cached entry is actually read.
     *state.live_attack_boss.write().await = Some(LiveAttackBossView {
         clan_code: attack.clan_code.clone(),
         raid_id: attack.raid_id,
@@ -268,6 +272,10 @@ async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(),
         boss_data: serde_json::to_value(&attack.raid_state.current)?,
         received_at: Utc::now(),
         display_parts: None,
+        area_bonus: None,
+        curse_type: CurseType::None,
+        cursed_part_count: 0,
+        curse_percent: 0.0,
     });
     tracing::info!(
         raid_id = attack.raid_id,
@@ -731,6 +739,12 @@ pub fn live_boss_from_persisted(
         }),
         received_at: loaded.updated_at,
         display_parts: Some(display_parts),
+        // Filled in by the caller (`routes::raids::build_live_boss_fallback`),
+        // which already has the same `loaded` this function was given.
+        area_bonus: None,
+        curse_type: CurseType::None,
+        cursed_part_count: 0,
+        curse_percent: 0.0,
     })
 }
 
