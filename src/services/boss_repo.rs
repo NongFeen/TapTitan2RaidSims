@@ -431,3 +431,13 @@ pub async fn store(tx: &mut Transaction<'_, Postgres>, write: BossWrite<'_>) -> 
 
     Ok(version)
 }
+
+// DB-backed tests, requiring a real Postgres via `#[sqlx::test]`. Run with
+// `scripts/test-integration.ps1`, NOT a bare `cargo test` -- see the module
+// doc at the top of
+// `tests/integration/services/boss_repo_integration_tests.rs` for why
+// (sqlx::test silently falls back to the dev database's connection string
+// in `.env` otherwise).
+#[cfg(test)]
+#[path = "../../tests/integration/services/boss_repo_integration_tests.rs"]
+mod integration_tests;
