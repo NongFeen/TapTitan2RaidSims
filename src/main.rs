@@ -82,11 +82,18 @@ async fn run() {
         tracing::warn!("TT2 integration is not configured; player fetching is unavailable");
     }
 
+    let allowed_origins: Vec<HeaderValue> = config
+        .cors_allowed_origins
+        .iter()
+        .map(|origin| {
+            origin
+                .parse::<HeaderValue>()
+                .unwrap_or_else(|_| panic!("invalid CORS_ALLOWED_ORIGINS entry: {origin}"))
+        })
+        .collect();
+    tracing::info!(origins = ?config.cors_allowed_origins, "CORS allowed origins configured");
     let cors = CorsLayer::new()
-        .allow_origin([
-            "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-            "http://localhost:3000".parse::<HeaderValue>().unwrap(),
-        ])
+        .allow_origin(allowed_origins)
         .allow_methods(cors::Any)
         .allow_headers(cors::Any);
 

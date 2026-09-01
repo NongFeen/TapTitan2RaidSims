@@ -7,6 +7,7 @@ pub struct Config {
     pub simulation_concurrency: usize,
     pub simulation_worker_count: usize,
     pub internal_api_key: String,
+    pub cors_allowed_origins: Vec<String>,
     pub tt2: Option<Tt2Config>,
 }
 
@@ -49,6 +50,19 @@ impl Config {
             return Err("INTERNAL_API_KEY must contain at least 16 characters".to_string());
         }
 
+        let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
+            .map_err(|_| "CORS_ALLOWED_ORIGINS must be configured".to_string())?
+            .split(',')
+            .map(str::trim)
+            .filter(|origin| !origin.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if cors_allowed_origins.is_empty() {
+            return Err(
+                "CORS_ALLOWED_ORIGINS must contain at least one origin".to_string(),
+            );
+        }
+
         let tt2_values = [
             env::var("TT2_SOCKET_URL").ok(),
             env::var("TT2_SOCKET_HANDSHAKE_PATH").ok(),
@@ -85,6 +99,7 @@ impl Config {
             simulation_concurrency,
             simulation_worker_count,
             internal_api_key,
+            cors_allowed_origins,
             tt2,
         })
     }
