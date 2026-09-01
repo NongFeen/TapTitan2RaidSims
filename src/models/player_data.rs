@@ -19,6 +19,9 @@ pub struct PlayerData {
     #[serde(rename = "raidCards")]
     pub raid_cards: HashMap<String, Card>,
 
+    #[serde(rename = "boostedCards", default)]
+    pub boosted_cards: Vec<BoostedCard>,
+
     pub raid_card_research: HashMap<String, String>,
 
     #[serde(rename = "titanCards")]
@@ -36,7 +39,7 @@ pub struct PlayerData {
 
 // ── Player Stats ───────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PlayerStats {
     #[serde(rename = "Max Prestige Stage")]
     pub max_prestige_stage: String,
@@ -80,7 +83,7 @@ pub struct PlayerStats {
 
 // ── Raid Stats ─────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct RaidStats {
     #[serde(rename = "Raid Level")]
     pub raid_level: String,
@@ -118,6 +121,15 @@ pub struct Card {
     pub num: u16,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BoostedCard {
+    #[serde(rename = "boostLevel")]
+    pub boost_level: u16,
+
+    #[serde(rename = "skillName")]
+    pub skill_name: String,
+}
+
 // ── Artifact ───────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -128,7 +140,7 @@ pub struct Artifact {
 
 // ── Splash Stats ───────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct SplashStats {
     #[serde(rename = "Titan Skip")]
     pub titan_skip: String,

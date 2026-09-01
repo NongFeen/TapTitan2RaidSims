@@ -1,0 +1,139 @@
+#:schema ./cases.schema.json
+
+# Boss curse_type = "AfflictionDamage" with exactly 1 currently-cursed part
+# (LeftLeg, same as the plain fixture) -- see
+# player_boss_sample_affliction_curse.json. -6% at the default
+# curse_damage_per_curse (0.06), same shape as Burst_CurseDamage.toml but
+# for Affliction-type cards: applies regardless of target part state, never
+# touches tap damage (card_type is None for a tap) or non-Affliction cards.
+# Each baseline is reused 1:1 from its sibling Affliction_*.toml file;
+# expected_card_damage is round(verified_baseline * 0.94) for the
+# Affliction-type card only -- Claude's belief pending your in-game check.
+#
+# DecayingStrike ("DecayingAttack") is skipped here: it has no existing
+# baseline anywhere in this suite, and it's a slow-ramping DoT stacker --
+# a single tap only deals ~30 damage in this fixture, far too small for a
+# 6% difference to mean anything against truncation/rounding noise. Needs
+# its own multi-tap baseline established first, independent of curse.
+
+# baseline (Affliction_AcidDrench.toml, "Acid Drench"): [33450, 0, 0]
+[[case]]
+name = "curse_affliction_acid_drench_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["PoisonAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [31443, 0, 0]
+
+# baseline (Affliction_BlazingInferno.toml, "BurningAttack 1 tap"): [175890, 0, 0]
+[[case]]
+name = "curse_affliction_burning_attack_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["BurningAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [165337, 0, 0]
+
+# baseline (Affliction_ElectroZap.toml, "ElectroZap 1 tap Head"): [88580, 0, 0]
+[[case]]
+name = "curse_affliction_electrozap_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["CosmicBarb", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [83265, 0, 0]
+
+# baseline (Affliction_Malestrom.toml, "RuneAttack 1 tap Head"): tap=14250, [60000, 0, 0]
+[[case]]
+name = "curse_affliction_runeattack_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["RuneAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 14250
+expected_card_damage = [56400, 0, 0]
+
+# baseline (Affliction_Plague.toml, "PlagueAttack 1 tap Head"): [223190, 0, 0]
+[[case]]
+name = "curse_affliction_plagueattack_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [209799, 0, 0]
+
+# baseline (Affliction_Radioactivity.toml, "Radio 1 tap Head"): [94390, 0, 0]
+[[case]]
+name = "curse_affliction_radioactivity_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["Disease", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+error_percent = 0.5
+expected_tap_damage = 4610
+expected_card_damage = [88727, 0, 0]
+
+# baseline (Affliction_Ruin.toml, "RuinousRust 1 tap Head"): [177225, 0, 0]
+[[case]]
+name = "curse_affliction_ruinousrust_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["RuinousRust", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [166592, 0, 0]
+
+# baseline (Affliction_SandofTime.toml, "SandsOfTime 1 tap Head"): [209420, 0, 0]
+[[case]]
+name = "curse_affliction_sandsoftime_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["SandsOfTime", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [196855, 0, 0]
+
+# baseline (Affliction_Swarm.toml, "Swarm 1 tap Head"): [121500, 0, 0]
+[[case]]
+name = "curse_affliction_swarm_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["Swarm", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [114210, 0, 0]
+
+# baseline ("Affliction_FusionBomb copy.toml", "Fuse"): [368290, 0, 0]
+# same real-game measurement noise as the Burst curse Fuse case -- see its
+# own comment in Burst_CurseDamage.toml.
+[[case]]
+name = "curse_affliction_fuse_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["Fuse", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+attack_pattern = "SingleHead"
+error_percent = 0.5
+expected_tap_damage = 4610
+expected_card_damage = [346193, 0, 0]
+
+# baseline ("Affliction_GrimShadow copy.toml", "Shadow 1 tap"): [121270, 0, 0]
+[[case]]
+name = "curse_affliction_shadow_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["Shadow", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [113994, 0, 0]
+
+# baseline (Affliction_Amplify.toml, "Amplify 1 tap Head"): [134180, 0, 0]
+[[case]]
+name = "curse_affliction_amplify_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["MagicPotion", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [126129, 0, 0]
+
+# baseline (Affliction_Bubble.toml, "PowerBubble 1 tap Head"): [83130, 0, 0]
+[[case]]
+name = "curse_affliction_powerbubble_head_armor"
+payload = "player_boss_sample_affliction_curse.json"
+deck = ["PowerBubble", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [78142, 0, 0]

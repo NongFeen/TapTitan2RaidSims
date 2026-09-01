@@ -1,0 +1,83 @@
+#:schema ./cases.schema.json
+
+# Boss curse_type = "BodyDamage" with exactly 1 currently-cursed part
+# (LeftLeg, same as the plain fixture) -- see
+# player_boss_sample_body_curse.json. -6% at the default
+# curse_damage_per_curse (0.06).
+#
+# BodyDamage curse is gated on the TARGET PART'S STATE (state ==
+# PartState::Body in Boss::curse_damage_multiplier), not on card type --
+# unlike BurstDamage/AfflictionDamage curse, this means:
+#   - it applies to EVERY card type, including a tap (card_type is None,
+#     but the state check doesn't care) -- so expected_tap_damage itself
+#     must scale by 0.94 too, not just card damage.
+#   - it must NOT apply at all when the target isn't in Body state (e.g.
+#     still Armor) -- the negative-control case at the bottom targets Head
+#     (Armor) with this same cursed boss and expects the exact baseline,
+#     unscaled, proving the state gate actually excludes non-Body hits.
+#
+# RightLeg is the fixture's only Body-state part (armor already broken,
+# current_armor=0) -- every positive case here targets it. Values are
+# round(original verified baseline * 0.94), Claude's belief pending your
+# in-game check -- same caveat as Burst_CurseDamage.toml.
+
+# --- MoonBeam / Fragmentize / RazorWind (all Burst-type, but that's
+# irrelevant here -- BodyDamage curse doesn't check card type) ---
+# baseline (Burst_moonbeam_fragmentize_razorwind.toml, lojak_right_leg_body):
+# tap=4315, [116980, 97370, 156560]
+[[case]]
+name = "curse_body_moonbeam_fragmentize_razorwind_right_leg_body"
+payload = "player_boss_sample_body_curse.json"
+deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+attackable_part = ["RightLeg"]
+expected_tap_damage = 4056
+expected_card_damage = [109961, 91528, 147166]
+
+# --- FlakShot / BarbedMorningstar / WhipOfLightning (Burst) ---
+# baseline (Burst_FlakShot_BarbedMorningstar_WhipOfLightning.toml, flakshot_right_leg_body):
+# tap=4315, [88700, 185930, 196570]
+[[case]]
+name = "curse_body_flakshot_barbedmorningstar_whipoflightning_right_leg_body"
+payload = "player_boss_sample_body_curse.json"
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
+attackable_part = ["RightLeg"]
+expected_tap_damage = 4056
+expected_card_damage = [83378, 174774, 184776]
+
+# --- SkullBash / MirrorForce / PsychicShackles (Burst) ---
+# baseline ("copy 2" file, skullbash_mirrorforce_right_leg_body, boost=0.0):
+# tap=4315, [173600, 136850, 152390]
+[[case]]
+name = "curse_body_skullbash_mirrorforce_psychicshackles_right_leg_body"
+payload = "player_boss_sample_body_curse.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["RightLeg"]
+mirror_force_boost = 0.0
+expected_tap_damage = 4056
+expected_card_damage = [163184, 128639, 143247]
+
+# --- RuinousRust (Affliction-type -- proves the state gate really doesn't
+# care about card type, only where it lands) ---
+# baseline (Affliction_Ruin.toml, "RuinousRust 1 tap normal Leg"):
+# tap=4315, [165750, 0, 0]
+[[case]]
+name = "curse_body_ruinousrust_right_leg_body"
+payload = "player_boss_sample_body_curse.json"
+deck = ["RuinousRust", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["RightLeg"]
+expected_tap_damage = 4056
+expected_card_damage = [155805, 0, 0]
+
+# --- Negative control: same cursed boss, but targeting Head (Armor, not
+# Body) -- expect the ORIGINAL, uncursed baseline exactly. If this one
+# fails (damage comes in reduced), the state gate has leaked into a
+# part that was never supposed to be affected.
+# baseline (Burst_moonbeam_fragmentize_razorwind.toml, lojak_head_armor):
+# tap=4610, [124980, 156040, 111510]
+[[case]]
+name = "curse_body_negative_control_head_armor_unaffected"
+payload = "player_boss_sample_body_curse.json"
+deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [124980, 156040, 111510]

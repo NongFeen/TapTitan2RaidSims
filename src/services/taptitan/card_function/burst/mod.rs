@@ -19,10 +19,6 @@ mod razor_wind;
 mod skull_bash;
 mod whip_of_lightning;
 
-fn default_damage(_card: &Card, _boss: &Boss, _target_part: BossPartName, damage: f64) -> f64 {
-    damage
-}
-
 pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     match card.card_id {
         CardName::CelestialStatic => celestial_static::get_proc_chance(card, boss),
@@ -49,9 +45,9 @@ pub fn on_proc(
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,
-    mirror_force_boost: u32,
+    mirror_force_boost: f64,
     burst_trigger_count: u32,
-) -> u64 {
+) -> f64 {
     match card.card_id {
         CardName::ClanshipBarrage => {
             clanship_barrage::on_proc(card, boss, target_part, damage, burst_trigger_count)
@@ -72,6 +68,6 @@ pub fn on_proc(
         CardName::CelestialStatic => celestial_static::on_proc(card, boss, target_part, damage),
         CardName::BarbedMorningstar => barbed_morningstar::on_proc(card, boss, target_part, damage),
         CardName::GuardBreak => guard_break::on_proc(card, boss, target_part, damage),
-        _ => 0,
+        _ => 0.0,
     }
 }

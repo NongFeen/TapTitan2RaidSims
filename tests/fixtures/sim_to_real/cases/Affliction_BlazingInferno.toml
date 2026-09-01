@@ -1,0 +1,19 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "BurningAttack 1 tap"
+payload = "player_boss_sample.json"
+deck = ["BurningAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 4610
+expected_card_damage = [175890, 0, 0]
+
+[[case]]
+name = "BurningAttack 2 tap"
+payload = "player_boss_sample.json"
+deck = ["BurningAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 2
+expected_tap_damage = 9220
+expected_card_damage = [351790, 0, 0]

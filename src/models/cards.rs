@@ -3,6 +3,7 @@ use crate::models::{
     card_skill_data::card_skill_row,
     support_modifier::SupportModifiers,
 };
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, EnumString};
 
@@ -19,7 +20,10 @@ use strum_macros::{EnumIter, EnumString};
     Copy,
     EnumIter,
     EnumString,
+    sqlx::Type,
+    utoipa::ToSchema,
 )]
+#[sqlx(type_name = "card_name", rename_all = "PascalCase")]
 pub enum CardName {
     // Burst
     #[serde(rename = "MoonBeam")]
@@ -160,7 +164,10 @@ pub enum CardName {
     BattleDrums,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(
+    Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy, sqlx::Type, utoipa::ToSchema,
+)]
+#[sqlx(type_name = "card_type", rename_all = "PascalCase")]
 pub enum CardType {
     Burst,
     Affliction,
@@ -243,16 +250,23 @@ pub struct Card {
     pub card_id: CardName,
     pub cardtype: CardType,
     pub level: u16,
-    #[serde(default)]
+    #[serde(default = "default_card_enabled")]
+    pub enabled: bool,
+
+    #[serde(skip)]
     pub tap_count: u16,
-    #[serde(default)]
+    #[serde(skip)]
     pub chained_parts: Vec<BossPartName>,
-    #[serde(default)]
+    #[serde(skip)]
     pub celestial_stacks: usize,
     #[serde(skip, default)]
     pub skill: CardSkillCache,
     #[serde(skip, default)]
     pub proc_chance_cache: f64,
+}
+
+const fn default_card_enabled() -> bool {
+    true
 }
 
 impl Card {
@@ -275,9 +289,10 @@ impl Card {
         boss: &mut Boss,
         target_part: BossPartName,
         damage: f64,
-        mirror_force_boost: u32,
+        mirror_force_boost: f64,
         burst_trigger_count: u32,
-    ) -> u64 {
+        rng: &mut impl Rng,
+    ) -> f64 {
         crate::services::taptitan::card_function::on_proc(
             self,
             boss,
@@ -285,6 +300,7 @@ impl Card {
             damage,
             mirror_force_boost,
             burst_trigger_count,
+            rng,
         )
     }
     pub fn support_modifiers(&mut self, boss: &Boss, deck: &[Card]) -> SupportModifiers {
@@ -393,11 +409,8 @@ impl CardName {
         }
     }
 
-    /// 3. Safely format image URLs using whichever casing your files use.
-    /// If your files are snake_case (e.g. flak_shot.webp), you can swap this function to utilize a lowercase helper or write them out.
+    /// Returns the static image URL. Card image filenames use the exact raw card ID.
     pub fn image_url(&self) -> String {
-        // Example assumes images are titled matching variant names (e.g., FlakShot.webp)
-        // If your image names are lowercased snake_case (flak_shot.webp), change self.id() to whatever matches your files.
         format!("/assets/taptitan/cards/{}.webp", self.id())
     }
 
@@ -452,3 +465,7 @@ impl CardName {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/models/cards_tests.rs"]
+mod card_serialization_tests;

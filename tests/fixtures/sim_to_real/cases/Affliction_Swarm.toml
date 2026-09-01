@@ -1,0 +1,14 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Swarm 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["Swarm", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [121500, 0, 0]
+# 116640
+#per tick 4860
+# damage have vary base on time apply and game tick

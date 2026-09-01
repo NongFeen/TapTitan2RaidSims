@@ -16,10 +16,6 @@ pub(super) fn get_proc_chance(card: &Card, _boss: &Boss) -> f64 {
         .min(card.skill.max_chance.max(card.skill.chance))
 }
 
-pub(super) fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
-    on_proc_with_tick_interval(card, boss, target_part, damage, 1.0);
-}
-
 pub(super) fn on_proc_with_tick_interval(
     card: &Card,
     boss: &mut Boss,
@@ -86,13 +82,13 @@ pub(super) fn on_tick(
     _part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     // println!("[AFF] {} Damage before bossmult ticks {}",affliction.source_card.display_name(),affliction.damage_per_second * stack_multiplier * elapsed_seconds);
-    (affliction.damage_per_second * stack_multiplier * elapsed_seconds).max(0.0) as u64
+    (affliction.damage_per_second * stack_multiplier * elapsed_seconds).max(0.0)
 }
 
-pub(super) fn on_remove(_affliction: &AfflictionRemoveView, _attached_duration: f64) -> u64 {
-    0
+pub(super) fn on_remove(_affliction: &AfflictionRemoveView, _attached_duration: f64) -> f64 {
+    0.0
 }
 
 fn sands_duration_bonus(boss: &Boss, target_part: BossPartName) -> Option<f64> {

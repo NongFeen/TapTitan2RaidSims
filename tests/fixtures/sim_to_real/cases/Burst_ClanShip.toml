@@ -1,0 +1,28 @@
+#:schema ./cases.schema.json
+
+# Lojak, deck = Skull Bash / Mirror Force / Psychic Shackle (LimbBurst).
+
+[[case]]
+name = "ClanShip 1st burst"
+payload = "player_boss_sample.json"
+deck = ["BurstCount", "SkullBash", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [60480, 185470, 124980]
+
+
+[[case]]
+name = "ClanShip 2nd burst"
+payload = "player_boss_sample.json"
+deck = ["SkullBash","BurstCount", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [185470, 62810, 124980]
+
+[[case]]
+name = "ClanShip 3rd burst"
+payload = "player_boss_sample.json"
+deck = ["SkullBash", "MoonBeam","BurstCount"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [ 185470, 124980, 65140]

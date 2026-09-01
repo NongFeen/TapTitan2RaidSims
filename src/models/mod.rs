@@ -1,11 +1,13 @@
 pub mod affliction;
+pub mod app;
 pub mod boss;
 pub mod card_skill_data;
 pub mod cards;
 pub mod damage_source;
+pub mod db_enums;
 pub mod player_data;
 pub mod player_raid_data;
 pub mod responses;
+pub mod seasonal_card_boosts;
 pub mod sim_payload;
 pub mod support_modifier;
-pub mod taptitan_game_dto;

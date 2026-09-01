@@ -1,0 +1,138 @@
+{
+  "attack_log": {
+    "attack_datetime": "2026-08-17T14:21:14Z",
+    "cards_damage": [
+      {
+        "titan_index": 1,
+        "id": null,
+        "damage_log": [
+          {
+            "id": "BodyHead",
+            "value": 44669083
+          }
+        ]
+      },
+      {
+        "titan_index": 1,
+        "id": "MagicPotion",
+        "damage_log": [
+          {
+            "id": "BodyHead",
+            "value": 11708831
+          }
+        ]
+      },
+      {
+        "titan_index": 1,
+        "id": "Purify",
+        "damage_log": [
+          {
+            "id": "BodyHead",
+            "value": 423487104
+          }
+        ]
+      },
+      {
+        "titan_index": 1,
+        "id": "TotemFairySkill",
+        "damage_log": []
+      }
+    ],
+    "cards_level": [
+      {
+        "id": "Purify",
+        "value": 71
+      },
+      {
+        "id": "MagicPotion",
+        "value": 52
+      },
+      {
+        "id": "TotemFairySkill",
+        "value": 71
+      }
+    ]
+  },
+  "clan_code": "zxw8e",
+  "raid_id": 3317047,
+  "player": {
+    "attacks_remaining": 0,
+    "player_code": "9wb2m9b",
+    "name": "16 Kero",
+    "raid_level": 1478
+  },
+  "raid_state": {
+    "current": {
+      "enemy_id": "Enemy8",
+      "current_hp": 107028000000,
+      "parts": [
+        {
+          "part_id": "BodyHead",
+          "current_hp": 43667424000
+        },
+        {
+          "part_id": "ArmorHead",
+          "current_hp": 28358456000.000004
+        },
+        {
+          "part_id": "BodyChestUpper",
+          "current_hp": 16054200000
+        },
+        {
+          "part_id": "ArmorChestUpper",
+          "current_hp": 12030740000
+        },
+        {
+          "part_id": "BodyArmUpperRight",
+          "current_hp": 13646070000
+        },
+        {
+          "part_id": "ArmorArmUpperRight",
+          "current_hp": 7222408000
+        },
+        {
+          "part_id": "BodyArmUpperLeft",
+          "current_hp": 13646070000
+        },
+        {
+          "part_id": "ArmorArmUpperLeft",
+          "current_hp": 5613024000
+        },
+        {
+          "part_id": "BodyLegUpperRight",
+          "current_hp": 5351400000
+        },
+        {
+          "part_id": "ArmorLegUpperRight",
+          "current_hp": 15249508000
+        },
+        {
+          "part_id": "BodyLegUpperLeft",
+          "current_hp": 5351400000
+        },
+        {
+          "part_id": "ArmorLegUpperLeft",
+          "current_hp": 15249508000
+        },
+        {
+          "part_id": "BodyHandRight",
+          "current_hp": 13646070000
+        },
+        {
+          "part_id": "ArmorHandRight",
+          "current_hp": 7222408000
+        },
+        {
+          "part_id": "BodyHandLeft",
+          "current_hp": 13646070000
+        },
+        {
+          "part_id": "ArmorHandLeft",
+          "current_hp": 3198948000
+        }
+      ]
+    },
+    "titan_index": 2
+  },
+  "cycle": 2
+}

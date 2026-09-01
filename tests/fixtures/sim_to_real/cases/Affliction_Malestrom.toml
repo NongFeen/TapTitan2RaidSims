@@ -1,0 +1,25 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "RuneAttack 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["RuneAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 14250
+expected_card_damage = [60000, 0, 0]
+# 116640
+#per tick 2000
+# damage have vary base on time apply and game tick
+
+[[case]]
+name = "RuneAttack 2 tap Head"
+payload = "player_boss_sample.json"
+deck = ["RuneAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 2
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 38150
+expected_card_damage = [201210, 0, 0]
+# per tick 6700

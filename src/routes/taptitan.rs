@@ -1,5 +1,6 @@
 use crate::dtos::cards::CardDefinitionDto;
 use crate::models::responses::{ApiError, ApiResponse};
+use crate::models::seasonal_card_boosts::seasonal_level_boost;
 use crate::{
     models::{cards::CardName, player_data::PlayerData, sim_payload::SimPayLoad},
     services::taptitan::{player_service::clean_data, sim_service::SimService},
@@ -30,6 +31,13 @@ pub async fn send_player_data_json(Json(payload): Json<PlayerData>) -> impl Into
     (StatusCode::CREATED, ResponseJson(success_response)).into_response()
 }
 
+/// List all card definitions
+#[utoipa::path(
+    get,
+    path = "/api/taptitan/cards",
+    tag = "taptitan",
+    responses((status = 200, description = "Every card's static definition (id, name, type, image, seasonal boost)", body = [CardDefinitionDto])),
+)]
 pub async fn get_all_card_definitions() -> impl IntoResponse {
     // 2. CardName::iter() automatically knows how to traverse all 42 items!
     let list: Vec<CardDefinitionDto> = CardName::iter()
@@ -38,6 +46,7 @@ pub async fn get_all_card_definitions() -> impl IntoResponse {
             name: v.display_name(), // Will be "Moon Beam"
             r#type: v.card_type(),
             image: v.image_url(),
+            seasonal_level_boost: seasonal_level_boost(v),
         })
         .collect();
 
@@ -86,7 +95,24 @@ pub async fn send_sim_payload(Json(simdata): Json<SimPayLoad>) -> impl IntoRespo
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
 
-    let result = SimService::run_simulation(simdata.clone());
+    let result =
+        match tokio::task::spawn_blocking(move || SimService::run_simulation(simdata)).await {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::error!(?error, "synchronous simulation worker panicked");
+                let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+                    error: ApiError {
+                        code: "SIMULATION_FAILED".to_string(),
+                        message: "Simulation worker failed".to_string(),
+                    },
+                };
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ResponseJson(error_response),
+                )
+                    .into_response();
+            }
+        };
 
     let success_response = ApiResponse::Success { data: result };
     (StatusCode::ACCEPTED, ResponseJson(success_response)).into_response()
@@ -113,7 +139,25 @@ pub async fn send_sim_deck(Json(simdata): Json<SimPayLoad>) -> impl IntoResponse
         };
         return (StatusCode::BAD_REQUEST, ResponseJson(error_response)).into_response();
     }
-    let Some(result) = SimService::run_deck_simulation(simdata.clone()) else {
+    let simulation =
+        tokio::task::spawn_blocking(move || SimService::run_deck_simulation(simdata)).await;
+    let Some(result) = (match simulation {
+        Ok(result) => result,
+        Err(error) => {
+            tracing::error!(?error, "single-deck simulation worker panicked");
+            let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
+                error: ApiError {
+                    code: "SIMULATION_FAILED".to_string(),
+                    message: "Simulation worker failed".to_string(),
+                },
+            };
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ResponseJson(error_response),
+            )
+                .into_response();
+        }
+    }) else {
         let error_response: ApiResponse<SimPayLoad> = ApiResponse::Error {
             error: ApiError {
                 code: "DECK_INVALID".to_string(),

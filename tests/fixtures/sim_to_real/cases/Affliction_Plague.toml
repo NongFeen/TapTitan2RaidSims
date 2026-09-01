@@ -1,0 +1,49 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "PlagueAttack 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [223190, 0, 0]
+
+[[case]]
+name = "PlagueAttack 1 tap Torso"
+payload = "player_boss_sample.json"
+deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+attackable_part = ["Torso"]
+expected_tap_damage = 4509
+expected_card_damage = [218250, 0, 0]
+
+[[case]]
+name = "PlagueAttack 2 tap same"
+payload = "player_boss_sample.json"
+deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 2
+attackable_part = ["Head"]
+expected_tap_damage = 9220
+expected_card_damage = [446380, 0, 0]
+
+[[case]]
+name = "PlagueAttack 2 tap dif"
+payload = "player_boss_sample.json"
+deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+tap_count = 2
+attack_pattern ="CycleAllActive"
+attackable_part = ["Head","Torso"]
+expected_tap_damage = 9119
+expected_card_damage = [498029, 0, 0]
+# 218250*1.2937/1.1467 + 223190*1.2937/1.1467
+
+
+# [[case]]
+# name = "PlagueAttack 3 tap"
+# payload = "player_boss_sample.json"
+# deck = ["PlagueAttack", "TriangleSupport", "TriangleSupport"]
+# tap_count = 3
+# attackable_part = ["Head"]
+# expected_tap_damage = 13830
+# expected_card_damage = [523600, 0, 0]

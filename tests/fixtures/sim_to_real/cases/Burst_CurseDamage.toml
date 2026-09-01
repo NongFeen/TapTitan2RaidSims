@@ -1,0 +1,128 @@
+#:schema ./cases.schema.json
+
+# Boss curse_type = "BurstDamage" with exactly 1 currently-cursed part
+# (LeftLeg, same as the plain boss fixture -- curse_type is just added on
+# top) -- see player_boss_sample_burst_curse.json. At the default
+# curse_damage_per_curse (0.06), that's exactly -6% to every Burst-type
+# card's damage (Boss::curse_damage_multiplier in boss.rs), applied
+# uniformly regardless of target part state. Tap damage is never affected
+# (card_type is None for a tap, so the BurstDamage match never applies), and
+# non-Burst cards (Support/Affliction) in a mixed deck are untouched.
+#
+# Each case below reuses an EXISTING verified (non-cursed) deck/target 1:1
+# from its sibling file, with expected_card_damage recomputed as
+# round(original_verified_value * 0.94) for every Burst-type card in that
+# deck -- NOT independently measured in-game. This is Claude's best-belief
+# estimate of what the -6% curse should produce, explicitly to be
+# re-verified against real gameplay (per your request) -- if a case here
+# fails once you've checked the real number, that's the discrepancy to
+# chase, not necessarily a code bug.
+#
+# One exception: ChainOfVengeance ("ChainLightning") has no existing
+# baseline anywhere in this suite at all (real or otherwise), so even its
+# *uncursed* starting point (148702, Head/Armor, tap 1) is only the sim's
+# own prediction, not a real measurement -- flagged again on that case.
+
+# --- MoonBeam / Fragmentize / RazorWind (all Burst) ---
+# baseline (Burst_moonbeam_fragmentize_razorwind.toml, lojak_head_armor):
+# [124980, 156040, 111510]
+[[case]]
+name = "burst_curse_moonbeam_fragmentize_razorwind_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["MoonBeam", "Fragmentize", "RazorWind"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [117480, 146670, 104820]
+
+# --- FlakShot / BarbedMorningstar / WhipOfLightning (all Burst) ---
+# baseline (Burst_FlakShot_BarbedMorningstar_WhipOfLightning.toml, flakshot_head_armor):
+# [183470, 130530, 210010]
+[[case]]
+name = "burst_curse_flakshot_barbedmorningstar_whipoflightning_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["FlakShot", "BarbedMorningstar", "WhipOfLightning"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [172460, 122690, 197400]
+
+# --- SkullBash / MirrorForce / PsychicShackles (all Burst) ---
+# baseline ("copy 2" file, skullbash_mirrorforce_head_armor, boost=0.0):
+# [185470, 146200, 108540]
+[[case]]
+name = "burst_curse_skullbash_mirrorforce_psychicshackles_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["SkullBash", "MirrorForce", "LimbBurst"]
+attackable_part = ["Head"]
+mirror_force_boost = 0.0
+expected_tap_damage = 4610
+expected_card_damage = [174340, 137420, 102020]
+
+# --- Weaken (GuardBreak) / MirrorForce / TriangleSupport ---
+# baseline (Burst_Guard_Break.toml, weaken_mirrorforce_head_armor, boost=0.0):
+# [16290, 794050, 0] -- TriangleSupport (Support type) stays 0, untouched by curse.
+[[case]]
+name = "burst_curse_weaken_mirrorforce_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["Weaken", "MirrorForce", "TriangleSupport"]
+attackable_part = ["Head"]
+mirror_force_boost = 0.0
+expected_tap_damage = 25030
+expected_card_damage = [15310, 746200, 0]
+
+# --- BurstCount (ClanshipBarrage) / SkullBash / MoonBeam (all Burst) ---
+# baseline (Burst_ClanShip.toml, "ClanShip 1st burst"): [60480, 185470, 124980]
+[[case]]
+name = "burst_curse_clanship_skullbash_moonbeam_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["BurstCount", "SkullBash", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [56850, 174340, 117480]
+
+# --- Purify (PurifyingBlast) / PoisonAttack (Affliction) / MoonBeam ---
+# baseline (Burst_Purify.toml, "Purify before afflction"): [214240, 33450, 124980]
+# PoisonAttack is Affliction type -- curse_type=BurstDamage never applies to
+# it, stays exactly 33450.
+[[case]]
+name = "burst_curse_purify_poisonattack_moonbeam_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["Purify", "PoisonAttack", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [201380, 33450, 117480]
+
+# --- Cosmic Haymaker (cadence-based, needs enough taps to fire) ---
+# baseline (Burst_Haymaker.toml, "Haymaker", tap_count=70): [1_360_000, 0, 0]
+[[case]]
+name = "burst_curse_haymaker_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["Haymaker", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 70
+expected_tap_damage = 322710
+expected_card_damage = [1_278_400, 0, 0]
+
+# --- CelestialStatic (needs both targets present + enough taps to stack) ---
+# baseline (Burst_Celestial.toml, tap_count=9, targets Head+RightShoulder): [185210, 0, 0]
+[[case]]
+name = "burst_curse_celestialstatic"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["CelestialStatic", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head", "RightShoulder"]
+tap_count = 9
+expected_tap_damage = 39130
+expected_card_damage = [174097, 0, 0]
+
+# --- ChainOfVengeance ("ChainLightning") ---
+# NO existing baseline anywhere in this suite, cursed or not -- 148702 below
+# is only this sim's own prediction (deck=[ChainLightning, TriangleSupport,
+# TriangleSupport], Head/Armor, tap 1), not a real in-game measurement.
+# Please measure the real UNCURSED number for this card/target too when you
+# check this one, not just the cursed value.
+[[case]]
+name = "burst_curse_chainlightning_head_armor"
+payload = "player_boss_sample_burst_curse.json"
+deck = ["ChainLightning", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [139780, 0, 0]

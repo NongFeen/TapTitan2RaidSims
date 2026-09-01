@@ -1,5 +1,5 @@
 use crate::models::{
-    boss::{Boss, BossPartName},
+    boss::Boss,
     cards::{Card, CardName},
     support_modifier::SupportModifiers,
 };
@@ -18,25 +18,6 @@ mod soul_fire;
 mod team_tactics;
 pub mod totem_of_power;
 mod victory_march;
-
-pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
-    match card.card_id {
-        _ => 0.0,
-    }
-}
-
-pub fn on_proc(
-    card: &mut Card,
-    boss: &mut Boss,
-    target_part: BossPartName,
-    damage: f64,
-    mirror_force_boost: u32,
-    burst_trigger_count: u32,
-) {
-    match card.card_id {
-        _ => {}
-    }
-}
 
 pub fn get_support_modifiers(card: &mut Card, boss: &Boss, deck: &[Card]) -> SupportModifiers {
     match card.card_id {

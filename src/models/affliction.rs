@@ -141,31 +141,6 @@ impl AfflictionKind {
 }
 
 impl Affliction {
-    pub fn new(
-        kind: AfflictionKind,
-        source_card: CardName,
-        source_level: u16,
-        stack_count: u32,
-        duration: f64,
-        damage_per_second: f64,
-        remove_damage: f64,
-        tick_interval_seconds: f64,
-        max_stacks: u32,
-    ) -> Self {
-        Self::new_with_source_skill(
-            kind,
-            source_card,
-            source_level,
-            CardSkillCache::from_card(source_card, source_level),
-            stack_count,
-            duration,
-            damage_per_second,
-            remove_damage,
-            tick_interval_seconds,
-            max_stacks,
-        )
-    }
-
     pub fn new_with_source_skill(
         kind: AfflictionKind,
         source_card: CardName,
@@ -256,9 +231,5 @@ impl Affliction {
 
     pub fn remove_expired_stacks(&mut self) {
         self.stacks.retain(|stack| !stack.is_expired());
-    }
-
-    pub fn tick(&mut self, elapsed: f64) {
-        self.tick_elapsed += elapsed;
     }
 }

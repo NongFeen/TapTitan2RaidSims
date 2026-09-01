@@ -19,12 +19,20 @@ pub fn on_proc(
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,
-    mirror_force_boost: u32,
-) -> u64 {
+    mirror_force_boost: f64,
+) -> f64 {
     let mirror_force_mult = card.skill.value_a.unwrap_or(1.0);
-    let boost = 1.00 + ((mirror_force_boost as f64) / 100.00);
+    let boost = clan_boost_multiplier(mirror_force_boost);
     // println!("Boost{}",boost);
-    let result_damage = (damage * mirror_force_mult * boost).max(0.0) as u64;
+    let result_damage = (damage * mirror_force_mult * boost).max(0.0);
     boss.on_hit_with_source(target_part, result_damage, DamageSource::Card(card.card_id));
     result_damage
 }
+
+fn clan_boost_multiplier(mirror_force_boost: f64) -> f64 {
+    1.0 + mirror_force_boost.max(0.0)
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/unit/services/taptitan/card_function/burst/mirror_force_tests.rs"]
+mod tests;

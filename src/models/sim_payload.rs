@@ -14,4 +14,9 @@ pub struct SimPayLoad {
     pub boss_data: Boss,
     pub attackable_part: Vec<BossPartName>,
     pub usable_card: Vec<CardName>,
+    #[serde(default)]
+    pub include_body_phase: bool,
+    /// Fractional clan boost: 0.35 means Mirror Force deals 35% more damage.
+    #[serde(default)]
+    pub mirror_force_boost: f64,
 }

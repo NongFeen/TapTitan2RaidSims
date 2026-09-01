@@ -22,7 +22,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     let multiplier = if boss.part(part_name).part_state == PartState::Cursed {
         stack_multiplier * affliction.source_skill.bonus_c.unwrap_or(1.5)
     } else {
@@ -32,6 +32,6 @@ pub fn on_tick(
     shared::on_tick(affliction, boss, part_name, multiplier, elapsed_seconds)
 }
 
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }

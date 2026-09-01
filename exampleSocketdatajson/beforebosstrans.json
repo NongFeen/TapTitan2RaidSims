@@ -1,0 +1,138 @@
+{
+    "attack_log": {
+        "attack_datetime": "2026-08-17T14:20:24Z",
+        "cards_damage": [
+            {
+                "titan_index": 1,
+                "id": null,
+                "damage_log": [
+                    {
+                        "id": "BodyHead",
+                        "value": 62625133
+                    }
+                ]
+            },
+            {
+                "titan_index": 1,
+                "id": "RuneAttack",
+                "damage_log": [
+                    {
+                        "id": "BodyHead",
+                        "value": 4671457
+                    }
+                ]
+            },
+            {
+                "titan_index": 1,
+                "id": "MirrorForce",
+                "damage_log": [
+                    {
+                        "id": "BodyHead",
+                        "value": 382515175
+                    }
+                ]
+            },
+            {
+                "titan_index": 1,
+                "id": "ExecutionersAxe",
+                "damage_log": []
+            }
+        ],
+        "cards_level": [
+            {
+                "id": "MirrorForce",
+                "value": 60
+            },
+            {
+                "id": "ExecutionersAxe",
+                "value": 55
+            },
+            {
+                "id": "RuneAttack",
+                "value": 54
+            }
+        ]
+    },
+    "clan_code": "zxw8e",
+    "raid_id": 3317047,
+    "player": {
+        "attacks_remaining": 1,
+        "player_code": "9wb2m9b",
+        "name": "16 Kero",
+        "raid_level": 1478
+    },
+    "raid_state": {
+        "current": {
+            "enemy_id": "Enemy8",
+            "current_hp": 868414244,
+            "parts": [
+                {
+                    "part_id": "BodyHead",
+                    "current_hp": 7330351340
+                },
+                {
+                    "part_id": "ArmorHead",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "BodyChestUpper",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "ArmorChestUpper",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "BodyArmUpperRight",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "ArmorArmUpperRight",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "BodyArmUpperLeft",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "ArmorArmUpperLeft",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "BodyLegUpperRight",
+                    "current_hp": 5351400000
+                },
+                {
+                    "part_id": "ArmorLegUpperRight",
+                    "current_hp": 15119016660
+                },
+                {
+                    "part_id": "BodyLegUpperLeft",
+                    "current_hp": 5351400000
+                },
+                {
+                    "part_id": "ArmorLegUpperLeft",
+                    "current_hp": 14898185272
+                },
+                {
+                    "part_id": "BodyHandRight",
+                    "current_hp": 437918494
+                },
+                {
+                    "part_id": "ArmorHandRight",
+                    "current_hp": 0
+                },
+                {
+                    "part_id": "BodyHandLeft",
+                    "current_hp": 378233891
+                },
+                {
+                    "part_id": "ArmorHandLeft",
+                    "current_hp": 0
+                }
+            ]
+        },
+        "titan_index": 1
+    },
+    "cycle": 2
+}

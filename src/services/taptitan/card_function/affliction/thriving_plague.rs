@@ -23,7 +23,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     let afflicted_parts = boss.thriving_plague_part_count() as f64;
     let bonus = affliction.source_skill.bonus_c.unwrap_or(0.0);
     let max_parts = affliction.source_skill.bonus_d.unwrap_or(6.0);
@@ -33,6 +33,6 @@ pub fn on_tick(
     shared::on_tick(affliction, boss, part_name, multiplier, elapsed_seconds)
 }
 
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }

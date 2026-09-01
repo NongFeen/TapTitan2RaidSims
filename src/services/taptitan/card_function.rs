@@ -5,6 +5,7 @@ use crate::models::{
     damage_source::DamageSource,
     support_modifier::SupportModifiers,
 };
+use rand::Rng;
 
 mod affliction;
 mod burst;
@@ -13,7 +14,7 @@ pub mod support;
 #[derive(Debug, Clone)]
 pub struct AfflictionDamageEvent {
     pub part_name: BossPartName,
-    pub damage: u64,
+    pub damage: f64,
     pub source: DamageSource,
 }
 
@@ -30,9 +31,10 @@ pub fn on_proc(
     boss: &mut Boss,
     target_part: BossPartName,
     damage: f64,
-    mirror_force_boost: u32,
+    mirror_force_boost: f64,
     burst_trigger_count: u32,
-) -> u64 {
+    rng: &mut impl Rng,
+) -> f64 {
     match card.cardtype {
         CardType::Burst => burst::on_proc(
             card,
@@ -42,8 +44,8 @@ pub fn on_proc(
             mirror_force_boost,
             burst_trigger_count,
         ),
-        CardType::Affliction => affliction::on_proc(card, boss, target_part, damage),
-        CardType::Support => 0,
+        CardType::Affliction => affliction::on_proc(card, boss, target_part, damage, rng),
+        CardType::Support => 0.0,
     }
 }
 

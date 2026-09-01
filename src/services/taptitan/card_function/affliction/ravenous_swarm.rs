@@ -1,3 +1,4 @@
+use rand::Rng;
 use rand::seq::IndexedRandom;
 
 use crate::models::{
@@ -14,13 +15,19 @@ pub fn get_proc_chance(card: &Card, boss: &Boss) -> f64 {
     shared::get_proc_chance(card, boss)
     // 1.0
 }
-pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) {
+pub fn on_proc(
+    card: &Card,
+    boss: &mut Boss,
+    target_part: BossPartName,
+    damage: f64,
+    rng: &mut impl Rng,
+) {
     let Some(affliction) = shared::build_affliction(card, boss, target_part, damage, 0.0) else {
         return;
     };
 
     let apply_part = if is_ravenous_swarm_at_max_stacks(boss, target_part, affliction.max_stacks) {
-        match random_spread_part(boss, target_part, affliction.max_stacks) {
+        match random_spread_part(boss, target_part, affliction.max_stacks, rng) {
             Some(part) => part,
             None => return,
         }
@@ -41,7 +48,7 @@ pub fn on_tick(
     part_name: BossPartName,
     stack_multiplier: f64,
     elapsed_seconds: f64,
-) -> u64 {
+) -> f64 {
     shared::on_tick(
         affliction,
         boss,
@@ -50,7 +57,7 @@ pub fn on_tick(
         elapsed_seconds,
     )
 }
-pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> u64 {
+pub fn on_remove(affliction: &AfflictionRemoveView, attached_duration: f64) -> f64 {
     shared::on_remove(affliction, attached_duration)
 }
 
@@ -66,6 +73,7 @@ fn random_spread_part(
     boss: &Boss,
     target_part: BossPartName,
     max_stacks: u32,
+    rng: &mut impl Rng,
 ) -> Option<BossPartName> {
     let mut body_parts = Vec::new();
     let mut armor_or_cursed_parts = Vec::new();
@@ -83,11 +91,10 @@ fn random_spread_part(
         }
     }
 
-    let mut rng = rand::rng();
     body_parts
-        .choose(&mut rng)
+        .choose(rng)
         .copied()
-        .or_else(|| armor_or_cursed_parts.choose(&mut rng).copied())
+        .or_else(|| armor_or_cursed_parts.choose(rng).copied())
 }
 
 fn all_part_names() -> [BossPartName; 8] {

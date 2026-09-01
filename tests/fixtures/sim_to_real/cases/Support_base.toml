@@ -1,0 +1,119 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Crushing Head"
+payload = "player_boss_sample.json"
+deck = ["ExecutionersAxe", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 24320
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "Crushing Torso"
+payload = "player_boss_sample.json"
+deck = ["ExecutionersAxe", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Torso"]
+tap_count = 1
+expected_tap_damage = 23790
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "SoulFire Head"
+payload = "player_boss_sample.json"
+deck = ["InnerTruth", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 24530
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "SoulFire Torso"
+payload = "player_boss_sample.json"
+deck = ["InnerTruth", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Torso"]
+tap_count = 1
+expected_tap_damage = 24000
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "Void Head"
+payload = "player_boss_sample.json"
+deck = ["CrushingVoid", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 14370
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "Void Torso"
+payload = "player_boss_sample.json"
+deck = ["CrushingVoid", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Torso"]
+tap_count = 1
+expected_tap_damage = 14060
+expected_card_damage = [0, 0, 0]
+
+
+[[case]]
+name = "Rancid Gas aka 1.3 afllciton Head"
+payload = "player_boss_sample.json"
+deck = ["MentalFocus", "CosmicBarb", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 4610
+expected_card_damage = [0, 420780, 0]
+
+[[case]]
+name = "Rancid Gas aka 1.3 afllciton Torso"
+payload = "player_boss_sample.json"
+deck = ["MentalFocus", "CosmicBarb", "TriangleSupport"]
+attackable_part = ["Torso"]
+tap_count = 1
+expected_tap_damage = 4500
+expected_card_damage = [0, 411480, 0]
+
+[[case]]
+name = "VM Head"
+payload = "player_boss_sample.json"
+deck = ["FinisherAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 21000
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "VM Torso"
+payload = "player_boss_sample.json"
+deck = ["FinisherAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Torso"]
+tap_count = 1
+expected_tap_damage = 20540
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head 1 tap"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 44260
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head 400 taps"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 400
+expected_tap_damage = 17_706_000
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head capped at 600 tap"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 600
+expected_tap_damage = 17_706_000
+expected_card_damage = [0, 0, 0]

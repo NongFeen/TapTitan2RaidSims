@@ -14,9 +14,9 @@ pub fn get_proc_chance(_card: &Card, boss: &Boss) -> f64 {
     (0.02 + (0.02 * afflicted_parts)).min(0.12)
 }
 
-pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> u64 {
+pub fn on_proc(card: &Card, boss: &mut Boss, target_part: BossPartName, damage: f64) -> f64 {
     let whip_mult = card.skill.value_a.unwrap_or(1.0);
-    let result_damage = (damage * whip_mult).max(0.0) as u64;
+    let result_damage = (damage * whip_mult).max(0.0);
     boss.on_hit_with_source(target_part, result_damage, DamageSource::Card(card.card_id));
     result_damage
 }

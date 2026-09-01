@@ -1,0 +1,38 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "RuinousRust 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["RuinousRust", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [177225, 0, 0]
+#per tick 1181.5 
+# 150 tick
+# 1181.5 * 150 = 177225
+# damage have vary base on time apply and game tick
+
+[[case]]
+name = "RuinousRust 1 tap normal Leg"
+payload = "player_boss_sample.json"
+deck = ["RuinousRust", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["RightLeg"]
+expected_tap_damage = 4315
+expected_card_damage = [165750, 0, 0]
+#per tick 1105
+
+[[case]]
+name = "RuinousRust 1 tap Curse Leg"
+payload = "player_boss_sample.json"
+deck = ["RuinousRust", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["LeftLeg"]
+expected_tap_damage = 4315
+expected_card_damage = [248625, 0, 0]
+
+# per tick : 1650

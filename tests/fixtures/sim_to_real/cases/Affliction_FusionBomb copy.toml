@@ -1,0 +1,14 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "Fuse"
+payload = "player_boss_sample.json"
+deck = ["Fuse", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+attack_pattern = "SingleHead"
+error_percent = 0.5
+tap_count = 1
+expected_tap_damage = 4610
+expected_card_damage = [368290, 0, 0]
+# 368260,368370,368300,368490,
+# no way I can grab a 1st tap fuse to acculately get ingame damage

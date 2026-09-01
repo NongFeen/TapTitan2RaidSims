@@ -57,13 +57,6 @@ impl Default for SupportModifiers {
     }
 }
 impl SupportModifiers {
-    pub fn accumulate(mods: &[SupportModifiers]) -> SupportModifiers {
-        mods.iter().fold(SupportModifiers::default(), |mut acc, m| {
-            acc.merge(m);
-            return acc;
-        })
-    }
-
     pub fn merge(&mut self, other: &SupportModifiers) {
         self.head_damage_add += other.head_damage_add;
         self.torso_damage_add += other.torso_damage_add;
@@ -123,11 +116,6 @@ impl SupportModifiers {
             PartState::Armor | PartState::Cursed => self.armor_damage_add,
             _ => 0.0,
         }
-    }
-
-    /// all_damage_add is its own separate mult slot (stacks with everything else additively).
-    pub fn all_mult_bonus(&self) -> f64 {
-        self.all_damage_add
     }
 
     pub fn damage_multiplier(&self, card_type: Option<CardType>) -> f64 {

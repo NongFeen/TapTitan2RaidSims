@@ -39,14 +39,6 @@ pub struct CardSkillRow {
 }
 
 impl CardSkillRow {
-    pub fn column(&self, name: &str) -> Option<&str> {
-        self.columns.get(name).map(|value| value.as_str())
-    }
-
-    pub fn columns(&self) -> &HashMap<String, String> {
-        &self.columns
-    }
-
     pub fn value_a_at_level(&self, level: u16) -> Option<f64> {
         self.a_values.get(level.saturating_sub(1) as usize).copied()
     }
@@ -69,37 +61,6 @@ pub fn card_skill_database() -> &'static CardSkillDatabase {
 
 pub fn card_skill_row(card_id: CardName) -> Option<&'static CardSkillRow> {
     card_skill_database().rows.get(&card_id)
-}
-
-pub fn card_skill_value_a(card_id: CardName, level: u16) -> Option<f64> {
-    card_skill_row(card_id)?.value_a_at_level(level)
-}
-
-pub fn card_skill_value_b(card_id: CardName, level: u16) -> Option<f64> {
-    card_skill_row(card_id)?.value_b_at_level(level)
-}
-
-pub fn card_skill_bonustypeC(card_id: CardName) -> Option<&'static str> {
-    card_skill_row(card_id)?.column("BonusTypeC")
-}
-
-pub fn card_skill_bonusamountC(card_id: CardName) -> Option<f64> {
-    Some(card_skill_row(card_id)?.bonus_amount_c)
-}
-
-pub fn card_skill_bonustypeD(card_id: CardName) -> Option<&'static str> {
-    card_skill_row(card_id)?.column("BonusTypeD")
-}
-
-pub fn card_skill_bonusamountD(card_id: CardName) -> Option<f64> {
-    Some(card_skill_row(card_id)?.bonus_amount_d)
-}
-pub fn card_skill_bonustypeE(card_id: CardName) -> Option<&'static str> {
-    card_skill_row(card_id)?.column("BonusTypeE")
-}
-
-pub fn card_skill_bonusamountE(card_id: CardName) -> Option<f64> {
-    Some(card_skill_row(card_id)?.bonus_amount_e)
 }
 
 fn load_card_skill_database() -> CardSkillDatabase {
