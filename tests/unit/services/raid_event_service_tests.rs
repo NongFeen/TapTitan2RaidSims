@@ -719,3 +719,302 @@ fn stale_reading_on_an_untargeted_part_does_not_suppress_a_plain_armor_break() {
         Some(PhaseRefresh::Full)
     );
 }
+
+#[test]
+fn aggregate_card_components_folds_split_hits_and_skips_pure_taps() {
+    let components = vec![
+        // A pure tap (no card) contributes to tap_damage elsewhere but never
+        // appears in the per-card breakdown.
+        AttackComponent {
+            titan_index: 1,
+            card_id: None,
+            card_level: None,
+            total_damage: 500,
+        },
+        AttackComponent {
+            titan_index: 1,
+            card_id: Some("SkullBash".to_string()),
+            card_level: Some(52),
+            total_damage: 1000,
+        },
+        AttackComponent {
+            titan_index: 1,
+            card_id: Some("MirrorForce".to_string()),
+            card_level: Some(50),
+            total_damage: 2000,
+        },
+        // SkullBash lands a second time as a separate Body/Armor-split
+        // component mid-attack -- must fold into the same card total, not a
+        // second entry.
+        AttackComponent {
+            titan_index: 1,
+            card_id: Some("SkullBash".to_string()),
+            card_level: Some(52),
+            total_damage: 300,
+        },
+    ];
+
+    let cards = aggregate_card_components(&components);
+
+    assert_eq!(cards.len(), 2, "pure tap must not become a card entry");
+    assert_eq!(cards[0].card_id, "SkullBash");
+    assert_eq!(cards[0].card_level, Some(52));
+    assert_eq!(cards[0].damage, 1300, "split hits for the same card must sum");
+    assert_eq!(cards[1].card_id, "MirrorForce");
+    assert_eq!(cards[1].damage, 2000);
+}
+
+#[test]
+fn boss_name_maps_known_enemy_ids_and_validates_matching_name() {
+    assert_eq!(boss_name("Enemy1", "").unwrap(), BossName::Lojak);
+    assert_eq!(boss_name("Enemy3", "").unwrap(), BossName::Jukk);
+    assert_eq!(boss_name("Enemy8", "Priker").unwrap(), BossName::Priker);
+    assert!(
+        boss_name("Enemy8", "Lojak").is_err(),
+        "a mismatched enemy_name must be rejected"
+    );
+    assert!(
+        boss_name("Enemy99", "").is_err(),
+        "an unrecognized enemy_id must be rejected"
+    );
+}
+
+#[test]
+fn global_modifier_accepts_both_known_spellings_and_rejects_unknown() {
+    assert_eq!(
+        global_modifier("BurstDamage").unwrap(),
+        GlobalRaidModifier::BurstDamage
+    );
+    // TT2 uses inconsistent spellings across events for the same modifier --
+    // both must map to the same variant.
+    assert_eq!(
+        global_modifier("AfflictedChance").unwrap(),
+        GlobalRaidModifier::AfflictionChance
+    );
+    assert_eq!(
+        global_modifier("AfflictionChance").unwrap(),
+        GlobalRaidModifier::AfflictionChance
+    );
+    assert_eq!(
+        global_modifier("AfflictedDamage").unwrap(),
+        GlobalRaidModifier::AfflictionDamage
+    );
+    assert_eq!(
+        global_modifier("AfflictedDuration").unwrap(),
+        GlobalRaidModifier::AfflictionDuration
+    );
+    assert!(global_modifier("NotARealModifier").is_err());
+}
+
+#[test]
+fn curse_type_accepts_both_known_spellings_and_rejects_unknown() {
+    assert_eq!(
+        curse_type("BodyDamagePerCurse").unwrap(),
+        CurseType::BodyDamage
+    );
+    assert_eq!(
+        curse_type("BurstDamagePerCurse").unwrap(),
+        CurseType::BurstDamage
+    );
+    assert_eq!(
+        curse_type("AfflictedDamagePerCurse").unwrap(),
+        CurseType::AfflictionDamage
+    );
+    assert_eq!(
+        curse_type("AfflictionDamagePerCurse").unwrap(),
+        CurseType::AfflictionDamage
+    );
+    assert!(curse_type("NotARealCurse").is_err());
+}
+
+#[test]
+fn next_reset_boundary_rolls_forward_when_exactly_on_a_boundary() {
+    let start = Utc::now();
+    assert_eq!(
+        next_reset_boundary(start, start),
+        start + chrono::Duration::hours(12)
+    );
+
+    // Landing exactly on a boundary must roll forward to the *next* one, not
+    // report the boundary already reached.
+    let one_boundary = start + chrono::Duration::hours(12);
+    assert_eq!(
+        next_reset_boundary(start, one_boundary),
+        start + chrono::Duration::hours(24)
+    );
+
+    let just_before = one_boundary - chrono::Duration::seconds(1);
+    assert_eq!(next_reset_boundary(start, just_before), one_boundary);
+}
+
+#[test]
+fn bonus_value_defaults_to_zero_for_a_missing_id() {
+    let bonuses = vec![RaidBonus {
+        id: "MirrorForceBoost".to_string(),
+        value: 0.35,
+    }];
+    assert_eq!(bonus_value(&bonuses, "MirrorForceBoost"), 0.35);
+    assert_eq!(bonus_value(&bonuses, "SomethingElse"), 0.0);
+    assert_eq!(bonus_value(&[], "MirrorForceBoost"), 0.0);
+}
+
+fn loaded_enemy8_boss(
+    attackable_parts: Vec<BossPartName>,
+    source_raid_id: Option<i64>,
+) -> boss_repo::LoadedBoss {
+    let (mut boss, _) = enemy8_boss_with_four_cursed_parts();
+    // Exercise every branch live_boss_from_persisted has to handle: an Armor
+    // part, a Skeleton part, and the Cursed parts the fixture already gives us.
+    boss.head.part_state = PartState::Armor;
+    boss.head.current_armor = 111;
+    boss.head.current_health = 222;
+    boss.torso.part_state = PartState::Skeleton;
+    boss.torso.current_armor = 0;
+    boss.torso.current_health = 0;
+
+    boss_repo::LoadedBoss {
+        version: 7,
+        boss,
+        attackable_parts,
+        source_raid_id,
+        source_titan_index: Some(2),
+        source_enemy_id: Some("Enemy8".to_string()),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+#[test]
+fn live_boss_from_persisted_returns_none_without_a_source_raid_id() {
+    let loaded = loaded_enemy8_boss(vec![BossPartName::Head], None);
+    assert!(live_boss_from_persisted(&loaded, "clan123".to_string(), 5).is_none());
+}
+
+#[test]
+fn live_boss_from_persisted_reconstructs_a_live_view_from_the_stored_boss() {
+    let loaded = loaded_enemy8_boss(
+        vec![BossPartName::Head, BossPartName::Torso],
+        Some(42),
+    );
+    let expected_current_hp_total = BossPartName::all()
+        .iter()
+        .map(|part_name| loaded.boss.part(*part_name).current_health as f64)
+        .sum::<f64>();
+    let expected_updated_at = loaded.updated_at;
+
+    let view = live_boss_from_persisted(&loaded, "clan123".to_string(), 5)
+        .expect("a boss with a source_raid_id must produce a view");
+
+    assert_eq!(view.clan_code, "clan123");
+    assert_eq!(view.raid_id, 42);
+    assert_eq!(view.titan_index, 2);
+    assert_eq!(view.cycle, 5);
+    assert_eq!(view.received_at, expected_updated_at);
+    assert_eq!(view.boss_data["enemy_id"], "Enemy8");
+    assert_eq!(view.boss_data["current_hp"], expected_current_hp_total);
+
+    let parts = view.boss_data["parts"].as_array().unwrap();
+    let has_part_id = |id: &str| parts.iter().any(|part| part["part_id"] == id);
+    // Head is Armor -- both its body and armor entries are present.
+    assert!(has_part_id("BodyHead"));
+    assert!(has_part_id("ArmorHead"));
+    // Torso is Skeleton -- TT2's own convention omits a destroyed armor layer.
+    assert!(has_part_id("BodyChestUpper"));
+    assert!(!has_part_id("ArmorChestUpper"));
+
+    let display_parts = view.display_parts.expect("display_parts must be populated");
+    assert_eq!(display_parts.len(), 8);
+    let head = display_parts
+        .iter()
+        .find(|part| part.part_name == BossPartName::Head)
+        .unwrap();
+    assert_eq!(head.part_state, PartState::Armor);
+    assert_eq!(head.current_hp, 111);
+    assert_eq!(head.max_hp, loaded.boss.head.max_armor);
+    assert!(head.is_targeted);
+
+    let torso = display_parts
+        .iter()
+        .find(|part| part.part_name == BossPartName::Torso)
+        .unwrap();
+    assert_eq!(torso.part_state, PartState::Skeleton);
+    assert_eq!(torso.current_hp, 0);
+    // A Skeleton part reports max_hp from max_health, not max_armor.
+    assert_eq!(torso.max_hp, loaded.boss.torso.max_health);
+    assert!(torso.is_targeted);
+
+    let left_shoulder = display_parts
+        .iter()
+        .find(|part| part.part_name == BossPartName::LeftShoulder)
+        .unwrap();
+    assert_eq!(left_shoulder.part_state, PartState::Cursed);
+    assert!(
+        !left_shoulder.is_targeted,
+        "a cursed part outside attackable_parts must not be reported as targeted"
+    );
+}
+
+#[tokio::test]
+async fn store_sub_start_cycle_state_rejects_invalid_morale_without_touching_the_database() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+
+    // If validation didn't run first, the very next thing this function does
+    // is `state.db()?`, which would fail with DatabaseUnavailable instead --
+    // asserting BadRequest specifically proves validation short-circuits before that.
+    let negative = store_sub_start_cycle_state(&state, "clan", 1, Utc::now(), -1.0).await;
+    assert!(matches!(negative, Err(AppError::BadRequest(_))));
+
+    let not_finite = store_sub_start_cycle_state(&state, "clan", 1, Utc::now(), f64::NAN).await;
+    assert!(matches!(not_finite, Err(AppError::BadRequest(_))));
+}
+
+#[tokio::test]
+async fn store_cycle_state_rejects_invalid_boost_values_without_touching_the_database() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let now = Utc::now();
+
+    let negative_morale =
+        store_cycle_state(&state, "clan", 1, None, now, now, -0.1, 0.0, 0.0).await;
+    assert!(matches!(negative_morale, Err(AppError::BadRequest(_))));
+
+    let negative_team_tactics =
+        store_cycle_state(&state, "clan", 1, None, now, now, 0.0, -0.1, 0.0).await;
+    assert!(matches!(negative_team_tactics, Err(AppError::BadRequest(_))));
+
+    let negative_mirror_force =
+        store_cycle_state(&state, "clan", 1, None, now, now, 0.0, 0.0, -0.1).await;
+    assert!(matches!(negative_mirror_force, Err(AppError::BadRequest(_))));
+
+    let not_finite = store_cycle_state(&state, "clan", 1, None, now, now, f64::INFINITY, 0.0, 0.0)
+        .await;
+    assert!(matches!(not_finite, Err(AppError::BadRequest(_))));
+}
+
+#[tokio::test]
+async fn handle_event_ignores_unrecognized_events_without_parsing_the_payload() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    // Not shaped like any real event -- if the catch-all tried to parse it
+    // against a known event type, this would fail instead of returning Ok.
+    let bogus = serde_json::json!({"not": "a recognized shape"});
+    assert!(
+        handle_event(&state, "some_unknown_event", bogus)
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn handle_cycle_reset_rejects_invalid_morale_before_touching_the_database() {
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let mut raw: Value = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/cycle_reset_example.json"
+    ))
+    .unwrap();
+    raw["morale"]["bonus_amount"] = serde_json::json!(-1.0);
+
+    // No database is configured on this state at all, so if validation
+    // didn't run before the first DB call, this would fail with
+    // DatabaseUnavailable rather than BadRequest.
+    let result = handle_event(&state, "cycle_reset", raw).await;
+    assert!(matches!(result, Err(AppError::BadRequest(_))));
+}
