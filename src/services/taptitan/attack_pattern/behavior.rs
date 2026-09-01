@@ -214,13 +214,26 @@ impl AttackPattern {
             if celestial_stacks >= 8 {
                 if let Some(target) = cycle_filtered_candidates(candidates, last_target, |part| {
                     matches!(part, BossPartName::Head | BossPartName::Torso)
+                        && attackable_parts.contains(&part)
+                }) {
+                    return Some(target);
+                }
+                if let Some(target) = cycle_filtered_candidates(candidates, last_target, |part| {
+                    matches!(part, BossPartName::Head | BossPartName::Torso)
                 }) {
                     return Some(target);
                 }
 
+                // ...and to any limb if there's no Head/Torso candidate at all.
                 return cycle_filtered_candidates(candidates, last_target, |part| part.is_limb());
             }
 
+            if let Some(target) = cycle_filtered_candidates(candidates, last_target, |part| {
+                part.is_limb() && attackable_parts.contains(&part)
+            }) {
+                return Some(target);
+            }
+            // no targetable limb select do random limb
             if let Some(target) =
                 cycle_filtered_candidates(candidates, last_target, |part| part.is_limb())
             {

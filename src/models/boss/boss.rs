@@ -285,6 +285,14 @@ impl Boss {
             .max(0.0) as u64
     }
 
+    /// Damage from the player's own tap alone (`DamageSource::Tap`),
+    /// excluding every card's contribution -- tracked and truncated the same
+    /// way `card_damage_total` is, so the two are directly comparable rather
+    /// than derived by subtracting a jointly-rounded total.
+    pub fn tap_damage_total(&self) -> u64 {
+        self.tap_damage_total.max(0.0) as u64
+    }
+
     pub fn on_hit_with_source(
         &mut self,
         part_name: BossPartName,
@@ -410,7 +418,6 @@ impl Boss {
             * (1.0 + support_bonus + part_debuff_bonus) as f32
             * support_damage_mult as f32
             * curse_damage_mult;
-
         (raw_damage * total_multiplier as f64).max(0.0)
     }
 

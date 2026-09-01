@@ -1,0 +1,12 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "decaying_strike_1_tap_righthand_30pct_armor"
+payload = "player_boss_sample_righthand_30pct.json"
+deck = ["DecayingAttack", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["RightHand"]
+tap_count = 1
+expected_tap_damage = 4315
+expected_card_damage = [230460, 0, 0]
+
+# 15364.3468 * 15 = 230465.202

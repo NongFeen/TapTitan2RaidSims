@@ -57,6 +57,7 @@ impl SimService {
                 .sum::<u32>();
 
             let mut total_damage = 0.0f64;
+            let mut tap_damage_total = 0.0f64;
             let mut card_damage_totals: HashMap<CardName, f64> = HashMap::new();
             let mut card_proc_totals: HashMap<CardName, f32> = HashMap::new();
 
@@ -66,7 +67,9 @@ impl SimService {
                 let final_tap_damage =
                     boss.preview_damage_with_source(*target_part, tap_damage, &DamageSource::Tap);
 
-                total_damage += final_tap_damage * *tap_count as f64;
+                let tap_total_for_target = final_tap_damage * *tap_count as f64;
+                total_damage += tap_total_for_target;
+                tap_damage_total += tap_total_for_target;
             }
 
             if total_target_taps > 0 {
@@ -135,6 +138,7 @@ impl SimService {
                 .collect();
 
             let total_damage = total_damage.max(0.0) as u64;
+            let tap_damage_total = tap_damage_total.max(0.0) as u64;
             let pattern_result = SimPatternResult {
                 pattern: pattern_name.clone(),
                 average_damage: total_damage,
@@ -143,6 +147,8 @@ impl SimService {
                 lowest_round_damage_display: format_compact(total_damage),
                 highest_round_damage: total_damage,
                 highest_round_damage_display: format_compact(total_damage),
+                tap_damage: tap_damage_total,
+                tap_damage_display: format_compact(tap_damage_total),
                 card_damage,
             };
 

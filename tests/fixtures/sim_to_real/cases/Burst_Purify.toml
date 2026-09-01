@@ -1,0 +1,19 @@
+#:schema ./cases.schema.json
+
+# Lojak, deck = Skull Bash / Mirror Force / Psychic Shackle (LimbBurst).
+
+[[case]]
+name = "Purify before afflction"
+payload = "player_boss_sample.json"
+deck = ["Purify", "PoisonAttack", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [214240, 33450, 124980]
+
+[[case]]
+name = "Purify after affliction"
+payload = "player_boss_sample.json"
+deck = ["PoisonAttack","Purify", "MoonBeam"]
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [0, 428480, 124980]

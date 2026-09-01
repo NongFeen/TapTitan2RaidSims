@@ -98,6 +98,13 @@ pub fn rebuild_from_persisted(
         }
     })
     .collect();
+    // tap_damage isn't its own persisted column -- approximate it from the
+    // ones that are. This carries the same small joint-vs-independent
+    // rounding drift `SimPatternResult::tap_damage`'s doc comment warns
+    // about; only a freshly-run simulation's own tap_damage is exact.
+    let tap_damage = average_damage.saturating_sub(
+        card1_damage as u64 + card2_damage as u64 + card3_damage as u64,
+    );
     SimDeckResult {
         deck,
         deck_names,
@@ -110,6 +117,8 @@ pub fn rebuild_from_persisted(
             lowest_round_damage_display: format_compact(deck_lowest_damage as u64),
             highest_round_damage: deck_highest_damage as u64,
             highest_round_damage_display: format_compact(deck_highest_damage as u64),
+            tap_damage,
+            tap_damage_display: format_compact(tap_damage),
             card_damage,
         }),
         simulation_phase: match recommendation_phase {

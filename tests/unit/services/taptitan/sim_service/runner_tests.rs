@@ -37,6 +37,8 @@ fn pattern(damage: u64) -> SimPatternResult {
         lowest_round_damage_display: damage.to_string(),
         highest_round_damage: damage,
         highest_round_damage_display: damage.to_string(),
+        tap_damage: 0,
+        tap_damage_display: "0".to_string(),
         card_damage: Vec::new(),
     }
 }

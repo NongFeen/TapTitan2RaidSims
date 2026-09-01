@@ -1,0 +1,358 @@
+use super::*;
+use crate::models::player_data::PlayerData;
+use crate::services::taptitan::player_service::clean_data;
+use std::path::Path;
+
+/// Proves the deterministic single-tap machinery (`SimRng`, the tap-once
+/// wrapper, and the loader plumbing above) actually runs end-to-end, using
+/// an existing non-golden sample payload -- not an assertion against a real
+/// measured number, just that the pipeline produces sensible, nonzero
+/// output. `cases.toml` carries the real, verified comparisons.
+#[test]
+fn deterministic_single_tap_simulation_runs_end_to_end() {
+    let mut payload: SimPayLoad =
+        serde_json::from_str(include_str!("../../../../../playersim_data_sample.json"))
+            .expect("sample payload should deserialize as a SimPayLoad");
+    // Narrow to one target so there's no first-tap pattern ambiguity.
+    payload.attackable_part = vec![BossPartName::Head];
+
+    let result = SimService::run_deterministic_single_tap_simulation(payload, 1, 1, None)
+        .expect("sample deck should produce a valid attack pattern");
+    let pattern = result
+        .best_pattern
+        .expect("single-tap simulation should produce a pattern result");
+
+    assert!(
+        pattern.average_damage > 0,
+        "a guaranteed-proc single tap against a fresh boss should deal nonzero damage"
+    );
+}
+
+/// Deserializes one `.toml` file under `tests/fixtures/sim_to_real/cases/`
+/// -- see `cases/README.md` for the field-by-field format.
+#[derive(Debug, serde::Deserialize)]
+struct CasesFile {
+    #[serde(default, rename = "case")]
+    cases: Vec<Case>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Case {
+    name: String,
+    /// Path (relative to `FIXTURES_DIR`) to a `{ player_raw_data, boss_data }`
+    /// fixture -- `player_raw_data` is a raw TT2 player export (the same
+    /// shape `clean_data` normally cleans on import), `boss_data` is a
+    /// direct `Boss` JSON snapshot.
+    payload: String,
+    deck: Vec<CardName>,
+    attackable_part: Vec<BossPartName>,
+    #[serde(default)]
+    mirror_force_boost: f64,
+    /// Optional, default 1. Number of guaranteed-proc taps to run before the
+    /// rest of the round plays out untapped. Almost always leave this at 1
+    /// (one real attack) -- the exception is a card whose proc is
+    /// cadence-based rather than chance-based (e.g. Cosmic Haymaker, which
+    /// only fires once every 70 taps): guaranteeing procs doesn't help a
+    /// cadence card, it just needs enough taps to reach its own cadence.
+    /// Every other card in the deck also gets tapped (and guaranteed-proc'd)
+    /// this many times, so expected_tap_damage/expected_card_damage must
+    /// reflect the full tap_count taps, not a single one.
+    #[serde(default = "default_tap_count")]
+    tap_count: u32,
+    /// Optional. Forces a specific `AttackPattern` instead of letting the
+    /// deck's normal pattern-selection logic pick one. Needed when
+    /// `attackable_part` is narrowed to a single real target for
+    /// determinism (see its own doc comment) but the deck's card needs a
+    /// wider candidate pool to even become "available" (e.g. Fuse's
+    /// `FusionBombSpread` requires 3+ candidates) -- rather than widening
+    /// `attackable_part` and losing first-tap determinism, force the
+    /// pattern directly. Matched by name against `AttackPattern`'s variants
+    /// in `attack_pattern.rs` (see `parse_attack_pattern` below);
+    /// `CycleParts(n)` isn't supported since it takes an argument.
+    #[serde(default)]
+    attack_pattern: Option<String>,
+    /// Optional, defaults to `DEFAULT_ERROR_PERCENT`. Overrides the percent
+    /// error ceiling for every component of this case only. Needed for a
+    /// card whose in-game damage isn't reproducible to begin with -- e.g.
+    /// Fuse (`FusionBomb`)'s on-remove damage recompute lands wherever the
+    /// tap happens to fall relative to the game's own 0.2s (4-tick)
+    /// affliction update cadence, so real measurements of the same card at
+    /// the same target vary run to run, unlike our sim which is perfectly
+    /// consistent every time. Raise this only for cards with a similar,
+    /// understood source of real-game variance -- not to paper over an
+    /// unexplained gap.
+    #[serde(default = "default_error_percent")]
+    error_percent: f64,
+    /// Real damage measured in-game from the player's own tap alone
+    /// (excludes every card's contribution), summed across all `tap_count`
+    /// taps.
+    expected_tap_damage: u64,
+    /// Real per-card damage measured in-game, positional: `expected_card_damage[i]`
+    /// is `deck[i]`'s damage. Must be the same length as `deck`. A card with
+    /// no measurable contribution (e.g. a Support card, or one that can't
+    /// proc in this scenario) should still have an entry, `0`.
+    expected_card_damage: Vec<u64>,
+}
+
+fn default_tap_count() -> u32 {
+    1
+}
+
+fn default_error_percent() -> f64 {
+    DEFAULT_ERROR_PERCENT
+}
+
+/// Maps a case's `attack_pattern` string to an `AttackPattern` by variant
+/// name -- kept here (test-only) rather than a real `Deserialize` impl on
+/// `AttackPattern` since nothing outside tests needs to parse one from text.
+fn parse_attack_pattern(name: &str) -> AttackPattern {
+    match name {
+        "SingleAny" => AttackPattern::SingleAny,
+        "SingleHead" => AttackPattern::SingleHead,
+        "SingleTorso" => AttackPattern::SingleTorso,
+        "SingleBody" => AttackPattern::SingleBody,
+        "SingleArmor" => AttackPattern::SingleArmor,
+        "SingleLimb" => AttackPattern::SingleLimb,
+        "SingleCursed" => AttackPattern::SingleCursed,
+        "CycleCursed" => AttackPattern::CycleCursed,
+        "CycleHeadTorso" => AttackPattern::CycleHeadTorso,
+        "CycleLimb" => AttackPattern::CycleLimb,
+        "CycleBody" => AttackPattern::CycleBody,
+        "CycleArmor" => AttackPattern::CycleArmor,
+        "CycleAllActive" => AttackPattern::CycleAllActive,
+        "FusionBombSpread" => AttackPattern::FusionBombSpread,
+        "ThrivingPlagueSpread" => AttackPattern::ThrivingPlagueSpread,
+        "RadioactivitySpread" => AttackPattern::RadioactivitySpread,
+        "DecayingStrikeFocus" => AttackPattern::DecayingStrikeFocus,
+        "BlazingInfernoStack" => AttackPattern::BlazingInfernoStack,
+        "CelestialStatic" => AttackPattern::CelestialStatic,
+        "WhipRuinousFocus" => AttackPattern::WhipRuinousFocus,
+        other => panic!(
+            "unknown attack_pattern '{other}' -- see the AttackPattern enum in attack_pattern.rs \
+             (CycleParts(n) isn't supported here, it takes an argument)"
+        ),
+    }
+}
+
+/// A raw player export + a `Boss` snapshot, as captured by hand from a real
+/// TT2 attack -- see `cases/README.md` for how to produce one.
+/// `title` is `PlayerRaidData::title` (the player's title, an additive bonus
+/// to all raid damage -- see `damage_cache.rs`'s `raid_all_mult`) directly,
+/// not part of the raw export `clean_data` reads, so it's supplied
+/// separately here rather than defaulting to `clean_data`'s placeholder 0.0.
+#[derive(Debug, serde::Deserialize)]
+struct RawFixture {
+    player_raw_data: PlayerData,
+    boss_data: Boss,
+    #[serde(default)]
+    title: f32,
+}
+
+const FIXTURES_DIR: &str = "tests/fixtures/sim_to_real";
+/// `payload` paths in case files are resolved against `FIXTURES_DIR`, not
+/// against this directory -- see `cases/README.md`.
+const CASES_DIR: &str = "tests/fixtures/sim_to_real/cases";
+
+/// Runs every case from every `.toml` file under `cases/` through the
+/// deterministic single-tap simulation and checks tap damage plus every
+/// card's damage against the real, human-measured TT2 numbers recorded for
+/// that case. Passes trivially (0 cases run) until a real, verified case is
+/// added -- see `cases/README.md` for the format and how to split cases
+/// across files.
+#[test]
+fn sim_to_real_golden_cases() {
+    let cases = load_all_cases();
+
+    // Run every case (even after one mismatches) so a single failing test
+    // run shows the full picture across all parts/cards at once -- much
+    // easier to spot a pattern (e.g. "always off by the same %") than
+    // stopping at the first mismatch.
+    let mut all_failures = Vec::new();
+    for case in &cases {
+        if let Err(failures) = run_case(case) {
+            all_failures.push(format!("case '{}':\n{}", case.name, failures.join("\n")));
+        }
+    }
+
+    assert!(all_failures.is_empty(), "\n{}", all_failures.join("\n\n"));
+}
+
+/// Loads and concatenates every `.toml` file directly under `CASES_DIR`
+/// (non-recursive; `README.md` and anything not ending in `.toml` is
+/// skipped). Files are read in sorted order purely for reproducible
+/// failure-message ordering -- case files are independent of each other.
+fn load_all_cases() -> Vec<Case> {
+    let cases_dir = Path::new(CASES_DIR);
+    let mut entries = std::fs::read_dir(cases_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", cases_dir.display()))
+        .map(|entry| entry.expect("directory entry should be readable").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .collect::<Vec<_>>();
+    entries.sort();
+
+    let mut cases = Vec::new();
+    for path in entries {
+        let toml_text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let file: CasesFile = toml::from_str(&toml_text)
+            .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()));
+        cases.extend(file.cases);
+    }
+    cases
+}
+
+fn run_case(case: &Case) -> Result<(), Vec<String>> {
+    let payload_path = Path::new(FIXTURES_DIR).join(&case.payload);
+    let payload_json = std::fs::read_to_string(&payload_path).unwrap_or_else(|error| {
+        panic!(
+            "case '{}': failed to read payload {}: {error}",
+            case.name,
+            payload_path.display()
+        )
+    });
+    let fixture: RawFixture = serde_json::from_str(&payload_json).unwrap_or_else(|error| {
+        panic!(
+            "case '{}': failed to parse payload {}: {error}",
+            case.name,
+            payload_path.display()
+        )
+    });
+
+    let mut player_raid_data = clean_data(&fixture.player_raw_data);
+    player_raid_data.title = fixture.title;
+
+    let payload = SimPayLoad {
+        player_raid_data,
+        boss_data: fixture.boss_data,
+        attackable_part: case.attackable_part.clone(),
+        usable_card: case.deck.clone(),
+        include_body_phase: false,
+        mirror_force_boost: case.mirror_force_boost,
+    };
+
+    let forced_pattern = case.attack_pattern.as_deref().map(parse_attack_pattern);
+    let result = SimService::run_deterministic_single_tap_simulation(
+        payload,
+        case.tap_count,
+        1,
+        forced_pattern,
+    )
+    .unwrap_or_else(|| {
+            panic!("case '{}': deck has no valid attack patterns for this boss", case.name)
+        });
+    let pattern = result
+        .best_pattern
+        .as_ref()
+        .unwrap_or_else(|| panic!("case '{}': simulation produced no pattern result", case.name));
+
+    let actual_tap_damage = pattern.tap_damage;
+
+    println!(
+        "[sim-to-real] case '{}': sim total={} tap={} (expected {}) cards={:?}",
+        case.name,
+        pattern.average_damage,
+        actual_tap_damage,
+        case.expected_tap_damage,
+        pattern
+            .card_damage
+            .iter()
+            .map(|card| (card.card, card.average_damage))
+            .collect::<Vec<_>>()
+    );
+
+    assert_eq!(
+        case.deck.len(),
+        case.expected_card_damage.len(),
+        "case '{}': deck has {} cards but expected_card_damage has {} entries -- they're positional, must match 1:1",
+        case.name,
+        case.deck.len(),
+        case.expected_card_damage.len()
+    );
+
+    let mut failures = Vec::new();
+    check_component(
+        "tap",
+        actual_tap_damage,
+        case.expected_tap_damage,
+        case.error_percent,
+        &mut failures,
+    );
+    for (card_name, &expected) in case.deck.iter().zip(&case.expected_card_damage) {
+        let actual = pattern
+            .card_damage
+            .iter()
+            .find(|card| card.card == *card_name)
+            .map_or(0, |card| card.average_damage);
+        check_component(
+            &format!("{card_name:?}"),
+            actual,
+            expected,
+            case.error_percent,
+            &mut failures,
+        );
+    }
+
+    if failures.is_empty() { Ok(()) } else { Err(failures) }
+}
+
+/// The largest unit TT2's own in-game display would shorten `value` into
+/// (1 = shown in full, no shortening).
+fn display_unit(value: u64) -> u64 {
+    if value >= 1_000_000_000_000 {
+        1_000_000_000_000
+    } else if value >= 1_000_000_000 {
+        1_000_000_000
+    } else if value >= 1_000_000 {
+        1_000_000
+    } else if value >= 1_000 {
+        1_000
+    } else {
+        1
+    }
+}
+
+/// Truncates `value` to the same precision a 2-decimal K/M/B/T display would
+/// show it at (e.g. 124985 -> "124.98K" -> 124980, never rounded up) --
+/// TT2's own shortened display truncates rather than rounds, and this
+/// matches that exactly. Zeroes out every digit that reading such a display
+/// back into a raw number can't recover. Pure integer arithmetic -- no
+/// floating point, so no representation surprises.
+fn truncate_to_display_precision(value: u64) -> u64 {
+    let unit = display_unit(value);
+    if unit == 1 {
+        return value;
+    }
+    let step = unit / 100; // one "cent" of the shortened display
+    (value / step) * step
+}
+
+const DEFAULT_ERROR_PERCENT: f64 = 0.1;
+
+fn check_component(
+    label: &str,
+    actual: u64,
+    expected: u64,
+    max_error_percent: f64,
+    failures: &mut Vec<String>,
+) {
+    let actual_truncated = truncate_to_display_precision(actual);
+    let expected_truncated = truncate_to_display_precision(expected);
+    if actual_truncated == expected_truncated {
+        return;
+    }
+
+    let diff = actual.abs_diff(expected);
+    let error_percent = if expected == 0 {
+        if actual == 0 { 0.0 } else { f64::INFINITY }
+    } else {
+        (diff as f64 / expected as f64) * 100.0
+    };
+    if error_percent <= max_error_percent {
+        return;
+    }
+
+    failures.push(format!(
+        "  {label}: expected {expected} (~{expected_truncated}), got {actual} (~{actual_truncated}), \
+         {error_percent:.3}% error (limit {max_error_percent}%)"
+    ));
+}

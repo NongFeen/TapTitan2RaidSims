@@ -1,0 +1,26 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "PowerBubble 1 tap Head"
+payload = "player_boss_sample.json"
+deck = ["PowerBubble", "TriangleSupport", "TriangleSupport"]
+tap_count = 1
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 4610
+expected_card_damage = [83130, 0, 0]
+# 116640
+#per tick 5540
+# damage have vary base on time apply and game tick
+
+[[case]]
+name = "PowerBubble burst tap Head"
+payload = "player_boss_sample.json"
+deck = ["PowerBubble", "TriangleSupport", "TriangleSupport"]
+tap_count = 5
+# error_percent = 0.1
+attackable_part = ["Head"]
+expected_tap_damage = 23050
+expected_card_damage = [742690, 0, 0]
+# 720530 explode damage + 4th tick
+# 5540*4 + 720530 = 742690

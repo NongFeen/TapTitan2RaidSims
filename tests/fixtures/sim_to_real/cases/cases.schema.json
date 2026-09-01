@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sim-to-real case file",
+  "description": "See README.md for the full field-by-field explanation.",
+  "type": "object",
+  "required": ["case"],
+  "additionalProperties": false,
+  "properties": {
+    "case": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": [
+        "name",
+        "payload",
+        "deck",
+        "attackable_part",
+        "expected_tap_damage",
+        "expected_card_damage"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Short, unique label for this case across ALL case files (shown on failure)."
+        },
+        "payload": {
+          "type": "string",
+          "description": "Path relative to tests/fixtures/sim_to_real/ (the parent of cases/), to a { player_raw_data, boss_data, title } fixture."
+        },
+        "deck": {
+          "type": "array",
+          "description": "Exactly 3 card ids (serialized ids -- see the enum for the full list; not always the display name).",
+          "items": { "$ref": "#/$defs/card_name" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "attackable_part": {
+          "type": "array",
+          "description": "Which part(s) were targeted. Keep it to exactly one real target to avoid first-tap pattern ambiguity.",
+          "items": { "$ref": "#/$defs/boss_part_name" },
+          "minItems": 1
+        },
+        "expected_tap_damage": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Real damage measured in-game from the player's own tap alone."
+        },
+        "expected_card_damage": {
+          "type": "array",
+          "description": "Real per-card damage measured in-game, positional -- expected_card_damage[i] is deck[i]'s damage. Must be the same length as deck. List every deck card, even ones expected to deal 0.",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mirror_force_boost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Optional, default 0.0. Fractional clan boost (0.35 = Mirror Force deals 35% more)."
+        },
+        "tap_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional, default 1. Number of guaranteed-proc taps before the rest of the round plays out untapped. Almost always 1 (one real attack) -- the exception is a cadence-based card like Cosmic Haymaker (fires once every 70 taps), which needs enough taps to reach its own cadence since there's no chance roll to guarantee. Every other card in the deck is also tapped (and guaranteed-proc'd) this many times, so expected_tap_damage/expected_card_damage must be the totals across all tap_count taps."
+        },
+        "attack_pattern": {
+          "$ref": "#/$defs/attack_pattern",
+          "description": "Optional. Forces this attack pattern instead of letting the deck pick one. Needed when attackable_part is narrowed to a single real target for determinism but the deck's card needs a wider candidate pool to even be available (e.g. Fuse's FusionBombSpread needs 3+ candidates) -- widen attackable_part to the boss's real active parts and force the pattern here instead of losing first-tap determinism."
+        },
+        "error_percent": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Optional, default 0.1. Overrides the percent error ceiling for every component of this case only. Raise this only for a card with a known, understood source of in-game measurement variance (e.g. Fuse/FusionBomb's on-remove damage recompute lands wherever the tap falls relative to the game's own 0.2s affliction update cadence, so repeated real measurements vary run to run) -- not to paper over an unexplained mismatch."
+        }
+      }
+    },
+    "card_name": {
+      "type": "string",
+      "enum": [
+        "MoonBeam",
+        "Fragmentize",
+        "SkullBash",
+        "RazorWind",
+        "WhipOfLightning",
+        "BurstCount",
+        "Purify",
+        "LimbBurst",
+        "FlakShot",
+        "Haymaker",
+        "ChainLightning",
+        "MirrorForce",
+        "CelestialStatic",
+        "Weaken",
+        "BarbedMorningstar",
+        "BurningAttack",
+        "PoisonAttack",
+        "DecayingAttack",
+        "Fuse",
+        "Shadow",
+        "PlagueAttack",
+        "Disease",
+        "Swarm",
+        "RuinousRust",
+        "PowerBubble",
+        "RuneAttack",
+        "MagicPotion",
+        "SandsOfTime",
+        "CosmicBarb",
+        "ExecutionersAxe",
+        "CrushingVoid",
+        "MentalFocus",
+        "ImpactAttack",
+        "InnerTruth",
+        "FinisherAttack",
+        "SuperheatMetal",
+        "BurstBoost",
+        "LimbSupport",
+        "TotemFairySkill",
+        "TeamTactics",
+        "SpinalTap",
+        "AstralEcho",
+        "TriangleSupport",
+        "BattleDrums"
+      ]
+    },
+    "boss_part_name": {
+      "type": "string",
+      "enum": [
+        "Head",
+        "Torso",
+        "LeftShoulder",
+        "RightShoulder",
+        "LeftHand",
+        "RightHand",
+        "LeftLeg",
+        "RightLeg"
+      ]
+    },
+    "attack_pattern": {
+      "type": "string",
+      "description": "AttackPattern variant name (attack_pattern.rs). CycleParts(n) isn't listed -- it takes an argument and isn't supported by the test's string parser.",
+      "enum": [
+        "SingleAny",
+        "SingleHead",
+        "SingleTorso",
+        "SingleBody",
+        "SingleArmor",
+        "SingleLimb",
+        "SingleCursed",
+        "CycleCursed",
+        "CycleHeadTorso",
+        "CycleLimb",
+        "CycleBody",
+        "CycleArmor",
+        "CycleAllActive",
+        "FusionBombSpread",
+        "ThrivingPlagueSpread",
+        "RadioactivitySpread",
+        "DecayingStrikeFocus",
+        "BlazingInfernoStack",
+        "CelestialStatic",
+        "WhipRuinousFocus"
+      ]
+    }
+  }
+}

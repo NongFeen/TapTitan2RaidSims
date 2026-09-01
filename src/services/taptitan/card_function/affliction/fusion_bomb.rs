@@ -53,10 +53,6 @@ pub fn remove_damage(
     total_attached_duration: f64,
 ) -> f64 {
     let per_second_bonus = bonus_c.unwrap_or(0.5);
-    // println!(
-    //     "per_second_bonus {} total_attached_duration {}",
-    //     per_second_bonus, total_attached_duration
-    // );
 
-    (base_remove_damage * (per_second_bonus * total_attached_duration)).max(0.0)
+    (base_remove_damage * (per_second_bonus * (total_attached_duration))).max(0.0)
 }

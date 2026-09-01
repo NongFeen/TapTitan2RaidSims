@@ -10,6 +10,8 @@ fn sample_pattern() -> SimPatternResult {
         lowest_round_damage_display: "800".to_string(),
         highest_round_damage: 1_200,
         highest_round_damage_display: "1.200K".to_string(),
+        tap_damage: 350,
+        tap_damage_display: "350".to_string(),
         card_damage: vec![
             SimCardDamageResult {
                 card: CardName::MoonBeam,
@@ -90,6 +92,10 @@ fn rebuild_regenerates_display_fields_and_deck_from_card_mask() {
     assert_eq!(best_pattern.average_damage_display, format_compact(1_000));
     assert_eq!(best_pattern.lowest_round_damage, 800);
     assert_eq!(best_pattern.highest_round_damage, 1_200);
+    // Not a persisted column -- approximated as average_damage minus the 3
+    // card damages (400+0+250=650), same as sample_pattern()'s own 350.
+    assert_eq!(best_pattern.tap_damage, 350);
+    assert_eq!(best_pattern.tap_damage_display, format_compact(350));
     let moon_beam = best_pattern
         .card_damage
         .iter()

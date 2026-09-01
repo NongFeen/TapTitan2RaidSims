@@ -226,6 +226,7 @@ impl SimService {
                 None,
                 None,
                 false,
+                false,
             )
         }
     }
@@ -303,6 +304,7 @@ impl SimService {
                 None,
                 None,
                 false,
+                false,
             )
         };
         if body_phase {
@@ -312,9 +314,44 @@ impl SimService {
     }
 
     pub fn run_deck_debug_simulation(
+        payload: SimPayLoad,
+        total_taps: u32,
+        rounds_per_pattern: u64,
+    ) -> Option<SimDeckResult> {
+        Self::run_deck_debug_simulation_with_rng(
+            payload,
+            total_taps,
+            rounds_per_pattern,
+            false,
+            true,
+            None,
+        )
+    }
+
+    /// Same as `run_deck_debug_simulation`, but `force_guaranteed_procs`
+    /// swaps in `SimRng::AlwaysSucceed` for the whole run -- used only by
+    /// deterministic "sim-to-real" golden tests (see
+    /// `run_deterministic_single_tap_simulation`), never by the real
+    /// `/simulation-debug` route. `apply_seasonal_boosts` gates whether each
+    /// card's level gets bumped by `seasonal_card_boosts.json` before the
+    /// sim runs -- also real-route-only: a seasonal boost is a time-varying
+    /// external modifier, so a golden test comparing against a number
+    /// measured by hand at some other point in time must not have one
+    /// silently mixed in, whether or not the card involved happens to be on
+    /// the currently-configured seasonal list. `forced_pattern`, when
+    /// `Some`, skips `generate_all_attack_patterns`'s deck-based auto
+    /// selection entirely and runs exactly that one pattern instead -- for
+    /// a case where the "best" auto-selected pattern for a single-part
+    /// target doesn't exist or isn't the one a real single tap actually
+    /// used (e.g. a spread-oriented deck like Fuse/FusionBomb against a
+    /// one-part `attackable_part`).
+    fn run_deck_debug_simulation_with_rng(
         mut payload: SimPayLoad,
         total_taps: u32,
         rounds_per_pattern: u64,
+        force_guaranteed_procs: bool,
+        apply_seasonal_boosts: bool,
+        forced_pattern: Option<AttackPattern>,
     ) -> Option<SimDeckResult> {
         payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
@@ -335,7 +372,11 @@ impl SimService {
                     .find(|card| card.card_id == *card_name)
                     .cloned()
                     .map(|mut card| {
-                        crate::models::seasonal_card_boosts::apply_seasonal_level_boost(&mut card);
+                        if apply_seasonal_boosts {
+                            crate::models::seasonal_card_boosts::apply_seasonal_level_boost(
+                                &mut card,
+                            );
+                        }
                         card.ensure_skill_cache();
                         card
                     })
@@ -344,11 +385,15 @@ impl SimService {
         if select_deck.len() != 3 {
             return None;
         }
-        let attack_patterns = generate_all_attack_patterns(&sim_stats, &select_deck);
+        let attack_patterns = match forced_pattern {
+            Some(pattern) => vec![pattern],
+            None => generate_all_attack_patterns(&sim_stats, &select_deck),
+        };
         if attack_patterns.is_empty() {
             return None;
         }
 
+        let tick_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
         Some(Self::run_deck_sim(
             &sim_stats,
             select_deck,
@@ -356,10 +401,41 @@ impl SimService {
             rounds_per_pattern,
             None,
             1,
-            Some(TICKS_PER_ROUND),
+            Some(tick_count),
             Some(total_taps),
             true,
+            force_guaranteed_procs,
         ))
+    }
+
+    /// Sim-to-real golden-test entry point: taps exactly `tap_count` times
+    /// (guaranteed to proc every card with a nonzero proc chance -- see
+    /// `SimRng`), then lets the full 600-tick round play out with no further
+    /// taps so afflictions/DoTs tick to completion. Matches the methodology
+    /// of measuring `tap_count` real TT2 attacks by hand and comparing the
+    /// total damage to what this produces. `tap_count` almost always wants
+    /// to be 1 (a single real attack) -- the one standing exception is a
+    /// card whose proc is cadence-based rather than chance-based (e.g.
+    /// Cosmic Haymaker, which only fires once every
+    /// `COSMIC_HAYMAKER_TAPS_PER_PROC` taps: `force_guaranteed_procs`
+    /// doesn't help it, since there's no chance roll to force, it just needs
+    /// enough taps to reach its own cadence). `forced_pattern`, when `Some`,
+    /// bypasses auto-selection entirely -- see
+    /// `run_deck_debug_simulation_with_rng`'s doc comment.
+    pub fn run_deterministic_single_tap_simulation(
+        payload: SimPayLoad,
+        tap_count: u32,
+        rounds_per_pattern: u64,
+        forced_pattern: Option<AttackPattern>,
+    ) -> Option<SimDeckResult> {
+        Self::run_deck_debug_simulation_with_rng(
+            payload,
+            tap_count,
+            rounds_per_pattern,
+            true,
+            false,
+            forced_pattern,
+        )
     }
 
     pub fn run_deck_sim(
@@ -372,6 +448,7 @@ impl SimService {
         fixed_tick_count: Option<u32>,
         total_tap_limit: Option<u32>,
         include_all_patterns: bool,
+        force_guaranteed_procs: bool,
     ) -> SimDeckResult {
         let mut select_deck = select_deck;
         prepare_deck_for_sim(&mut select_deck, &sim_stats.boss_stat);
@@ -418,13 +495,19 @@ impl SimService {
             let mut lowest_round_damage = u64::MAX;
             let mut highest_round_damage = 0;
             let mut card_damage_totals = vec![0u64; select_deck.len()];
+            let mut tap_damage_totals: u64 = 0;
             let mut card_proc_totals = vec![0u64; select_deck.len()];
 
             for _ in 1..=sim_rounds {
                 // Keep one RNG for the whole round so the hot loop does not repeatedly
-                // acquire the thread-local generator. Tests can pass a seeded RNG through
-                // the same call chain.
-                let mut rng = rand::rng();
+                // acquire the thread-local generator. `force_guaranteed_procs` swaps in a
+                // roll that always succeeds -- see `SimRng` -- for deterministic
+                // "sim-to-real" golden tests; every real caller keeps the real RNG.
+                let mut rng = if force_guaranteed_procs {
+                    SimRng::AlwaysSucceed
+                } else {
+                    SimRng::Real(rand::rng())
+                };
                 let mut boss = sim_stats.boss_stat.clone();
                 boss.set_result_target_parts(&sim_stats.attackable_part);
                 boss.set_player_raid_data(Arc::clone(&sim_stats.player_stat));
@@ -524,6 +607,7 @@ impl SimService {
                 total_sim_damage += round_damage;
                 lowest_round_damage = lowest_round_damage.min(round_damage);
                 highest_round_damage = highest_round_damage.max(round_damage);
+                tap_damage_totals = tap_damage_totals.saturating_add(boss.tap_damage_total());
 
                 for (card_index, card_name) in deck_card_names.iter().enumerate() {
                     let damage = boss.card_damage_total(*card_name);
@@ -535,6 +619,7 @@ impl SimService {
             }
 
             let average_damage = total_sim_damage / sim_rounds;
+            let tap_damage = tap_damage_totals / sim_rounds;
             let lowest_round_damage = if lowest_round_damage == u64::MAX {
                 0
             } else {
@@ -563,6 +648,8 @@ impl SimService {
                 lowest_round_damage_display: format_compact(lowest_round_damage),
                 highest_round_damage,
                 highest_round_damage_display: format_compact(highest_round_damage),
+                tap_damage,
+                tap_damage_display: format_compact(tap_damage),
                 card_damage,
             };
 

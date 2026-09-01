@@ -1,0 +1,30 @@
+#:schema ./cases.schema.json
+
+# Lojak, deck = Skull Bash / Mirror Force / Psychic Shackle (LimbBurst).
+
+[[case]]
+name = "Haymaker"
+payload = "player_boss_sample.json"
+deck = ["Haymaker", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 70
+expected_tap_damage = 322710
+expected_card_damage = [1_360_000, 0, 0]
+
+[[case]]
+name = "Haymaker Astral Echo 70"
+payload = "player_boss_sample.json"
+deck = ["Haymaker", "AstralEcho", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 59
+expected_tap_damage = 1_310_000
+expected_card_damage = [5_550_000, 0, 0]
+
+[[case]]
+name = "Haymaker Astral Echo 175"
+payload = "player_boss_sample.json"
+deck = ["Haymaker", "AstralEcho", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 175
+expected_tap_damage = 3_950_000
+expected_card_damage = [16_660_000, 0, 0]

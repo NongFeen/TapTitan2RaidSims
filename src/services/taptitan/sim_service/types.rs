@@ -162,6 +162,17 @@ pub struct SimPatternResult {
     pub lowest_round_damage_display: String,
     pub highest_round_damage: u64,
     pub highest_round_damage_display: String,
+    /// Damage from the player's own tap alone, excluding every card's
+    /// contribution -- tracked independently (see `Boss::tap_damage_total`),
+    /// not derived by subtracting `card_damage` from `average_damage` (those
+    /// round at different points and a subtraction can drift by a couple of
+    /// units). Only populated on a freshly-run simulation; a `SimDeckResult`
+    /// rebuilt from a persisted job result approximates it instead -- see
+    /// `sim_deck_result_codec::rebuild_from_persisted`.
+    #[serde(default)]
+    pub tap_damage: u64,
+    #[serde(default)]
+    pub tap_damage_display: String,
     pub card_damage: Vec<SimCardDamageResult>,
 }
 
