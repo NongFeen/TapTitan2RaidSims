@@ -14,6 +14,7 @@ pub struct AppState {
     pub simulation_slots: Arc<Semaphore>,
     pub recommendation_slots: Arc<Semaphore>,
     pub internal_api_key: Arc<str>,
+    pub internal_api_enabled: bool,
     pub gamehive_api: Option<Arc<GameHiveApiClient>>,
     pub clan_fetch_lock: Arc<Mutex<()>>,
     pub live_attack_boss: Arc<RwLock<Option<LiveAttackBossView>>>,
@@ -37,6 +38,7 @@ impl AppState {
         db: Option<PgPool>,
         simulation_concurrency: usize,
         internal_api_key: String,
+        internal_api_enabled: bool,
         gamehive_api: Option<Arc<GameHiveApiClient>>,
     ) -> Self {
         Self {
@@ -44,6 +46,7 @@ impl AppState {
             simulation_slots: Arc::new(Semaphore::new(simulation_concurrency)),
             recommendation_slots: Arc::new(Semaphore::new(1)),
             internal_api_key: Arc::from(internal_api_key),
+            internal_api_enabled,
             gamehive_api,
             clan_fetch_lock: Arc::new(Mutex::new(())),
             live_attack_boss: Arc::new(RwLock::new(None)),

@@ -7,6 +7,8 @@ pub struct Config {
     pub simulation_concurrency: usize,
     pub simulation_worker_count: usize,
     pub internal_api_key: String,
+    pub internal_api_enabled: bool,
+    pub swagger_ui_enabled: bool,
     pub cors_allowed_origins: Vec<String>,
     pub tt2: Option<Tt2Config>,
 }
@@ -19,6 +21,17 @@ pub struct Tt2Config {
     pub application_token: String,
     pub player_token_encryption_key: String,
     pub raid_subscription_player_token: String,
+}
+
+fn parse_bool_env(name: &str, default: bool) -> Result<bool, String> {
+    match env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
+            _ => Err(format!("{name} must be true or false")),
+        },
+        Err(_) => Ok(default),
+    }
 }
 
 impl Config {
@@ -49,6 +62,8 @@ impl Config {
         if internal_api_key.trim().len() < 16 {
             return Err("INTERNAL_API_KEY must contain at least 16 characters".to_string());
         }
+        let internal_api_enabled = parse_bool_env("INTERNAL_API_ENABLED", true)?;
+        let swagger_ui_enabled = parse_bool_env("SWAGGER_UI_ENABLED", false)?;
 
         let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
             .map_err(|_| "CORS_ALLOWED_ORIGINS must be configured".to_string())?
@@ -99,6 +114,8 @@ impl Config {
             simulation_concurrency,
             simulation_worker_count,
             internal_api_key,
+            internal_api_enabled,
+            swagger_ui_enabled,
             cors_allowed_origins,
             tt2,
         })

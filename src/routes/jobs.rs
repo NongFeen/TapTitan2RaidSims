@@ -8,6 +8,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -20,20 +21,20 @@ use crate::{
     state::AppState,
 };
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct JobAccepted {
     pub job_id: Uuid,
     pub created: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateSimulationBatchRequest {
     pub player_ids: Vec<String>,
     #[serde(default)]
     pub include_body_phase: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SimulationBatchAccepted {
     pub batch_id: Uuid,
     pub requested: usize,
@@ -41,7 +42,7 @@ pub struct SimulationBatchAccepted {
     pub existing: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SimulationBatchView {
     pub batch_id: Uuid,
     pub status: &'static str,
@@ -61,6 +62,15 @@ pub struct SimulationBatchView {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// Queue a simulation job for a player (internal)
+#[utoipa::path(
+    post,
+    path = "/internal/simulation-jobs",
+    tag = "internal",
+    request_body = CreateSimulationJobRequest,
+    responses((status = 202, description = "Job queued (or an existing pending/running job returned)", body = JobAccepted)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn create(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateSimulationJobRequest>,
@@ -69,6 +79,15 @@ pub async fn create(
     Ok((StatusCode::ACCEPTED, Json(JobAccepted { job_id, created })))
 }
 
+/// Queue simulation jobs for up to 100 players at once (internal)
+#[utoipa::path(
+    post,
+    path = "/internal/simulation-jobs/batch",
+    tag = "internal",
+    request_body = CreateSimulationBatchRequest,
+    responses((status = 202, description = "Batch created and jobs queued", body = SimulationBatchAccepted)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn create_batch(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateSimulationBatchRequest>,
@@ -130,6 +149,18 @@ pub async fn create_batch(
     ))
 }
 
+/// Get a simulation batch's progress (internal)
+#[utoipa::path(
+    get,
+    path = "/internal/simulation-jobs/batch/{batch_id}",
+    tag = "internal",
+    params(("batch_id" = Uuid, Path, description = "Batch id returned by POST /internal/simulation-jobs/batch")),
+    responses(
+        (status = 200, description = "Aggregated status across the batch's jobs", body = SimulationBatchView),
+        (status = 404, description = "Batch not found"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn get_batch(
     State(state): State<Arc<AppState>>,
     Path(batch_id): Path<Uuid>,
@@ -196,6 +227,18 @@ pub async fn get_batch(
     }))
 }
 
+/// Get a single simulation job (internal)
+#[utoipa::path(
+    get,
+    path = "/internal/simulation-jobs/{job_id}",
+    tag = "internal",
+    params(("job_id" = Uuid, Path, description = "Simulation job id")),
+    responses(
+        (status = 200, description = "Job status and result", body = SimulationJobView),
+        (status = 404, description = "Job not found"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn get(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<Uuid>,
@@ -203,6 +246,14 @@ pub async fn get(
     Ok(Json(job_service::get_job(&state, job_id).await?))
 }
 
+/// List a player's simulation jobs
+#[utoipa::path(
+    get,
+    path = "/api/players/{player_id}/simulation-jobs",
+    tag = "players",
+    params(("player_id" = String, Path, description = "Player id")),
+    responses((status = 200, description = "All simulation jobs for this player", body = [SimulationJobView])),
+)]
 pub async fn list_for_player(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -212,6 +263,15 @@ pub async fn list_for_player(
     ))
 }
 
+/// Retry a failed simulation job (internal)
+#[utoipa::path(
+    post,
+    path = "/internal/simulation-jobs/{job_id}/retry",
+    tag = "internal",
+    params(("job_id" = Uuid, Path, description = "Simulation job id")),
+    responses((status = 202, description = "Job re-queued", body = JobAccepted)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn retry(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<Uuid>,

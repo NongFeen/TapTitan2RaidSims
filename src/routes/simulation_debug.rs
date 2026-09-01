@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
@@ -22,7 +23,7 @@ const DEBUG_TICKS_PER_ROUND: u32 = 600;
 const MAX_TOTAL_TAPS: u32 = DEBUG_TICKS_PER_ROUND;
 const MAX_DEBUG_ROUNDS: u64 = 100;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DebugSimulationRequest {
     pub player_id: String,
     pub boss_data: Boss,
@@ -32,7 +33,7 @@ pub struct DebugSimulationRequest {
     pub rounds_per_pattern: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DebugSimulationResponse {
     pub rounds_per_pattern: u64,
     pub ticks_per_round: u32,
@@ -40,6 +41,18 @@ pub struct DebugSimulationResponse {
     pub result: SimDeckResult,
 }
 
+/// Run a synchronous debug simulation (internal)
+///
+/// Runs immediately (not queued as a job) against an arbitrary boss/deck,
+/// for iterating on sim behavior without touching `current_boss`.
+#[utoipa::path(
+    post,
+    path = "/internal/simulation-debug",
+    tag = "internal",
+    request_body = DebugSimulationRequest,
+    responses((status = 200, description = "Simulation result for every attack pattern tried", body = DebugSimulationResponse)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn run(
     State(state): State<Arc<AppState>>,
     Json(request): Json<DebugSimulationRequest>,

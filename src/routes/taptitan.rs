@@ -31,6 +31,13 @@ pub async fn send_player_data_json(Json(payload): Json<PlayerData>) -> impl Into
     (StatusCode::CREATED, ResponseJson(success_response)).into_response()
 }
 
+/// List all card definitions
+#[utoipa::path(
+    get,
+    path = "/api/taptitan/cards",
+    tag = "taptitan",
+    responses((status = 200, description = "Every card's static definition (id, name, type, image, seasonal boost)", body = [CardDefinitionDto])),
+)]
 pub async fn get_all_card_definitions() -> impl IntoResponse {
     // 2. CardName::iter() automatically knows how to traverse all 42 items!
     let list: Vec<CardDefinitionDto> = CardName::iter()

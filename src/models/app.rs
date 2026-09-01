@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::models::db_enums::{JobStatus, TokenStatus};
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct PlayerSummary {
     pub player_id: String,
     pub display_name: String,
@@ -18,7 +19,7 @@ pub struct PlayerSummary {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct PlayerDetail {
     pub player_id: String,
     pub display_name: String,
@@ -32,24 +33,24 @@ pub struct PlayerDetail {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAutoSimsRequest {
     pub auto_sims: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdatePlayerTokenRequest {
     pub player_token: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct Tt2PlayerStatus {
     pub configured: bool,
     pub connected: bool,
     pub raid_connected: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct Tt2ClanStatus {
     pub clan_code: Option<String>,
     pub clan_name: Option<String>,
@@ -58,7 +59,7 @@ pub struct Tt2ClanStatus {
     pub last_player_count: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct Tt2ClanFetchResult {
     pub clan_code: String,
     pub clan_name: String,
@@ -76,7 +77,7 @@ pub enum UpdatePlayerStatsRequest {
     Raw(crate::models::player_data::PlayerData),
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
 pub struct PlayerStatsVersion {
     pub revision: i64,
     pub stats: Value,
@@ -84,7 +85,7 @@ pub struct PlayerStatsVersion {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
 pub struct SimulationJobView {
     pub id: Uuid,
     pub player_id: String,
@@ -99,14 +100,14 @@ pub struct SimulationJobView {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSimulationJobRequest {
     pub player_id: String,
     #[serde(default)]
     pub include_body_phase: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CurrentBossUpdateRequest {
     pub boss_data: crate::models::boss::Boss,
     pub attackable_parts: Vec<crate::models::boss::BossPartName>,
@@ -114,7 +115,7 @@ pub struct CurrentBossUpdateRequest {
     pub run_sims: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RaidEventAccepted {
     pub status: &'static str,
     pub message: String,
@@ -123,7 +124,7 @@ pub struct RaidEventAccepted {
     pub created_jobs: Vec<Uuid>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
 pub struct CurrentBossView {
     pub boss_data: Value,
     pub attackable_parts: Value,
@@ -131,7 +132,7 @@ pub struct CurrentBossView {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LiveAttackBossView {
     pub clan_code: String,
     pub raid_id: i64,
@@ -156,14 +157,14 @@ pub struct LiveAttackBossView {
     pub curse_percent: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AreaBonusView {
     pub modifier: crate::models::boss::GlobalRaidModifier,
     /// Fractional amount TT2 reported (0.3 = +30%), when known.
     pub amount: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 pub struct LiveBossDisplayPart {
     pub part_name: crate::models::boss::BossPartName,
     pub part_state: crate::models::boss::PartState,
@@ -172,14 +173,14 @@ pub struct LiveBossDisplayPart {
     pub is_targeted: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
 pub struct LiveAttackingCard {
     pub card_id: String,
     pub display_name: String,
     pub image_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
 pub struct LiveAttackingPlayer {
     pub player_code: String,
     pub name: String,
@@ -195,7 +196,7 @@ impl LiveAttackingPlayer {
     }
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
 pub struct RecommendationView {
     pub id: Uuid,
     pub simulation_job_id: Uuid,

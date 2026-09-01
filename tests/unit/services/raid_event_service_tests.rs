@@ -34,7 +34,7 @@ fn supplied_attack_samples_have_expected_totals_and_transition_indices() {
 
 #[tokio::test]
 async fn attack_updates_ephemeral_live_boss_without_a_database() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     let raw: Value = serde_json::from_str(include_str!(
         "../../../exampleSocketdatajson/afterbosstrans.json"
     ))
@@ -509,7 +509,7 @@ fn start_attack_sample_parses_into_expected_player_and_cards() {
 
 #[tokio::test]
 async fn start_attack_registers_a_live_attacking_player_without_a_database() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     let raw: Value = serde_json::from_str(include_str!(
         "../../../exampleSocketdatajson/start_attack.json"
     ))
@@ -530,7 +530,7 @@ async fn start_attack_registers_a_live_attacking_player_without_a_database() {
 
 #[tokio::test]
 async fn repeated_start_attack_for_the_same_player_refreshes_started_at() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     let raw: Value = serde_json::from_str(include_str!(
         "../../../exampleSocketdatajson/start_attack.json"
     ))
@@ -956,7 +956,7 @@ fn live_boss_from_persisted_reconstructs_a_live_view_from_the_stored_boss() {
 
 #[tokio::test]
 async fn store_sub_start_cycle_state_rejects_invalid_morale_without_touching_the_database() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
 
     // If validation didn't run first, the very next thing this function does
     // is `state.db()?`, which would fail with DatabaseUnavailable instead --
@@ -970,7 +970,7 @@ async fn store_sub_start_cycle_state_rejects_invalid_morale_without_touching_the
 
 #[tokio::test]
 async fn store_cycle_state_rejects_invalid_boost_values_without_touching_the_database() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     let now = Utc::now();
 
     let negative_morale =
@@ -992,7 +992,7 @@ async fn store_cycle_state_rejects_invalid_boost_values_without_touching_the_dat
 
 #[tokio::test]
 async fn handle_event_ignores_unrecognized_events_without_parsing_the_payload() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     // Not shaped like any real event -- if the catch-all tried to parse it
     // against a known event type, this would fail instead of returning Ok.
     let bogus = serde_json::json!({"not": "a recognized shape"});
@@ -1005,7 +1005,7 @@ async fn handle_event_ignores_unrecognized_events_without_parsing_the_payload() 
 
 #[tokio::test]
 async fn handle_cycle_reset_rejects_invalid_morale_before_touching_the_database() {
-    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(None, 1, "test-key".to_string(), true, None));
     let mut raw: Value = serde_json::from_str(include_str!(
         "../../../exampleSocketdatajson/cycle_reset_example.json"
     ))

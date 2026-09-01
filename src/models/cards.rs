@@ -21,6 +21,7 @@ use strum_macros::{EnumIter, EnumString};
     EnumIter,
     EnumString,
     sqlx::Type,
+    utoipa::ToSchema,
 )]
 #[sqlx(type_name = "card_name", rename_all = "PascalCase")]
 pub enum CardName {
@@ -163,7 +164,9 @@ pub enum CardName {
     BattleDrums,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy, sqlx::Type)]
+#[derive(
+    Debug, Deserialize, Serialize, PartialEq, Eq, Hash, Clone, Copy, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "card_type", rename_all = "PascalCase")]
 pub enum CardType {
     Burst,

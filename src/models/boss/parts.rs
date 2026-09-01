@@ -14,6 +14,7 @@ use super::*;
     EnumIter,
     EnumString,
     sqlx::Type,
+    utoipa::ToSchema,
 )]
 #[sqlx(type_name = "boss_part_name", rename_all = "PascalCase")]
 pub enum BossPartName {
@@ -26,7 +27,9 @@ pub enum BossPartName {
     LeftLeg,
     RightLeg,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "part_state", rename_all = "PascalCase")]
 pub enum PartState {
     Cursed,
@@ -49,7 +52,18 @@ impl BossPartName {
         }
     }
 }
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    sqlx::Type,
+    utoipa::ToSchema,
+)]
 #[sqlx(type_name = "curse_type", rename_all = "PascalCase")]
 pub enum CurseType {
     #[default]
@@ -58,7 +72,9 @@ pub enum CurseType {
     BurstDamage,
     AfflictionDamage,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "boss_name", rename_all = "PascalCase")]
 pub enum BossName {
     Lojak,
@@ -71,7 +87,18 @@ pub enum BossName {
     Priker,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, sqlx::Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    sqlx::Type,
+    utoipa::ToSchema,
+)]
 #[sqlx(type_name = "global_raid_modifier", rename_all = "PascalCase")]
 pub enum GlobalRaidModifier {
     #[default]
@@ -86,13 +113,13 @@ pub enum GlobalRaidModifier {
     AfflictionDuration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DamageResult {
     pub source: DamageSource,
     pub damage: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct BossPart {
     pub part_name: BossPartName,
     pub part_state: PartState,

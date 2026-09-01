@@ -13,6 +13,12 @@ pub async fn require_key(
     request: Request,
     next: Next,
 ) -> Result<Response, AppError> {
+    if !state.internal_api_enabled {
+        return Err(AppError::ServiceUnavailable(
+            "The internal API is disabled on this server".to_string(),
+        ));
+    }
+
     let supplied = request
         .headers()
         .get("x-internal-api-key")

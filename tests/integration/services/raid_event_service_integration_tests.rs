@@ -176,7 +176,7 @@ async fn migrations_apply_and_the_database_starts_empty(pool: sqlx::PgPool) {
 
 #[sqlx::test]
 async fn handle_sub_start_creates_raid_cycle_and_boss_rows_for_a_new_raid(pool: sqlx::PgPool) {
-    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), true, None));
     let raid_id = 9001;
     let titan = simple_titan("Enemy1", "Lojak", HEAD_ARMOR);
     let raid = simple_raid(titan);
@@ -223,7 +223,7 @@ async fn handle_sub_start_creates_raid_cycle_and_boss_rows_for_a_new_raid(pool: 
 
 #[sqlx::test]
 async fn repeated_sub_start_for_the_same_raid_only_refreshes_raid_data(pool: sqlx::PgPool) {
-    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), true, None));
     let raid_id = 9002;
     let first_event = SubStartEvent {
         clan_code: "clanA".to_string(),
@@ -292,7 +292,7 @@ async fn repeated_sub_start_for_the_same_raid_only_refreshes_raid_data(pool: sql
 
 #[sqlx::test]
 async fn handle_attack_updates_hp_without_bumping_version_when_nothing_changed(pool: sqlx::PgPool) {
-    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), true, None));
     let raid_id = 9003;
     handle_sub_start(
         &state,
@@ -344,7 +344,7 @@ async fn handle_attack_updates_hp_without_bumping_version_when_nothing_changed(p
 async fn handle_attack_triggers_full_refresh_and_queues_auto_simulations_when_a_target_breaks(
     pool: sqlx::PgPool,
 ) {
-    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), true, None));
     let raid_id = 9004;
     let raid = simple_raid(simple_titan("Enemy1", "Lojak", 1));
     // Head starts with only a sliver of armor left. sub_start's own
@@ -431,7 +431,7 @@ async fn handle_attack_triggers_full_refresh_and_queues_auto_simulations_when_a_
 
 #[sqlx::test]
 async fn handle_sub_cycle_updates_targets_only_and_never_touches_current_hp(pool: sqlx::PgPool) {
-    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), None));
+    let state = Arc::new(AppState::new(Some(pool.clone()), 1, "test-key".to_string(), true, None));
     let raid_id = 9005;
     let raid = simple_raid(simple_titan("Enemy1", "Lojak", HEAD_ARMOR));
     handle_sub_start(

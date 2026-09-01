@@ -24,6 +24,13 @@ use crate::{
     state::AppState,
 };
 
+/// List all players
+#[utoipa::path(
+    get,
+    path = "/api/players",
+    tag = "players",
+    responses((status = 200, description = "All known players", body = [PlayerSummary])),
+)]
 pub async fn list(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<PlayerSummary>>, AppError> {
@@ -48,6 +55,17 @@ struct PlayerDetailRow {
     updated_at: DateTime<Utc>,
 }
 
+/// Get a player's detail
+#[utoipa::path(
+    get,
+    path = "/api/players/{player_id}",
+    tag = "players",
+    params(("player_id" = String, Path, description = "Player id (TT2 player code)")),
+    responses(
+        (status = 200, description = "Player detail with current stats", body = PlayerDetail),
+        (status = 404, description = "Player not found"),
+    ),
+)]
 pub async fn get(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -117,6 +135,17 @@ async fn store_stats(
     })
 }
 
+/// Get a player's current stats revision
+#[utoipa::path(
+    get,
+    path = "/api/players/{player_id}/stats/current",
+    tag = "players",
+    params(("player_id" = String, Path, description = "Player id")),
+    responses(
+        (status = 200, description = "Current stored raid stats", body = PlayerStatsVersion),
+        (status = 404, description = "Player not found, or has no current stats"),
+    ),
+)]
 pub async fn current_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -158,6 +187,19 @@ pub async fn update_auto_sims(
     Ok(Json(player))
 }
 
+/// Set a player's TT2 token (internal)
+#[utoipa::path(
+    put,
+    path = "/internal/players/{player_id}/token",
+    tag = "internal",
+    params(("player_id" = String, Path, description = "Player id")),
+    request_body = UpdatePlayerTokenRequest,
+    responses(
+        (status = 200, description = "Token stored (encrypted at rest)", body = PlayerSummary),
+        (status = 404, description = "Player not found"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn update_token(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -182,6 +224,18 @@ pub async fn update_token(
     Ok(Json(player))
 }
 
+/// Clear a player's TT2 token (internal)
+#[utoipa::path(
+    delete,
+    path = "/internal/players/{player_id}/token",
+    tag = "internal",
+    params(("player_id" = String, Path, description = "Player id")),
+    responses(
+        (status = 200, description = "Token cleared", body = PlayerSummary),
+        (status = 404, description = "Player not found"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn clear_token(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -194,6 +248,14 @@ pub async fn clear_token(
     Ok(Json(player))
 }
 
+/// TT2 player socket status (internal)
+#[utoipa::path(
+    get,
+    path = "/internal/tt2/player-status",
+    tag = "internal",
+    responses((status = 200, description = "Whether the TT2 /player socket is configured/connected", body = Tt2PlayerStatus)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn tt2_status(State(state): State<Arc<AppState>>) -> Json<Tt2PlayerStatus> {
     Json(Tt2PlayerStatus {
         configured: state.gamehive_api.is_some(),
@@ -208,6 +270,14 @@ pub async fn tt2_status(State(state): State<Arc<AppState>>) -> Json<Tt2PlayerSta
     })
 }
 
+/// TT2 clan sync status (internal)
+#[utoipa::path(
+    get,
+    path = "/internal/tt2/clan-status",
+    tag = "internal",
+    responses((status = 200, description = "Last clan-wide player data fetch, and when the next one is allowed", body = Tt2ClanStatus)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn tt2_clan_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Tt2ClanStatus>, AppError> {
@@ -225,6 +295,21 @@ pub async fn tt2_clan_status(
     }))
 }
 
+/// Fetch fresh clan player data from TT2 (internal)
+///
+/// Rate-limited to once every 12 hours; requires the TT2 `/raid` socket to
+/// be connected.
+#[utoipa::path(
+    post,
+    path = "/internal/tt2/fetch-clan-stats",
+    tag = "internal",
+    responses(
+        (status = 201, description = "Clan player data fetched and stored", body = Tt2ClanFetchResult),
+        (status = 429, description = "Called again before the 12-hour cooldown elapsed"),
+        (status = 503, description = "TT2 integration not configured, or /raid socket not connected"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn fetch_tt2_clan_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<(StatusCode, Json<Tt2ClanFetchResult>), AppError> {
@@ -341,6 +426,22 @@ pub async fn fetch_tt2_clan_stats(
     ))
 }
 
+/// Fetch a player's fresh stats from TT2 (internal)
+///
+/// Rate-limited to once every 2 minutes per player; requires a configured
+/// player token and a connected TT2 `/player` socket.
+#[utoipa::path(
+    post,
+    path = "/internal/players/{player_id}/fetch-stats",
+    tag = "internal",
+    params(("player_id" = String, Path, description = "Player id")),
+    responses(
+        (status = 201, description = "Fresh stats fetched and stored", body = PlayerStatsVersion),
+        (status = 404, description = "Player not found"),
+        (status = 429, description = "Called again before the 2-minute cooldown elapsed"),
+    ),
+    security(("internal_api_key" = [])),
+)]
 pub async fn fetch_tt2_stats(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,

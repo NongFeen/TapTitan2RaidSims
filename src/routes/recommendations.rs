@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::Value;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
@@ -17,7 +18,7 @@ use crate::{
     state::AppState,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct RecommendationQuery {
     #[serde(default = "default_deck_count")]
     deck_count: i32,
@@ -41,7 +42,7 @@ fn validate_deck_count(deck_count: i32) -> Result<usize, AppError> {
     Ok(deck_count as usize)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GenerateRecommendationRequest {
     #[serde(default = "default_deck_count")]
     deck_count: i32,
@@ -49,12 +50,25 @@ pub struct GenerateRecommendationRequest {
     include_body_phase: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, ToSchema)]
 pub struct GenerateRecommendationResponse {
     deck_count: i32,
     created: bool,
 }
 
+/// Generate deck recommendations for a player
+///
+/// Queues a simulation job (or reuses an in-flight/completed one for the
+/// current boss version) whose results back
+/// `GET .../recommendations/current`.
+#[utoipa::path(
+    post,
+    path = "/api/players/{player_id}/recommendations",
+    tag = "recommendations",
+    params(("player_id" = String, Path, description = "Player id")),
+    request_body = GenerateRecommendationRequest,
+    responses((status = 200, description = "Whether a new simulation job was created", body = GenerateRecommendationResponse)),
+)]
 pub async fn generate_for_player(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,
@@ -74,6 +88,17 @@ pub async fn generate_for_player(
     }))
 }
 
+/// Get the latest completed recommendation for a player
+#[utoipa::path(
+    get,
+    path = "/api/players/{player_id}/recommendations/current",
+    tag = "recommendations",
+    params(("player_id" = String, Path, description = "Player id"), RecommendationQuery),
+    responses(
+        (status = 200, description = "Latest completed recommendation matching the query", body = RecommendationView),
+        (status = 404, description = "Player not found, or no completed recommendation matches"),
+    ),
+)]
 pub async fn current_for_player(
     State(state): State<Arc<AppState>>,
     Path(player_id): Path<String>,

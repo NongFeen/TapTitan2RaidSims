@@ -37,6 +37,19 @@ fn area_bonus_view(loaded: &boss_repo::LoadedBoss) -> Option<AreaBonusView> {
     })
 }
 
+/// Replace the sims boss (internal)
+///
+/// Overwrites `current_boss` wholesale, discards outdated simulation jobs
+/// in the background, and optionally re-queues simulations for every
+/// auto-sim player.
+#[utoipa::path(
+    put,
+    path = "/internal/current-boss",
+    tag = "internal",
+    request_body = CurrentBossUpdateRequest,
+    responses((status = 202, description = "Boss data replaced", body = RaidEventAccepted)),
+    security(("internal_api_key" = [])),
+)]
 pub async fn update_current_boss(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CurrentBossUpdateRequest>,
@@ -138,6 +151,16 @@ fn validate_attackable_parts(attackable_parts: &[BossPartName]) -> Result<(), Ap
     Ok(())
 }
 
+/// Get the sims boss
+#[utoipa::path(
+    get,
+    path = "/api/current-boss",
+    tag = "raids",
+    responses(
+        (status = 200, description = "The boss data simulations run against", body = CurrentBossView),
+        (status = 404, description = "No sims boss data"),
+    ),
+)]
 pub async fn current(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentBossView>, AppError> {
@@ -152,6 +175,16 @@ pub async fn current(
     }))
 }
 
+/// Get the live boss (from the most recent attack event)
+#[utoipa::path(
+    get,
+    path = "/api/live-current-boss",
+    tag = "raids",
+    responses(
+        (status = 200, description = "The boss as of the most recent attack event", body = LiveAttackBossView),
+        (status = 404, description = "No live current boss has been received from an attack event"),
+    ),
+)]
 pub async fn live_from_attack(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiveAttackBossView>, AppError> {
@@ -215,6 +248,17 @@ async fn build_live_boss_view(state: &Arc<AppState>) -> Result<Option<LiveAttack
 /// time a raid event that could change it (attack/sub_start/sub_cycle/
 /// cycle_reset) has been processed -- see
 /// `raid_event_service::handle_event`'s ping to `live_boss_tx`.
+/// Stream the live boss over SSE
+///
+/// Sends a `boss` event immediately with the current view (`null` if none
+/// yet), then a fresh `boss` event every time an attack/sub_start/sub_cycle
+/// event could have changed it. Event payload matches `LiveAttackBossView`.
+#[utoipa::path(
+    get,
+    path = "/api/live-current-boss/stream",
+    tag = "raids",
+    responses((status = 200, description = "text/event-stream of `boss` events", content_type = "text/event-stream")),
+)]
 pub async fn live_current_boss_stream(
     State(state): State<Arc<AppState>>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
@@ -249,6 +293,13 @@ fn boss_sse_event(view: Option<LiveAttackBossView>) -> Event {
     }
 }
 
+/// List currently-attacking players
+#[utoipa::path(
+    get,
+    path = "/api/live-attacking-players",
+    tag = "raids",
+    responses((status = 200, description = "Players whose attack window hasn't expired yet", body = [LiveAttackingPlayer])),
+)]
 pub async fn live_attacking_players(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<LiveAttackingPlayer>> {
@@ -265,6 +316,17 @@ pub async fn live_attacking_players(
 /// current list, then a `player` event for each subsequent attack as it
 /// starts. Expiry is handled entirely client-side (each player carries its
 /// own `duration_seconds`), so no "player removed" event is needed.
+/// Stream currently-attacking players over SSE
+///
+/// Sends a `snapshot` event immediately with the current list, then a
+/// `player` event for each subsequent attack as it starts. Expiry is
+/// handled client-side; no removal event is sent.
+#[utoipa::path(
+    get,
+    path = "/api/live-attacking-players/stream",
+    tag = "raids",
+    responses((status = 200, description = "text/event-stream of `snapshot`/`player` events", content_type = "text/event-stream")),
+)]
 pub async fn live_attacking_players_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {

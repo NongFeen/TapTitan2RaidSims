@@ -129,7 +129,7 @@ pub struct SimRunResult {
     pub decks: Vec<SimDeckResult>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SimulationPhase {
     #[default]
@@ -137,7 +137,7 @@ pub enum SimulationPhase {
     TargetedBody,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SimDeckResult {
     pub deck: Vec<CardName>,
     pub deck_names: Vec<String>,
@@ -153,7 +153,7 @@ pub struct SimDeckResult {
     pub dependency_part_mask: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SimPatternResult {
     pub pattern: String,
     pub average_damage: u64,
@@ -176,7 +176,7 @@ pub struct SimPatternResult {
     pub card_damage: Vec<SimCardDamageResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SimCardDamageResult {
     pub card: CardName,
     pub card_name: String,

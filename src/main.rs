@@ -5,6 +5,7 @@ use tower_http::trace::TraceLayer;
 
 mod config;
 mod database;
+mod docs;
 mod dtos;
 mod error;
 mod models;
@@ -66,10 +67,14 @@ async fn run() {
             None
         }
     };
+    if !config.internal_api_enabled {
+        tracing::warn!("INTERNAL_API_ENABLED=false; all /internal/* routes will return 503");
+    }
     let state = Arc::new(AppState::new(
         pool,
         config.simulation_concurrency,
         config.internal_api_key,
+        config.internal_api_enabled,
         gamehive_api.clone(),
     ));
 
@@ -102,9 +107,12 @@ async fn run() {
         .on_request(FilteredHttpTrace)
         .on_response(FilteredHttpTrace)
         .on_failure(FilteredHttpTrace);
-    let app = router::create_router(Arc::clone(&state))
-        .layer(request_trace)
-        .layer(cors);
+    let mut app = router::create_router(Arc::clone(&state));
+    if config.swagger_ui_enabled {
+        tracing::info!("Swagger UI mounted at /docs");
+        app = app.merge(docs::swagger_router());
+    }
+    let app = app.layer(request_trace).layer(cors);
 
     state.recover_pending_jobs().await;
 
