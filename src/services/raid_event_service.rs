@@ -1565,3 +1565,13 @@ struct TitanTargetPart {
 #[cfg(test)]
 #[path = "../../tests/unit/services/raid_event_service_tests.rs"]
 mod tests;
+
+// DB-backed tests, requiring a real Postgres via `#[sqlx::test]`. Run with
+// `scripts/test-integration.ps1`, NOT a bare `cargo test` -- see the module
+// doc at the top of
+// `tests/integration/services/raid_event_service_integration_tests.rs` for
+// why (sqlx::test silently falls back to the dev database's connection
+// string in `.env` otherwise).
+#[cfg(test)]
+#[path = "../../tests/integration/services/raid_event_service_integration_tests.rs"]
+mod integration_tests;
