@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use axum::{
     Json,
@@ -313,117 +310,8 @@ pub async fn tt2_clan_status(
 pub async fn fetch_tt2_clan_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<(StatusCode, Json<Tt2ClanFetchResult>), AppError> {
-    let _fetch_guard = state.clan_fetch_lock.lock().await;
-    let tt2 = state.gamehive_api.as_ref().ok_or_else(|| {
-        AppError::ServiceUnavailable("TT2 integration is not configured".to_string())
-    })?;
-    if !tt2.is_raid_connected() {
-        return Err(AppError::ServiceUnavailable(
-            "TT2 /raid socket is not connected".to_string(),
-        ));
-    }
-
-    let last_fetched_at: Option<DateTime<Utc>> =
-        sqlx::query_scalar("SELECT last_fetched_at FROM tt2_clan_sync_state WHERE singleton=TRUE")
-            .fetch_one(state.db()?)
-            .await?;
-    if let Some(last_fetched_at) = last_fetched_at {
-        let next_fetch_at = last_fetched_at + Duration::hours(12);
-        if Utc::now() < next_fetch_at {
-            return Err(AppError::TooManyRequests(format!(
-                "Clan player data can be fetched again at {}",
-                next_fetch_at.to_rfc3339()
-            )));
-        }
-    }
-
-    let clan = tt2.fetch_clan().await?;
-    if clan.clan_code.trim().is_empty() || clan.clan_name.trim().is_empty() {
-        return Err(AppError::BadRequest(
-            "TT2 returned clan data without a clan code or name".to_string(),
-        ));
-    }
-
-    let existing_codes: HashSet<String> = sqlx::query_scalar("SELECT player_id FROM players")
-        .fetch_all(state.db()?)
-        .await?
-        .into_iter()
-        .collect();
-    let mut existing_stats = HashMap::new();
-    for player_code in &existing_codes {
-        if let Some(loaded) = player_stats_repo::load(state.db()?, player_code).await? {
-            existing_stats.insert(player_code.clone(), loaded.data);
-        }
-    }
-
-    let mut seen_codes = HashSet::new();
-    let mut prepared_players = Vec::with_capacity(clan.players_data.len());
-    for clan_player in clan.players_data {
-        let player_code = clan_player.player_code.trim().to_string();
-        let display_name = clan_player.name.trim().to_string();
-        if player_code.is_empty() || display_name.is_empty() {
-            return Err(AppError::BadRequest(
-                "TT2 returned a clan player without a player code or name".to_string(),
-            ));
-        }
-        if !seen_codes.insert(player_code.clone()) {
-            return Err(AppError::BadRequest(format!(
-                "TT2 returned duplicate clan player {player_code}"
-            )));
-        }
-        let previous = existing_stats.get(&player_code);
-        let title = previous.map_or(0.0, |stats| stats.title);
-        let mut stats = clan_player.into_raid_data(title)?;
-        if let Some(previous) = previous {
-            preserve_card_preferences(&mut stats, previous);
-        }
-        validate_stats(&stats)?;
-        prepared_players.push((player_code, display_name, stats));
-    }
-
-    let player_count = prepared_players.len();
-    let created_players = prepared_players
-        .iter()
-        .filter(|(player_code, _, _)| !existing_codes.contains(player_code))
-        .count();
-    let updated_players = player_count - created_players;
-    let fetched_at = Utc::now();
-    let clan_code = clan.clan_code.trim().to_string();
-    let clan_name = clan.clan_name.trim().to_string();
-    let mut tx = state.db()?.begin().await?;
-    for (player_code, display_name, stats) in prepared_players {
-        sqlx::query(
-            "INSERT INTO players (player_id, display_name, auto_sims) VALUES ($1,$2,FALSE) ON CONFLICT (player_id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=NOW()",
-        )
-        .bind(&player_code)
-        .bind(display_name)
-        .execute(&mut *tx)
-        .await?;
-        player_stats_repo::store(&mut tx, &player_code, &stats).await?;
-    }
-    sqlx::query(
-        "UPDATE tt2_clan_sync_state SET clan_code=$1, clan_name=$2, last_fetched_at=$3, last_player_count=$4, updated_at=NOW() WHERE singleton=TRUE",
-    )
-    .bind(&clan_code)
-    .bind(&clan_name)
-    .bind(fetched_at)
-    .bind(player_count as i32)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(Tt2ClanFetchResult {
-            clan_code,
-            clan_name,
-            created_players,
-            updated_players,
-            player_count,
-            last_fetched_at: fetched_at,
-            next_fetch_at: fetched_at + Duration::hours(12),
-        }),
-    ))
+    let result = crate::services::clan_sync_service::fetch_and_store_clan_stats(&state).await?;
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 /// Fetch a player's fresh stats from TT2 (internal)
@@ -517,7 +405,7 @@ pub async fn fetch_tt2_stats(
     Ok((StatusCode::CREATED, Json(stored)))
 }
 
-fn preserve_card_preferences(refreshed: &mut PlayerRaidData, existing: &PlayerRaidData) {
+pub(crate) fn preserve_card_preferences(refreshed: &mut PlayerRaidData, existing: &PlayerRaidData) {
     let enabled_by_card = existing
         .card_list
         .iter()
@@ -551,7 +439,7 @@ async fn enqueue_for_current_boss(state: &Arc<AppState>, player_id: &str) -> Res
     Ok(())
 }
 
-fn validate_stats(stats: &PlayerRaidData) -> Result<(), AppError> {
+pub(crate) fn validate_stats(stats: &PlayerRaidData) -> Result<(), AppError> {
     if stats.player_raid_level == 0 {
         return Err(AppError::BadRequest(
             "player_raid_level must be greater than zero".to_string(),

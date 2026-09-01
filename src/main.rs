@@ -83,6 +83,7 @@ async fn run() {
         tokio::spawn(async move {
             gamehive_api.connect(socket_state).await;
         });
+        services::clan_sync_service::spawn_scheduled_clan_fetch(Arc::clone(&state));
     } else {
         tracing::warn!("TT2 integration is not configured; player fetching is unavailable");
     }
