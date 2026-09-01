@@ -6,7 +6,7 @@
 name = "CelestialStatic"
 payload = "player_boss_sample.json"
 deck = ["CelestialStatic", "TriangleSupport", "TriangleSupport"]
-attackable_part = ["Head","LeftShoulder"]
+attackable_part = ["Head","RightShoulder"]
 tap_count = 9
 expected_tap_damage = 39130
 expected_card_damage = [185210, 0, 0]

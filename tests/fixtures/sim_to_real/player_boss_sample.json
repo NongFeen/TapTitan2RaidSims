@@ -1059,11 +1059,11 @@
     },
     "left_shoulder": {
       "part_name": "LeftShoulder",
-      "part_state": "Armor",
-      "max_armor": 100000000,
-      "max_health": 100000000,
-      "current_armor": 100000000,
-      "current_health": 100000000
+      "part_state": "Skeleton",
+      "max_armor": 0,
+      "max_health": 0,
+      "current_armor": 0,
+      "current_health": 0
     },
     "right_shoulder": {
       "part_name": "RightShoulder",
