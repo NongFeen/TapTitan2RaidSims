@@ -14,7 +14,7 @@ expected_card_damage = [83130, 0, 0]
 # damage have vary base on time apply and game tick
 
 [[case]]
-name = "PowerBubble 1 tap Head"
+name = "PowerBubble burst tap Head"
 payload = "player_boss_sample.json"
 deck = ["PowerBubble", "TriangleSupport", "TriangleSupport"]
 tap_count = 5

@@ -14,7 +14,7 @@ expected_card_damage = [60000, 0, 0]
 # damage have vary base on time apply and game tick
 
 [[case]]
-name = "RuneAttack 1 tap Head"
+name = "RuneAttack 2 tap Head"
 payload = "player_boss_sample.json"
 deck = ["RuneAttack", "TriangleSupport", "TriangleSupport"]
 tap_count = 2

@@ -15,7 +15,7 @@ expected_card_damage = [134180, 0, 0]
 
 
 [[case]]
-name = "Amplify 1 tap Head"
+name = "Amplify Level check 1 tap Head"
 payload = "player_boss_sample.json"
 deck = ["MagicPotion", "MoonBeam", "Haymaker"]
 tap_count = 1
