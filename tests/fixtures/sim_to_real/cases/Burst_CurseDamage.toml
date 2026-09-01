@@ -32,7 +32,7 @@ payload = "player_boss_sample_burst_curse.json"
 deck = ["MoonBeam", "Fragmentize", "RazorWind"]
 attackable_part = ["Head"]
 expected_tap_damage = 4610
-expected_card_damage = [117480, 146670, 10482]
+expected_card_damage = [117480, 146670, 104820]
 
 # --- FlakShot / BarbedMorningstar / WhipOfLightning (all Burst) ---
 # baseline (Burst_FlakShot_BarbedMorningstar_WhipOfLightning.toml, flakshot_head_armor):

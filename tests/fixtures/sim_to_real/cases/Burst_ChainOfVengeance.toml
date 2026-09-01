@@ -1,0 +1,41 @@
+#:schema ./cases.schema.json
+
+[[case]]
+name = "chain_of_vengeance_1_tap_head"
+payload = "player_boss_sample.json"
+deck = ["ChainLightning", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+attack_pattern = "SingleHead"
+tap_count = 1
+expected_tap_damage = 4610
+expected_card_damage = [148780, 0, 0]
+
+[[case]]
+name = "chain_of_vengeance_2_tap_head_torso"
+payload = "player_boss_sample.json"
+deck = ["ChainLightning", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head", "Torso"]
+attack_pattern = "CycleAllActive"
+tap_count = 2
+expected_tap_damage = 9119
+expected_card_damage = [299840, 0, 0]
+
+[[case]]
+name = "chain_of_vengeance_2_tap_torso_head"
+payload = "player_boss_sample.json"
+deck = ["ChainLightning", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Torso", "Head"]
+attack_pattern = "CycleAllActive"
+tap_count = 2
+expected_tap_damage = 9119
+expected_card_damage = [296260, 0, 0]
+
+[[case]]
+name = "chain_of_vengeance_3_tap_head_torso_rightshoulder"
+payload = "player_boss_sample.json"
+deck = ["ChainLightning", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head", "Torso", "RightShoulder"]
+attack_pattern = "CycleAllActive"
+tap_count = 3
+expected_tap_damage = 13434
+expected_card_damage = [452010, 0, 0]
