@@ -393,6 +393,7 @@ impl SimService {
             return None;
         }
 
+        let tick_count = Self::deck_tick_count(&select_deck, &sim_stats.boss_stat);
         Some(Self::run_deck_sim(
             &sim_stats,
             select_deck,
@@ -400,7 +401,7 @@ impl SimService {
             rounds_per_pattern,
             None,
             1,
-            Some(TICKS_PER_ROUND),
+            Some(tick_count),
             Some(total_taps),
             true,
             force_guaranteed_procs,

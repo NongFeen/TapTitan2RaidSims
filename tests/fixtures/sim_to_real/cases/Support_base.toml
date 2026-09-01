@@ -90,3 +90,30 @@ attackable_part = ["Torso"]
 tap_count = 1
 expected_tap_damage = 20540
 expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 1
+expected_tap_damage = 44260
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 400
+expected_tap_damage = 17_706_000
+expected_card_damage = [0, 0, 0]
+
+[[case]]
+name = "BattleDrums Head capped at 400 ticks"
+payload = "player_boss_sample.json"
+deck = ["BattleDrums", "TriangleSupport", "TriangleSupport"]
+attackable_part = ["Head"]
+tap_count = 600
+expected_tap_damage = 17_706_000
+expected_card_damage = [0, 0, 0]
