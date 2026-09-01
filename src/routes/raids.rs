@@ -19,14 +19,23 @@ use crate::{
     error::AppError,
     models::{
         app::{
-            CreateSimulationJobRequest, CurrentBossUpdateRequest, CurrentBossView,
+            AreaBonusView, CreateSimulationJobRequest, CurrentBossUpdateRequest, CurrentBossView,
             LiveAttackBossView, LiveAttackingPlayer, RaidEventAccepted,
         },
-        boss::{Boss, BossPartName},
+        boss::{Boss, BossPartName, GlobalRaidModifier},
     },
     services::{boss_repo, job_service, raid_event_service},
     state::AppState,
 };
+
+/// The area bonus to show alongside the live boss widget -- `None` when the
+/// titan carries no active area buff (`GlobalRaidModifier::None`).
+fn area_bonus_view(loaded: &boss_repo::LoadedBoss) -> Option<AreaBonusView> {
+    (loaded.boss.global_raid_modifier != GlobalRaidModifier::None).then(|| AreaBonusView {
+        modifier: loaded.boss.global_raid_modifier,
+        amount: loaded.boss.global_raid_modifier_amount,
+    })
+}
 
 pub async fn update_current_boss(
     State(state): State<Arc<AppState>>,
@@ -164,9 +173,11 @@ async fn build_live_boss_view(state: &Arc<AppState>) -> Result<Option<LiveAttack
             None => return Ok(None),
         },
     };
-    // The DB-reconstructed fallback already computes display_parts directly
-    // from normalized data; only the real in-memory path needs this extra
-    // raw-JSON enrichment step (it doesn't carry titan-target info itself).
+    // The DB-reconstructed fallback already computes display_parts (and
+    // area_bonus/curse) directly from the sims boss it just loaded; only the
+    // real in-memory path needs this extra enrichment step (the raw `attack`
+    // payload it's cached from carries neither titan-target info nor
+    // curse/area-modifier data).
     if from_cache {
         if let Some(db) = state.optional_db() {
             let display_metadata: Option<(serde_json::Value, serde_json::Value)> = sqlx::query_as(
@@ -186,6 +197,13 @@ async fn build_live_boss_view(state: &Arc<AppState>) -> Result<Option<LiveAttack
                 })
                 .transpose()?
                 .flatten();
+
+            if let Some(loaded) = boss_repo::load(db).await? {
+                boss.area_bonus = area_bonus_view(&loaded);
+                boss.curse_type = loaded.boss.curse_type;
+                boss.cursed_part_count = loaded.boss.currently_cursed_part_count();
+                boss.curse_percent = loaded.boss.curse_percent();
+            }
         }
     }
     Ok(Some(boss))
@@ -310,9 +328,18 @@ async fn build_live_boss_fallback(
     .bind(raid_id)
     .fetch_optional(db)
     .await?;
-    Ok(raid_event_service::live_boss_from_persisted(
-        &loaded,
-        clan_code.unwrap_or_default(),
-        cycle.unwrap_or_default(),
-    ))
+    let area_bonus = area_bonus_view(&loaded);
+    let curse_type = loaded.boss.curse_type;
+    let cursed_part_count = loaded.boss.currently_cursed_part_count();
+    let curse_percent = loaded.boss.curse_percent();
+    Ok(
+        raid_event_service::live_boss_from_persisted(&loaded, clan_code.unwrap_or_default(), cycle.unwrap_or_default())
+            .map(|mut view| {
+                view.area_bonus = area_bonus;
+                view.curse_type = curse_type;
+                view.cursed_part_count = cursed_part_count;
+                view.curse_percent = curse_percent;
+                view
+            }),
+    )
 }

@@ -140,6 +140,27 @@ pub struct LiveAttackBossView {
     pub boss_data: Value,
     pub received_at: DateTime<Utc>,
     pub display_parts: Option<Vec<LiveBossDisplayPart>>,
+    /// `None` when the titan carries no active area buff (`GlobalRaidModifier::None`).
+    pub area_bonus: Option<AreaBonusView>,
+    /// What kind of damage the curse discounts -- `CurseType::None` when
+    /// nothing is cursed.
+    pub curse_type: crate::models::boss::CurseType,
+    /// How many of the boss's 8 parts are currently `Cursed`, right now --
+    /// not `Boss::initial_cursed_part_count` (a sim-internal per-run
+    /// snapshot that never gets persisted).
+    pub cursed_part_count: u8,
+    /// Total curse damage reduction, as a negative percentage (e.g. `-24.0`
+    /// for 4 cursed parts at 6% each) -- matches how `Boss::curse_multiplier`
+    /// actually combines them: `cursed_part_count * curse_damage_per_curse`.
+    /// `0.0` when nothing is cursed.
+    pub curse_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AreaBonusView {
+    pub modifier: crate::models::boss::GlobalRaidModifier,
+    /// Fractional amount TT2 reported (0.3 = +30%), when known.
+    pub amount: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

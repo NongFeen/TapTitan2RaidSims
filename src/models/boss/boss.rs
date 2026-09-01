@@ -421,6 +421,26 @@ impl Boss {
         (raw_damage * total_multiplier as f64).max(0.0)
     }
 
+    /// How many of the 8 parts are `Cursed` right now -- unlike
+    /// `initial_cursed_part_count` (a sim-internal per-run snapshot that's
+    /// never persisted), this always reflects the boss's current state, for
+    /// display purposes (see `curse_percent`).
+    pub fn currently_cursed_part_count(&self) -> u8 {
+        self.parts()
+            .iter()
+            .filter(|part| part.part_state == PartState::Cursed)
+            .count() as u8
+    }
+
+    /// Total curse damage reduction, as a negative percentage (e.g. `-24.0`
+    /// for 4 currently-cursed parts at 6% each) -- for display only; the
+    /// actual sim math in `curse_damage_multiplier` uses
+    /// `initial_cursed_part_count`, frozen at the start of a simulation run,
+    /// not this live count.
+    pub fn curse_percent(&self) -> f64 {
+        -(f64::from(self.currently_cursed_part_count()) * self.curse_damage_per_curse.abs() * 100.0)
+    }
+
     fn curse_damage_multiplier(&self, state: PartState, card_type: Option<CardType>) -> f32 {
         let applies = match self.curse_type {
             CurseType::None => false,
