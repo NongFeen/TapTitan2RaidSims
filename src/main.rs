@@ -117,7 +117,7 @@ async fn run() {
 
     state.recover_pending_jobs().await;
 
-    let addr = format!("localhost:{}", config.port);
+    let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("Server running on http://{addr}");
     axum::serve(listener, app)
