@@ -1,5 +1,6 @@
 /target
 .env
+.env.prod
 target_check_tmpX4Eade/CACHEDIR.TAG
 clan_player_data_api.json
 schema_diagram.sql
