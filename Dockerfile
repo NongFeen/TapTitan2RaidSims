@@ -23,25 +23,25 @@ COPY --from=planner /app/recipe.json recipe.json
 # application code doesn't force every crate to recompile.
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-RUN cargo build --release --bin backend
+# Cargo.toml sets profile.release.debug = true (kept for local profiling),
+# so strip the debug symbols here instead -- dead weight in a deploy image.
+RUN cargo build --release --bin backend \
+    && strip target/release/backend
 
 ####################
 # 2. Runtime image #
 ####################
-FROM debian:bookworm-slim AS runtime
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --shell /usr/sbin/nologin appuser
+# distroless: just glibc + libssl + CA certs, no shell/package manager, so
+# no perl/gcc/curl/tar/etc dragged along -- scans at 0 CVEs vs 50+ baked
+# into debian:bookworm-slim before installing anything. Trade-off: no shell
+# means no curl-based HEALTHCHECK; nothing depends on this container's own
+# health status unless you wire that up at the compose/orchestrator level.
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
-USER appuser
 ENV PORT=3000
 EXPOSE 3000
-
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
-    CMD curl -f "http://localhost:${PORT}/api/health" || exit 1
 
 ENTRYPOINT ["/usr/local/bin/backend"]

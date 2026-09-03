@@ -82,3 +82,54 @@ cargo build --release
 ```
 
 `SIMULATION_CONCURRENCY=1` is intentional by default: each simulation is CPU-heavy. Increase it only after measuring the target machine; extra workers can make every simulation slower through CPU contention.
+
+## Deploy (production image)
+
+`Dockerfile.combined` builds one image containing both the backend and the
+built frontend (see `STATIC_DIR` in `src/router.rs`). Build it from the
+parent directory, since it needs the sibling `frontend/` repo in context:
+
+```powershell
+docker build -f backend/Dockerfile.combined -t feen-app:latest ..
+```
+
+1. Create a shared network once:
+
+   ```powershell
+   docker network create feen-net
+   ```
+
+2. Start Postgres and wait until it's ready:
+
+   ```powershell
+   docker run -d --name feen-postgres --network feen-net `
+     -e POSTGRES_DB=feen -e POSTGRES_USER=feen -e POSTGRES_PASSWORD=<password> `
+     -v feen-postgres-data:/var/lib/postgresql/data `
+     postgres:17-alpine
+
+   docker exec feen-postgres pg_isready -U feen -d feen
+   ```
+
+3. Run the app image, pointing `DATABASE_URL` at the Postgres container by name:
+
+   ```powershell
+   docker run -d --name feen-app --network feen-net -p 3000:3000 `
+     --env-file backend/.env.prod `
+     -e DATABASE_URL="postgres://feen:<password>@feen-postgres:5432/feen" `
+     -e TT2_SOCKET_URL="wss://tt2-public.gamehivegames.com" `
+     -e TT2_SOCKET_HANDSHAKE_PATH="/api/socket.io" `
+     -e TT2_REST_BASE_URL="https://tt2-public.gamehivegames.com" `
+     feen-app:latest
+   ```
+
+4. Verify:
+
+   ```powershell
+   curl http://localhost:3000/api/health
+   ```
+
+`backend/.env.prod` (copy from `.env.prod.example`) holds `CORS_ALLOWED_ORIGINS`,
+`INTERNAL_API_KEY`, and the `TT2_APPLICATION_TOKEN` / `TT2_PLAYER_TOKEN_ENCRYPTION_KEY`
+/ `TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN` secrets. `DATABASE_URL` and the three
+`TT2_SOCKET_*` / `TT2_REST_BASE_URL` values are passed explicitly above since
+they depend on the Postgres container's name and aren't in that file.

@@ -2,8 +2,19 @@ use crate::routes;
 use crate::state::AppState;
 use axum::{Router, middleware, routing::get, routing::post, routing::put};
 use std::sync::Arc;
+use tower_http::services::{ServeDir, ServeFile};
 
 pub fn create_router(state: Arc<AppState>) -> Router {
+    // Serves the frontend's built assets when bundled alongside the backend
+    // binary (see Dockerfile.combined). Falls back to index.html for any
+    // path that isn't a static file, so client-side routing (react-router)
+    // works on a hard refresh / direct link.
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
+    let spa_fallback = ServeFile::new(format!("{static_dir}/index.html"));
+    // `.fallback` (not `.not_found_service`) so unmatched client routes come
+    // back as 200, matching how the standalone nginx setup served the SPA.
+    let serve_static = ServeDir::new(&static_dir).fallback(spa_fallback);
+
     let internal = Router::new()
         .route("/simulation-jobs", post(routes::jobs::create))
         .route("/simulation-jobs/batch", post(routes::jobs::create_batch))
@@ -107,5 +118,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         //     "/api/taptitan/sim_deck",
         //     post(routes::taptitan::send_sim_deck),
         // )
+        .fallback_service(serve_static)
         .with_state(state)
 }
