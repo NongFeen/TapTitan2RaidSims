@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
 #
-# API/routing service: serves HTTP only (players, raids, jobs, internal
-# admin routes, card images). Enqueues simulation jobs but never runs them
-# -- see Dockerfile.worker for the process that actually executes sims, kept
-# on a separate deploy so a running simulation's CPU usage can never freeze
-# this service's request handling.
+# Sim worker service: runs simulation jobs pulled from the `simulation_jobs`
+# queue in Postgres (shared with the API service, see Dockerfile). No HTTP
+# server, no TT2 socket -- job payloads already carry everything a
+# simulation needs by the time they're enqueued. Deployed separately from
+# the API service specifically so a running simulation's CPU usage can never
+# starve request handling (page loads, card images) on the API/routing side.
 
 ########################
 # 1. Dependency caching #
@@ -41,14 +42,12 @@ RUN cargo build --release --bin backend \
 # no perl/gcc/curl/tar/etc dragged along -- scans at 0 CVEs vs 50+ baked
 # into debian:bookworm-slim before installing anything. Trade-off: no shell
 # means no curl-based HEALTHCHECK; nothing depends on this container's own
-# health status unless you wire that up at the compose/orchestrator level.
+# health status unless you wire that up at the orchestrator level.
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
-ENV PORT=3000
-ENV ROLE=api
-EXPOSE 3000
+ENV ROLE=worker
 
 ENTRYPOINT ["/usr/local/bin/backend"]

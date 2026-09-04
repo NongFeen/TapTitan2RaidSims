@@ -1,7 +1,32 @@
 use std::env;
 
+/// Which half of the split deployment this process runs as. Defaults to
+/// `All` so a bare `cargo run` (no `ROLE` set) keeps behaving like the old
+/// single-process deploy; production sets `ROLE=api` and `ROLE=worker` on
+/// two separate services sharing one database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceRole {
+    /// Serves HTTP only; enqueues simulation jobs but never runs them.
+    Api,
+    /// Runs simulation jobs from the queue; no HTTP server, no TT2 socket.
+    Worker,
+    /// Does both, in one process (local dev default).
+    All,
+}
+
+impl ServiceRole {
+    pub fn serves_http(self) -> bool {
+        matches!(self, ServiceRole::Api | ServiceRole::All)
+    }
+
+    pub fn runs_jobs(self) -> bool {
+        matches!(self, ServiceRole::Worker | ServiceRole::All)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub role: ServiceRole,
     pub database_url: Option<String>,
     pub port: u16,
     pub simulation_concurrency: usize,
@@ -36,6 +61,15 @@ fn parse_bool_env(name: &str, default: bool) -> Result<bool, String> {
 
 impl Config {
     pub fn from_env() -> Result<Self, String> {
+        let role = match env::var("ROLE") {
+            Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "api" => ServiceRole::Api,
+                "worker" => ServiceRole::Worker,
+                "all" => ServiceRole::All,
+                _ => return Err("ROLE must be one of: api, worker, all".to_string()),
+            },
+            Err(_) => ServiceRole::All,
+        };
         let database_url = env::var("DATABASE_URL")
             .ok()
             .filter(|value| !value.trim().is_empty());
@@ -57,26 +91,39 @@ impl Config {
                 "SIM_WORKER_COUNT must be a non-negative integer (0 uses all available CPUs)"
                     .to_string()
             })?;
-        let internal_api_key = env::var("INTERNAL_API_KEY")
-            .map_err(|_| "INTERNAL_API_KEY must be configured".to_string())?;
-        if internal_api_key.trim().len() < 16 {
-            return Err("INTERNAL_API_KEY must contain at least 16 characters".to_string());
-        }
+        // The worker role never serves HTTP, so it has no use for the
+        // internal-API auth key or CORS origins -- only require them when
+        // this process will actually mount the router.
+        let internal_api_key = if role.serves_http() {
+            let internal_api_key = env::var("INTERNAL_API_KEY")
+                .map_err(|_| "INTERNAL_API_KEY must be configured".to_string())?;
+            if internal_api_key.trim().len() < 16 {
+                return Err("INTERNAL_API_KEY must contain at least 16 characters".to_string());
+            }
+            internal_api_key
+        } else {
+            String::new()
+        };
         let internal_api_enabled = parse_bool_env("INTERNAL_API_ENABLED", true)?;
         let swagger_ui_enabled = parse_bool_env("SWAGGER_UI_ENABLED", false)?;
 
-        let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
-            .map_err(|_| "CORS_ALLOWED_ORIGINS must be configured".to_string())?
-            .split(',')
-            .map(str::trim)
-            .filter(|origin| !origin.is_empty())
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        if cors_allowed_origins.is_empty() {
-            return Err(
-                "CORS_ALLOWED_ORIGINS must contain at least one origin".to_string(),
-            );
-        }
+        let cors_allowed_origins = if role.serves_http() {
+            let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
+                .map_err(|_| "CORS_ALLOWED_ORIGINS must be configured".to_string())?
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            if cors_allowed_origins.is_empty() {
+                return Err(
+                    "CORS_ALLOWED_ORIGINS must contain at least one origin".to_string(),
+                );
+            }
+            cors_allowed_origins
+        } else {
+            Vec::new()
+        };
 
         let tt2_values = [
             env::var("TT2_SOCKET_URL").ok(),
@@ -109,6 +156,7 @@ impl Config {
         };
 
         Ok(Self {
+            role,
             database_url,
             port,
             simulation_concurrency,

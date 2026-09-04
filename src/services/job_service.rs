@@ -273,12 +273,12 @@ async fn create_job_with_mode(
                 .await?;
         (id, false)
     };
-    if created {
-        spawn_job(Arc::clone(state), id);
-    }
+    // Dispatch happens only in the worker role, via `run_dispatch_loop`
+    // polling for `pending` jobs -- not here, so an API-only process never
+    // runs simulation CPU work itself.
     Ok((id, created))
 }
-
+        
 pub fn spawn_old_job_cleanup(state: Arc<AppState>, current_boss_version: i64) {
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -327,6 +327,37 @@ pub fn spawn_old_job_cleanup(state: Arc<AppState>, current_boss_version: i64) {
             tracing::warn!(?error, "empty simulation batch cleanup failed");
         }
     });
+}
+
+const DISPATCH_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The worker role's main loop: polls for `pending` simulation jobs and
+/// spawns each one. Never returns. Safe to run from multiple worker
+/// processes at once -- `process_job`'s claim (`UPDATE ... WHERE
+/// status='pending' ... RETURNING`) is atomic, so a job picked up by two
+/// pollers in the same tick is only ever actually run once; the loser just
+/// sees no row returned and exits immediately.
+pub async fn run_dispatch_loop(state: Arc<AppState>) -> ! {
+    loop {
+        if let Ok(db) = state.db() {
+            match sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM simulation_jobs WHERE status='pending' ORDER BY created_at",
+            )
+            .fetch_all(db)
+            .await
+            {
+                Ok(pending) => {
+                    for job_id in pending {
+                        spawn_job(Arc::clone(&state), job_id);
+                    }
+                }
+                Err(error) => {
+                    tracing::error!(?error, "failed to poll for pending simulation jobs");
+                }
+            }
+        }
+        tokio::time::sleep(DISPATCH_POLL_INTERVAL).await;
+    }
 }
 
 pub fn spawn_job(state: Arc<AppState>, job_id: Uuid) {

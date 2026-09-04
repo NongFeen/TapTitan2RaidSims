@@ -64,7 +64,12 @@ impl AppState {
         self.db.as_ref()
     }
 
-    pub async fn recover_pending_jobs(self: &Arc<Self>) {
+    /// Worker-startup only: any job left `running`/`optimizing` belongs to a
+    /// worker process that died mid-job (crash, redeploy), so put it back in
+    /// the queue. Actual dispatch of `pending` jobs -- these included -- is
+    /// the ongoing job of [`crate::services::job_service::run_dispatch_loop`],
+    /// not this one-shot reset.
+    pub async fn reset_stuck_jobs(self: &Arc<Self>) {
         let Some(db) = self.db.as_ref() else {
             return;
         };
@@ -73,24 +78,12 @@ impl AppState {
         )
         .fetch_all(db)
         .await;
-        let pending: Result<Vec<Uuid>, _> = sqlx::query_scalar(
-            "SELECT id FROM simulation_jobs WHERE status='pending' ORDER BY created_at",
-        )
-        .fetch_all(db)
-        .await;
-        match (recovered, pending) {
-            (Ok(recovered), Ok(pending)) => {
-                tracing::info!(
-                    recovered = recovered.len(),
-                    queued = pending.len(),
-                    "recovering simulation queue"
-                );
-                for job_id in pending {
-                    crate::services::job_service::spawn_job(Arc::clone(self), job_id);
-                }
+        match recovered {
+            Ok(recovered) => {
+                tracing::info!(recovered = recovered.len(), "reset stuck simulation jobs to pending");
             }
-            (Err(error), _) | (_, Err(error)) => {
-                tracing::error!(?error, "failed to recover interrupted simulation jobs");
+            Err(error) => {
+                tracing::error!(?error, "failed to reset stuck simulation jobs");
             }
         }
     }
