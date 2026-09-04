@@ -1,11 +1,12 @@
 use std::{sync::Arc, time::Instant};
 
+use chrono::Utc;
 use uuid::Uuid;
 
 use crate::{
     error::AppError,
     models::{
-        app::{CreateSimulationJobRequest, SimulationJobView},
+        app::{CreateSimulationJobRequest, RecommendationView, SimulationJobView},
         boss::{Boss, BossPartName, PartState},
         cards::CardName,
         db_enums::{RecommendationPhase, RecomputeMode},
@@ -16,8 +17,8 @@ use crate::{
         sim_deck_result_codec,
         taptitan::{
             recommendation::{
-                CandidateDeck, DeckRecommendation, cards_from_mask, optimize_decks,
-                optimize_decks_with_required_cards,
+                CandidateDeck, DeckRecommendation, cards_from_mask, mask_from_cards,
+                optimize_decks, optimize_decks_with_required_cards,
             },
             sim_service::{SIMS_ROUNDS, SimRunResult, SimService},
         },
@@ -822,6 +823,136 @@ async fn persist_results(
         "simulation results persistence complete"
     );
     Ok(())
+}
+
+#[derive(Clone, sqlx::FromRow)]
+struct CustomRecommendationRow {
+    card_mask: i64,
+    average_damage: String,
+    pattern: String,
+    card1: String,
+    card1_damage: i64,
+    card2: String,
+    card2_damage: i64,
+    card3: String,
+    card3_damage: i64,
+    deck_lowest_damage: i64,
+    deck_highest_damage: i64,
+}
+
+/// Re-selects top decks from a player's already-completed simulation,
+/// excluding any deck that uses one of `excluded_cards` (e.g. cards the
+/// player already threw this cycle and can't reuse). Unlike
+/// `generate_deck_recommendations`, this never runs a new simulation and
+/// never persists a `deck_recommendations` row -- excluded-cards isn't a
+/// dimension that recommendation caching/dedup understands, and re-picking
+/// from decks the sim already computed is cheap enough to just do inline on
+/// every request.
+pub async fn custom_recommendation(
+    state: &Arc<AppState>,
+    player_id: &str,
+    deck_count: usize,
+    include_body_phase: bool,
+    excluded_cards: &[CardName],
+    required_cards: &[CardName],
+) -> Result<RecommendationView, AppError> {
+    if !(1..=MAX_RECOMMENDATION_DECK_COUNT).contains(&deck_count) {
+        return Err(AppError::BadRequest(format!(
+            "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
+        )));
+    }
+    let recommendation_phase = if include_body_phase {
+        RecommendationPhase::Void
+    } else {
+        RecommendationPhase::Current
+    };
+    let job_id: Uuid = sqlx::query_scalar(
+        "SELECT j.id FROM simulation_jobs j WHERE j.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
+    )
+    .bind(player_id)
+    .bind(recommendation_phase)
+    .fetch_optional(state.db()?)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Player has no completed simulation".to_string()))?;
+
+    let rows: Vec<CustomRecommendationRow> = sqlx::query_as(
+        "SELECT card_mask,average_damage::TEXT AS average_damage,pattern,card1,card1_damage,card2,card2_damage,card3,card3_damage,deck_lowest_damage,deck_highest_damage FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2",
+    )
+    .bind(job_id)
+    .bind(recommendation_phase)
+    .fetch_all(state.db()?)
+    .await?;
+    if rows.is_empty() {
+        return Err(AppError::NotFound(
+            "Completed simulation has no deck results".to_string(),
+        ));
+    }
+
+    let excluded_mask = mask_from_cards(excluded_cards).unwrap_or(0);
+    let required_cards = required_cards.to_vec();
+    let must_include_mirror_force = required_cards.contains(&CardName::MirrorForce);
+    let must_include_team_tactics = required_cards.contains(&CardName::TeamTactics);
+    let (decks, total_average_damage) = tokio::task::spawn_blocking(move || {
+        let candidates: Vec<CandidateDeck> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| (row.card_mask as u64) & excluded_mask == 0)
+            .map(|(source_index, row)| CandidateDeck {
+                source_index,
+                cards: cards_from_mask(row.card_mask as u64),
+                card_mask: row.card_mask as u64,
+                average_damage: row.average_damage.parse().unwrap_or(0),
+            })
+            .collect();
+        let recommendation =
+            optimize_decks_with_required_cards(&candidates, deck_count, &required_cards);
+        let Some(recommendation) = recommendation else {
+            return (serde_json::Value::Array(Vec::new()), 0u64);
+        };
+        let decks: Vec<serde_json::Value> = recommendation
+            .decks
+            .iter()
+            .enumerate()
+            .map(|(position, deck)| {
+                let row = &rows[deck.source_index];
+                serde_json::json!({
+                    "position": position,
+                    "cards": deck.cards.iter().map(|card| card.id()).collect::<Vec<_>>(),
+                    "average_damage": deck.average_damage.to_string(),
+                    "result": {
+                        "best_pattern": {
+                            "pattern": row.pattern,
+                            "lowest_round_damage": row.deck_lowest_damage,
+                            "highest_round_damage": row.deck_highest_damage,
+                            "card_damage": [
+                                {"card": row.card1, "average_damage": row.card1_damage},
+                                {"card": row.card2, "average_damage": row.card2_damage},
+                                {"card": row.card3, "average_damage": row.card3_damage},
+                            ],
+                        },
+                    },
+                })
+            })
+            .collect();
+        (
+            serde_json::Value::Array(decks),
+            recommendation.total_average_damage,
+        )
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("Custom recommendation worker panicked: {error}")))?;
+
+    Ok(RecommendationView {
+        id: Uuid::new_v4(),
+        simulation_job_id: job_id,
+        deck_count: deck_count as i32,
+        must_include_mirror_force,
+        must_include_team_tactics,
+        total_average_damage: total_average_damage.to_string(),
+        body_phase_ran: include_body_phase,
+        decks,
+        created_at: Utc::now(),
+    })
 }
 
 pub async fn generate_deck_recommendations(

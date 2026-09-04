@@ -103,6 +103,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/recommendations",
             post(routes::recommendations::generate_for_player),
         )
+        .route(
+            "/api/players/{player_id}/recommendations/custom",
+            post(routes::recommendations::custom_for_player),
+        )
 
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
         //POST UNUSED

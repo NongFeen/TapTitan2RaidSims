@@ -63,6 +63,18 @@ pub fn cards_from_mask(mask: u64) -> Vec<CardName> {
         .collect()
 }
 
+/// The same bit assignment `candidates_from_results`/`cards_from_mask` use
+/// (declaration-order position in `CardName::iter()`), for turning an
+/// arbitrary card list into a mask outside of a full deck (e.g. a
+/// required-cards filter, or an excluded-cards filter).
+pub fn mask_from_cards(cards: &[CardName]) -> Option<u64> {
+    cards.iter().try_fold(0u64, |mask, card| {
+        CardName::iter()
+            .position(|candidate| candidate == *card)
+            .map(|index| mask | (1u64 << index))
+    })
+}
+
 pub fn optimize_decks(
     candidates: &[CandidateDeck],
     deck_count: usize,
@@ -75,11 +87,7 @@ pub fn optimize_decks_with_required_cards(
     deck_count: usize,
     required_cards: &[CardName],
 ) -> Option<DeckRecommendation> {
-    let required_card_mask = required_cards.iter().try_fold(0u64, |mask, card| {
-        CardName::iter()
-            .position(|candidate| candidate == *card)
-            .map(|index| mask | (1u64 << index))
-    })?;
+    let required_card_mask = mask_from_cards(required_cards)?;
 
     if deck_count == 0 {
         return (required_card_mask == 0).then_some(DeckRecommendation {
