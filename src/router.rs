@@ -66,6 +66,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/stats/current",
             get(routes::players::current_stats),
         )
+        .route(
+            "/api/players/{player_id}/attack-log",
+            get(routes::players::attack_log),
+        )
 
         // .route(
         //     "/api/players/{player_id}/auto_sims",
@@ -98,6 +102,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/players/{player_id}/recommendations",
             post(routes::recommendations::generate_for_player),
+        )
+        .route(
+            "/api/players/{player_id}/recommendations/custom",
+            post(routes::recommendations::custom_for_player),
         )
 
         // .route("/api/taptitan/boss", get(routes::taptitan::get_boss))
