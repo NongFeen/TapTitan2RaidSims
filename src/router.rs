@@ -66,6 +66,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/stats/current",
             get(routes::players::current_stats),
         )
+        .route(
+            "/api/players/{player_id}/attack-log",
+            get(routes::players::attack_log),
+        )
 
         // .route(
         //     "/api/players/{player_id}/auto_sims",
