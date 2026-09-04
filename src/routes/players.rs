@@ -11,9 +11,9 @@ use crate::{
     error::AppError,
     models::{
         app::{
-            CreateSimulationJobRequest, PlayerDetail, PlayerStatsVersion, PlayerSummary,
-            Tt2ClanFetchResult, Tt2ClanStatus, Tt2PlayerStatus, UpdateAutoSimsRequest,
-            UpdatePlayerStatsRequest, UpdatePlayerTokenRequest,
+            CreateSimulationJobRequest, PlayerAttackLogEntry, PlayerDetail, PlayerStatsVersion,
+            PlayerSummary, Tt2ClanFetchResult, Tt2ClanStatus, Tt2PlayerStatus,
+            UpdateAutoSimsRequest, UpdatePlayerStatsRequest, UpdatePlayerTokenRequest,
         },
         player_raid_data::PlayerRaidData,
     },
@@ -163,6 +163,50 @@ pub async fn current_stats(
         created_at: loaded.created_at,
         updated_at: loaded.updated_at,
     }))
+}
+
+/// Get a player's attack log for the current raid
+///
+/// Newest first. Attacks are cleared whenever a new raid starts (see
+/// `raid_event_service::handle_sub_start`), so this only ever covers the
+/// raid currently in progress.
+#[utoipa::path(
+    get,
+    path = "/api/players/{player_id}/attack-log",
+    tag = "players",
+    params(("player_id" = String, Path, description = "Player id (TT2 player code)")),
+    responses(
+        (status = 200, description = "This player's attacks since the current raid started, newest first", body = [PlayerAttackLogEntry]),
+    ),
+)]
+pub async fn attack_log(
+    State(state): State<Arc<AppState>>,
+    Path(player_id): Path<String>,
+) -> Result<Json<Vec<PlayerAttackLogEntry>>, AppError> {
+    let raid_id: Option<i64> =
+        sqlx::query_scalar("SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1")
+            .fetch_optional(state.db()?)
+            .await?;
+    let Some(raid_id) = raid_id else {
+        return Ok(Json(Vec::new()));
+    };
+    let entries = sqlx::query_as(
+        "SELECT l.cycle, l.attack_datetime, l.attacked_titan_index, l.resulting_titan_index, l.enemy_id, \
+         l.tap_damage::TEXT AS tap_damage, l.total_damage::TEXT AS total_damage, \
+         c.card1, c.card1_level, c.card1_damage::TEXT AS card1_damage, \
+         c.card2, c.card2_level, c.card2_damage::TEXT AS card2_damage, \
+         c.card3, c.card3_level, c.card3_damage::TEXT AS card3_damage \
+         FROM raid_attack_logs l \
+         JOIN raid_attack_components c \
+           ON c.raid_id=l.raid_id AND c.player_id=l.player_id AND c.attack_datetime=l.attack_datetime \
+         WHERE l.player_id=$1 AND l.raid_id=$2 \
+         ORDER BY l.attack_datetime DESC",
+    )
+    .bind(&player_id)
+    .bind(raid_id)
+    .fetch_all(state.db()?)
+    .await?;
+    Ok(Json(entries))
 }
 
 pub async fn update_auto_sims(

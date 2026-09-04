@@ -194,6 +194,17 @@ async fn handle_sub_start(
             .bind(&raw_payload)
             .execute(&mut *tx)
             .await?;
+
+            // A new raid_id means every attack log from the previous raid is
+            // now dead weight -- nothing reads across raid boundaries, and
+            // leaving them would grow this table forever. Cascades to
+            // raid_attack_components via its FK. Held under the same
+            // advisory lock as everything else here, so this can't race a
+            // concurrent attack insert for the raid that's ending.
+            sqlx::query("DELETE FROM raid_attack_logs WHERE raid_id <> $1")
+                .bind(event.raid_id)
+                .execute(&mut *tx)
+                .await?;
         } else {
             sqlx::query(
                 "UPDATE raid_current_state SET clan_code=$2,resulting_titan_index=0,current_enemy_id=$3,raid_data=$4,titan_targets=$5,raw_sub_start=$6,received_at=NOW(),updated_at=NOW() WHERE raid_id=$1",
