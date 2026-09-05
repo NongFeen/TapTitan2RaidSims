@@ -28,6 +28,16 @@ services:
   backend:
     image: ghcr.io/nongfeen/feen-backend:e17d71b9c9fa0a36a21d88549ddf9d504281e34a
     restart: unless-stopped
+    # Traefik rate-limit middleware -- defines the limit itself here, but
+    # doesn't attach it to a router yet. Coolify generates its own router
+    # name dynamically per-domain, so after this first deploy, find it via
+    # `docker inspect <backend container> | grep traefik.http.routers` on
+    # the server and add a second label attaching this middleware to that
+    # exact router name (see deploy notes below).
+    labels:
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.average=10"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=20"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.period=1s"
     environment:
       ROLE: api
       PORT: 3000
