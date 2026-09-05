@@ -409,11 +409,6 @@ impl CardName {
         }
     }
 
-    /// Returns the static image URL. Card image filenames use the exact raw card ID.
-    pub fn image_url(&self) -> String {
-        format!("/assets/taptitan/cards/{}.webp", self.id())
-    }
-
     pub fn card_type(&self) -> CardType {
         match self {
             CardName::MoonBeam

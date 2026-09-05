@@ -201,7 +201,6 @@ pub struct LiveBossDisplayPart {
 pub struct LiveAttackingCard {
     pub card_id: String,
     pub display_name: String,
-    pub image_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
