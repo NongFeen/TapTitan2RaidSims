@@ -73,12 +73,10 @@ async fn handle_start_attack(
             Ok(card) => LiveAttackingCard {
                 card_id: card_id.clone(),
                 display_name: card.display_name().to_string(),
-                image_url: card.image_url(),
             },
             Err(_) => LiveAttackingCard {
                 card_id: card_id.clone(),
                 display_name: card_id.clone(),
-                image_url: String::new(),
             },
         })
         .collect();
