@@ -7,12 +7,12 @@ name: Build and push images
 # deploy (docker-compose.coolify.yml) pulls these by tag rather than
 # building from source itself.
 #
-# Built for linux/arm64 specifically (via QEMU on this amd64 runner), not
-# amd64 -- that's the actual architecture of the Coolify server this gets
-# deployed to. If you ever add an x86 deploy target too, add linux/amd64
-# back to the `platforms:` lists below (comma-separated) for a multi-arch
-# manifest -- just note the arm64 leg will still build under slow QEMU
-# emulation either way, Rust release builds are not fast to emulate.
+# Built for linux/arm64 specifically -- that's the actual architecture of
+# the Coolify server this gets deployed to. Runs on GitHub's native arm64
+# runner (real ARM hardware, not QEMU-emulated on an amd64 box) since Rust
+# release builds are brutally slow under emulation -- every rustc/linker
+# invocation is instruction-translated in software, which multiplies an
+# already CPU-heavy build by 10-20x or more.
 on:
   push:
     branches: [master]
@@ -24,16 +24,12 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # Native arm64 hardware -- no QEMU involved, so no setup-qemu-action step
+    # needed at all here (that's only for emulating an architecture your
+    # runner doesn't natively have).
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-
-      # ubuntu-latest runners are amd64; this registers QEMU so buildx can
-      # cross-compile for arm64 (your Coolify server's actual architecture)
-      # on that same amd64 runner.
-      - uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
 
       - uses: docker/setup-buildx-action@v4
 
