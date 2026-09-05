@@ -1,0 +1,69 @@
+# syntax=docker/dockerfile:1
+#
+# Single-image build: the Rust backend serves the frontend's static build
+# output itself (see STATIC_DIR / fallback_service in src/router.rs), so
+# there's only one process and one port. Assumes the frontend repo is
+# checked out as a sibling directory:
+#   .../backend/   (this repo, build context)
+#   .../frontend/  (frontend repo)
+#
+# Build from the parent directory so both are in context:
+#   docker build -f backend/Dockerfile.combined -t feen-app .
+
+########################
+# 1. Build the frontend #
+########################
+FROM node:lts-slim AS frontend-builder
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+# Empty on purpose: same-origin requests, since the backend now serves the
+# frontend itself -- no cross-origin API calls, so no CORS to configure.
+ENV VITE_API_BASE_URL=""
+RUN npm run build
+
+########################
+# 2. Build the backend  #
+########################
+FROM rust:1-slim-bookworm AS chef
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential pkg-config clang lld curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef --locked
+
+FROM chef AS planner
+COPY backend/ .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS backend-builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY backend/ .
+# Cargo.toml sets profile.release.debug = true (kept for local profiling),
+# so strip the debug symbols here instead -- they're dead weight in a
+# deploy image and roughly triple the binary's size.
+RUN cargo build --release --bin backend \
+    && strip target/release/backend
+
+####################
+# 3. Runtime image  #
+####################
+# distroless: just glibc + libssl + CA certs, no shell/package manager, so
+# no perl/gcc/curl/tar/etc dragged along -- scans at 0 CVEs vs 50+ baked
+# into debian:bookworm-slim before we even installed anything. Trade-off:
+# no shell means no curl-based HEALTHCHECK; nothing in docker-compose.prod.yml
+# depends on this container's own health status today (only postgres's is
+# used for depends_on), so this changes no actual behavior.
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+
+WORKDIR /app
+COPY --from=backend-builder /app/target/release/backend /usr/local/bin/backend
+COPY --from=frontend-builder /app/dist ./static
+
+ENV PORT=3000
+ENV STATIC_DIR=/app/static
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/backend"]

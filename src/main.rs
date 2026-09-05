@@ -42,15 +42,24 @@ async fn run() {
     dotenvy::dotenv().ok();
 
     let config = config::Config::from_env().expect("invalid application configuration");
+    tracing::info!(role = ?config.role, "service role configured");
     services::taptitan::sim_service::configure_sim_worker_count(config.simulation_worker_count);
     tracing::info!(
         simulation_worker_count = config.simulation_worker_count,
         "simulation worker allocation configured (0 uses all available CPUs)"
     );
-    let gamehive_api = config.tt2.clone().map(|tt2_config| {
-        services::gamehive_api_client::GameHiveApiClient::new(tt2_config)
-            .expect("invalid TT2 player-token encryption configuration")
-    });
+
+    // The worker role runs simulation jobs pulled from the shared queue; job
+    // payloads already carry everything a simulation needs by the time
+    // they're enqueued, so it has no use for the TT2 socket or an HTTP server.
+    let gamehive_api = if config.role.serves_http() {
+        config.tt2.clone().map(|tt2_config| {
+            services::gamehive_api_client::GameHiveApiClient::new(tt2_config)
+                .expect("invalid TT2 player-token encryption configuration")
+        })
+    } else {
+        None
+    };
     let pool = match config.database_url.as_deref() {
         Some(database_url) => match database::connect(database_url).await {
             Ok(pool) => {
@@ -67,7 +76,7 @@ async fn run() {
             None
         }
     };
-    if !config.internal_api_enabled {
+    if config.role.serves_http() && !config.internal_api_enabled {
         tracing::warn!("INTERNAL_API_ENABLED=false; all /internal/* routes will return 503");
     }
     let state = Arc::new(AppState::new(
@@ -84,8 +93,19 @@ async fn run() {
             gamehive_api.connect(socket_state).await;
         });
         services::clan_sync_service::spawn_scheduled_clan_fetch(Arc::clone(&state));
-    } else {
+    } else if config.role.serves_http() {
         tracing::warn!("TT2 integration is not configured; player fetching is unavailable");
+    }
+
+    if config.role.runs_jobs() {
+        state.reset_stuck_jobs().await;
+        tokio::spawn(services::job_service::run_dispatch_loop(Arc::clone(&state)));
+    }
+
+    if !config.role.serves_http() {
+        tracing::info!("worker role: no HTTP server; running simulation jobs only");
+        shutdown_signal().await;
+        return;
     }
 
     let allowed_origins: Vec<HeaderValue> = config
@@ -115,9 +135,7 @@ async fn run() {
     }
     let app = app.layer(request_trace).layer(cors);
 
-    state.recover_pending_jobs().await;
-
-    let addr = format!("localhost:{}", config.port);
+    let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("Server running on http://{addr}");
     axum::serve(listener, app)

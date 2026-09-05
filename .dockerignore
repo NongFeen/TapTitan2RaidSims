@@ -1,0 +1,14 @@
+target
+target_check_tmpX4Eade
+.git
+.env
+.env.example
+.vscode
+.agents
+tests
+scripts
+*.md
+exampleSocketdatajson
+*sample*.json
+clan_player_data_api.json
+schema*.sql

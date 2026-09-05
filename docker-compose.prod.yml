@@ -1,0 +1,89 @@
+# Deploy-server stack: Postgres + backend (API/routing) + worker (sims).
+#
+# The frontend is NOT part of this stack -- it's deployed separately as a
+# static site (e.g. Render Static Site), since it's just static files with
+# no CPU/runtime needs of its own. Point its build at PUBLIC_API_BASE_URL
+# pointing to wherever the `backend` service below ends up publicly reachable.
+#
+# `backend` and `worker` build from the same source but different
+# Dockerfiles (Dockerfile / Dockerfile.worker) and never run each other's
+# work: `backend` only serves HTTP and enqueues simulation jobs, `worker`
+# only pulls jobs from the shared `simulation_jobs` table in Postgres and
+# runs them. Splitting them like this means a running simulation's CPU
+# usage can never freeze `backend`'s request handling (page loads, card
+# images) -- see Dockerfile.worker's header comment for the full reasoning.
+#
+# Not auto-discovered by `docker compose` (that stays on compose.yaml, the
+# Postgres-only local dev file) -- always invoke explicitly:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+# Explicit project name so this never shares containers/volumes/networks
+# with compose.yaml's dev stack (both live in this same directory).
+name: feen-prod
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-feen}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-feen}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - feen-postgres:/var/lib/postgresql/data
+    networks: [feen]
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROLE: api
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:-feen}}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in .env.prod}
+      SIMULATION_CONCURRENCY: ${SIMULATION_CONCURRENCY:-1}
+      SIM_WORKER_COUNT: ${SIM_WORKER_COUNT:-0}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.prod}
+      INTERNAL_API_ENABLED: ${INTERNAL_API_ENABLED:-true}
+      SWAGGER_UI_ENABLED: ${SWAGGER_UI_ENABLED:-false}
+      TT2_SOCKET_URL: ${TT2_SOCKET_URL:-wss://tt2-public.gamehivegames.com}
+      TT2_SOCKET_HANDSHAKE_PATH: ${TT2_SOCKET_HANDSHAKE_PATH:-/api/socket.io}
+      TT2_REST_BASE_URL: ${TT2_REST_BASE_URL:-https://tt2-public.gamehivegames.com}
+      TT2_APPLICATION_TOKEN: ${TT2_APPLICATION_TOKEN}
+      TT2_PLAYER_TOKEN_ENCRYPTION_KEY: ${TT2_PLAYER_TOKEN_ENCRYPTION_KEY}
+      TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN: ${TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN}
+    ports:
+      - "3000:3000"
+    networks: [feen]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROLE: worker
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:-feen}}
+      SIMULATION_CONCURRENCY: ${SIMULATION_CONCURRENCY:-1}
+      SIM_WORKER_COUNT: ${SIM_WORKER_COUNT:-0}
+    networks: [feen]
+
+networks:
+  feen:
+
+volumes:
+  feen-postgres:

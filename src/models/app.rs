@@ -19,6 +19,30 @@ pub struct PlayerSummary {
     pub updated_at: DateTime<Utc>,
 }
 
+/// One recorded attack for a player within the current raid. Damage fields
+/// are `NUMERIC(30,0)` in Postgres -- read back as `TEXT` and exposed as
+/// strings here, matching `total_average_damage` below, since values can
+/// exceed what JS can represent as a `number` without precision loss.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
+pub struct PlayerAttackLogEntry {
+    pub cycle: i32,
+    pub attack_datetime: DateTime<Utc>,
+    pub attacked_titan_index: i32,
+    pub resulting_titan_index: i32,
+    pub enemy_id: String,
+    pub tap_damage: String,
+    pub total_damage: String,
+    pub card1: Option<String>,
+    pub card1_level: Option<i32>,
+    pub card1_damage: Option<String>,
+    pub card2: Option<String>,
+    pub card2_level: Option<i32>,
+    pub card2_damage: Option<String>,
+    pub card3: Option<String>,
+    pub card3_level: Option<i32>,
+    pub card3_damage: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct PlayerDetail {
     pub player_id: String,
@@ -177,7 +201,6 @@ pub struct LiveBossDisplayPart {
 pub struct LiveAttackingCard {
     pub card_id: String,
     pub display_name: String,
-    pub image_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]

@@ -36,7 +36,7 @@ pub async fn send_player_data_json(Json(payload): Json<PlayerData>) -> impl Into
     get,
     path = "/api/taptitan/cards",
     tag = "taptitan",
-    responses((status = 200, description = "Every card's static definition (id, name, type, image, seasonal boost)", body = [CardDefinitionDto])),
+    responses((status = 200, description = "Every card's static definition (id, name, type, seasonal boost)", body = [CardDefinitionDto])),
 )]
 pub async fn get_all_card_definitions() -> impl IntoResponse {
     // 2. CardName::iter() automatically knows how to traverse all 42 items!
@@ -45,7 +45,6 @@ pub async fn get_all_card_definitions() -> impl IntoResponse {
             id: v.id(),             // Will be "moon_beam"
             name: v.display_name(), // Will be "Moon Beam"
             r#type: v.card_type(),
-            image: v.image_url(),
             seasonal_level_boost: seasonal_level_boost(v),
         })
         .collect();

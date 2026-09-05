@@ -10,7 +10,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
-    models::app::RecommendationView,
+    models::{app::RecommendationView, cards::CardName},
     services::{
         job_service::{DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_RECOMMENDATION_DECK_COUNT},
         taptitan::recommendation::cards_from_mask,
@@ -86,6 +86,65 @@ pub async fn generate_for_player(
         deck_count: request.deck_count,
         created,
     }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CustomRecommendationRequest {
+    #[serde(default = "default_deck_count")]
+    deck_count: i32,
+    #[serde(default)]
+    include_body_phase: bool,
+    /// Cards to leave out of consideration entirely -- e.g. ones the player
+    /// already threw this cycle and can't reuse yet. Raw card ids, same
+    /// strings `GET /api/taptitan/cards` returns (e.g. "MirrorForce").
+    #[serde(default)]
+    excluded_cards: Vec<CardName>,
+    #[serde(default)]
+    must_include_mirror_force: bool,
+    #[serde(default)]
+    must_include_team_tactics: bool,
+}
+
+/// Re-recommend decks from a player's current simulation, excluding cards
+///
+/// Unlike `POST .../recommendations`, this never queues a new simulation --
+/// it re-selects top decks from the player's already-completed simulation
+/// for the current boss, skipping any deck that uses an excluded card. Not
+/// cached: every call recomputes and returns a fresh result directly.
+#[utoipa::path(
+    post,
+    path = "/api/players/{player_id}/recommendations/custom",
+    tag = "recommendations",
+    params(("player_id" = String, Path, description = "Player id")),
+    request_body = CustomRecommendationRequest,
+    responses(
+        (status = 200, description = "Freshly computed recommendation excluding the given cards", body = RecommendationView),
+        (status = 404, description = "Player has no completed simulation for the current boss"),
+    ),
+)]
+pub async fn custom_for_player(
+    State(state): State<Arc<AppState>>,
+    Path(player_id): Path<String>,
+    Json(request): Json<CustomRecommendationRequest>,
+) -> Result<Json<RecommendationView>, AppError> {
+    let deck_count = validate_deck_count(request.deck_count)?;
+    let mut required_cards = Vec::with_capacity(2);
+    if request.must_include_mirror_force {
+        required_cards.push(CardName::MirrorForce);
+    }
+    if request.must_include_team_tactics {
+        required_cards.push(CardName::TeamTactics);
+    }
+    let view = crate::services::job_service::custom_recommendation(
+        &state,
+        &player_id,
+        deck_count,
+        request.include_body_phase,
+        &request.excluded_cards,
+        &required_cards,
+    )
+    .await?;
+    Ok(Json(view))
 }
 
 /// Get the latest completed recommendation for a player

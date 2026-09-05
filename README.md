@@ -82,3 +82,59 @@ cargo build --release
 ```
 
 `SIMULATION_CONCURRENCY=1` is intentional by default: each simulation is CPU-heavy. Increase it only after measuring the target machine; extra workers can make every simulation slower through CPU contention.
+
+## Deploy (production images)
+
+The backend runs as two separate services sharing one Postgres database, so
+a running simulation's CPU usage can never freeze API request handling
+(page loads, card images):
+
+- **`Dockerfile`** -- the API/routing service. Serves all HTTP routes and
+  enqueues simulation jobs into the `simulation_jobs` table, but never runs
+  them itself.
+- **`Dockerfile.worker`** -- the sim worker service. No HTTP server, no TT2
+  socket; it only polls `simulation_jobs` for `pending` rows and runs them.
+  Scale its `SIMULATION_CONCURRENCY`/`SIM_WORKER_COUNT` independently of the
+  API service's resources.
+
+Both build from this same `backend/` directory and read `ROLE` (`api` /
+`worker`; unset or `all` runs both in one process, useful for local dev) to
+decide which half of `main.rs` to run -- see `src/config.rs`'s
+`ServiceRole`.
+
+The frontend is **not** part of either image -- deploy it separately as a
+static site (e.g. a Render Static Site) built from the `frontend/` repo,
+with `VITE_API_BASE_URL` pointing at wherever the API service ends up
+publicly reachable. It's static files with no compute needs of its own, so
+keeping it off the same host/CPU budget as the API and worker avoids it
+going unreachable if either of those get busy.
+
+### Via docker compose
+
+`docker-compose.prod.yml` runs Postgres, the API service, and the worker
+service together (see that file's header comment for details):
+
+```powershell
+cp backend/.env.prod.example backend/.env.prod   # then fill in real values
+docker compose -f backend/docker-compose.prod.yml --env-file backend/.env.prod up -d --build
+```
+
+### Via separate deploys (e.g. two Render Web Services)
+
+Build each Dockerfile as its own service, both pointed at an external
+`DATABASE_URL` (see `.env.prod.example`'s `DATABASE_URL` override):
+
+```powershell
+docker build -f backend/Dockerfile -t feen-api:latest backend
+docker build -f backend/Dockerfile.worker -t feen-worker:latest backend
+```
+
+The API service needs `CORS_ALLOWED_ORIGINS`, `INTERNAL_API_KEY`, and (if
+TT2 integration is enabled) the `TT2_*` secrets; the worker service only
+needs `DATABASE_URL`, `SIMULATION_CONCURRENCY`, and `SIM_WORKER_COUNT` --
+see `docker-compose.prod.yml`'s `worker` service for the exact variable
+list. Verify the API service with:
+
+```powershell
+curl http://localhost:3000/api/health
+```
