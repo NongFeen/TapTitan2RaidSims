@@ -1,0 +1,57 @@
+# Coolify deploy: backend (API) + worker only -- no local postgres.
+#
+# Unlike docker-compose.prod.yml (which runs its own postgres container),
+# this points DATABASE_URL at an external managed Postgres (Render), since
+# that's already where this app's real data lives.
+#
+# Pulls pre-built images from GHCR (built by .github/workflows/build.yml on
+# every push to master) rather than building from source -- Coolify just
+# runs `docker compose up`, it never needs to clone/build this repo itself.
+#
+# Pinned to a specific commit SHA tag rather than `:latest` -- reproducible
+# (this exact tag's content never changes), and makes "what's actually
+# running" explicit instead of implicit. Bump both tags together when
+# deploying a new build, then redeploy in Coolify.
+#
+# Import this file as a "Docker Compose" resource in Coolify (or paste its
+# contents directly into a Coolify-managed compose definition); set the
+# environment variables below in Coolify's UI for the resource (not in a
+# .env file -- Coolify manages env vars itself).
+#
+# Only `backend` needs a public domain/port assigned in Coolify -- `worker`
+# has no HTTP server at all (see Dockerfile.worker) and should stay
+# unexposed.
+
+name: feen-coolify
+
+services:
+  backend:
+    image: ghcr.io/nongfeen/feen-backend:e17d71b9c9fa0a36a21d88549ddf9d504281e34a
+    restart: unless-stopped
+    environment:
+      ROLE: api
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in Coolify's environment variables}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in Coolify's environment variables}
+      SIMULATION_CONCURRENCY: ${SIMULATION_CONCURRENCY:-1}
+      SIM_WORKER_COUNT: ${SIM_WORKER_COUNT:-0}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in Coolify's environment variables}
+      INTERNAL_API_ENABLED: ${INTERNAL_API_ENABLED:-true}
+      SWAGGER_UI_ENABLED: ${SWAGGER_UI_ENABLED:-false}
+      TT2_SOCKET_URL: ${TT2_SOCKET_URL:-wss://tt2-public.gamehivegames.com}
+      TT2_SOCKET_HANDSHAKE_PATH: ${TT2_SOCKET_HANDSHAKE_PATH:-/api/socket.io}
+      TT2_REST_BASE_URL: ${TT2_REST_BASE_URL:-https://tt2-public.gamehivegames.com}
+      TT2_APPLICATION_TOKEN: ${TT2_APPLICATION_TOKEN}
+      TT2_PLAYER_TOKEN_ENCRYPTION_KEY: ${TT2_PLAYER_TOKEN_ENCRYPTION_KEY}
+      TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN: ${TT2_RAID_SUBSCRIPTION_PLAYER_TOKEN}
+    ports:
+      - "3000:3000"
+
+  worker:
+    image: ghcr.io/nongfeen/feen-worker:e17d71b9c9fa0a36a21d88549ddf9d504281e34a
+    restart: unless-stopped
+    environment:
+      ROLE: worker
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in Coolify's environment variables}
+      SIMULATION_CONCURRENCY: ${SIMULATION_CONCURRENCY:-1}
+      SIM_WORKER_COUNT: ${SIM_WORKER_COUNT:-0}
