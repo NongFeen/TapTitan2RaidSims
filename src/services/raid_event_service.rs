@@ -22,13 +22,14 @@ const RAID_STATE_LOCK: i64 = 721_934_762;
 const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
-    let affects_live_boss = matches!(event, "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
+    let affects_live_boss = matches!(event, "start" | "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
     let result = match event {
         "attack" => handle_attack(state, serde_json::from_value(data)?).await,
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
         "start_attack" => handle_start_attack(state, serde_json::from_value(data)?).await,
+        "start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         _ => Ok(()),
     };
     // Pings any open live-boss SSE streams to rebuild and re-check their view
