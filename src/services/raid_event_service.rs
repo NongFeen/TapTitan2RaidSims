@@ -22,13 +22,14 @@ const RAID_STATE_LOCK: i64 = 721_934_762;
 const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
-    let affects_live_boss = matches!(event, "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
+    let affects_live_boss = matches!(event, "start" | "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
     let result = match event {
         "attack" => handle_attack(state, serde_json::from_value(data)?).await,
         "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
         "start_attack" => handle_start_attack(state, serde_json::from_value(data)?).await,
+        "start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
         _ => Ok(()),
     };
     // Pings any open live-boss SSE streams to rebuild and re-check their view
@@ -229,7 +230,7 @@ async fn handle_sub_start(
             },
         )
         .await?;
-        Some(boss_version)
+        Some((boss_version, enemy_id))
     } else {
         // Boss already belongs to this raid -- refresh the stored base raid
         // data (a later sub_start can carry newer data for titans not yet
@@ -249,9 +250,11 @@ async fn handle_sub_start(
     };
     tx.commit().await?;
 
-    if let Some(boss_version) = new_boss_version {
+    if let Some((boss_version, enemy_id)) = new_boss_version {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-        queue_auto_simulations(state, None).await?;
+        if is_fully_targeted(&event.titan_target, &enemy_id) {
+            queue_auto_simulations(state, None).await?;
+        }
     }
 
     tracing::info!(
@@ -917,7 +920,9 @@ async fn handle_sub_cycle(
         .await?;
         tx.commit().await?;
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-        needs_simulation = true;
+        if is_fully_targeted(&event.titan_target, &enemy_id) {
+            needs_simulation = true;
+        }
     } else {
         // Same titan -- only ever touch targeting here, never current
         // HP/part_state (that stays `attack`'s job exclusively).
@@ -1266,6 +1271,20 @@ fn first_titan_enemy_id(raid: &RaidSnapshot) -> Result<&str, AppError> {
         .ok_or_else(|| AppError::BadRequest("sub_start raid has no titans".into()))
 }
 
+/// True only once every body part for `enemy_id` has been explicitly
+/// decided (crossed or checked) -- a part still at "0" means the clan
+/// hasn't finished picking targets yet. Sims should never run off a
+/// half-configured (or entirely untargeted) selection, since that state is
+/// about to change again anyway.
+fn is_fully_targeted(titan_target: &[TitanTarget], enemy_id: &str) -> bool {
+    titan_target
+        .iter()
+        .find(|target| target.enemy_id == enemy_id)
+        .is_some_and(|target| {
+            !target.state.is_empty() && target.state.iter().all(|part| part.state != "0")
+        })
+}
+
 /// Refreshes the sims boss's `attackable_parts` when `titan_target` reveals
 /// a real selection for `enemy_id` that differs from what's currently
 /// stored -- used when a sub_start for an already-known raid carries target
@@ -1276,6 +1295,9 @@ async fn update_boss_targets_from_titan_target(
     titan_target: &[TitanTarget],
     enemy_id: &str,
 ) -> Result<Option<i64>, AppError> {
+    if !is_fully_targeted(titan_target, enemy_id) {
+        return Ok(None);
+    }
     let Some(target) = titan_target.iter().find(|target| target.enemy_id == enemy_id) else {
         return Ok(None);
     };
