@@ -1,494 +1,491 @@
 {
-  "clan_code": "zxw8e",
-  "raid_id": 3317047,
-  "next_reset_at": "2026-08-18T03:23:21Z",
-  "card_bonuses": [
-    {
-      "id": "MirrorForceBoost",
-      "value": 0.35
+    "clan_code": "zxw8e",
+    "raid_id": 3324689,
+    "next_reset_at": "2026-09-11T02:30:42Z",
+    "card_bonuses": [],
+    "morale": {
+        "bonus_amount": 0.3,
+        "used": 0
     },
-    {
-      "id": "TeamTacticsClanMoraleBoost",
-      "value": 0.06299999999999994
-    }
-  ],
-  "morale": {
-    "bonus_amount": 0.38,
-    "used": 12000
-  },
-  "raid_started_at": "2026-08-16T15:23:21Z",
-  "raid": {
-    "spawn_sequence": ["Sterl", "Priker", "Priker", "Sterl", "Jukk", "Sterl"],
-    "tier": 9999,
-    "level": 129,
-    "titans": [
-      {
-        "enemy_id": "Enemy3",
-        "current_hp": 107028000000,
-        "total_hp": 107028000000,
-        "parts": [
-          {
-            "part_id": "BodyHead",
-            "current_hp": 37459800000,
-            "total_hp": 37459800000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHead",
-            "current_hp": 25072300000,
-            "total_hp": 26757000000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyChestUpper",
-            "current_hp": 37459800000,
-            "total_hp": 37459800000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorChestUpper",
-            "current_hp": 23387600000,
-            "total_hp": 26757000000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyArmUpperRight",
-            "current_hp": 9364950000,
-            "total_hp": 9364950000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperRight",
-            "current_hp": 8349175000,
-            "total_hp": 10033875000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyArmUpperLeft",
-            "current_hp": 9364950000,
-            "total_hp": 9364950000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperLeft",
-            "current_hp": 6664475000,
-            "total_hp": 10033875000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyLegUpperRight",
-            "current_hp": 18729900000,
-            "total_hp": 18729900000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperRight",
-            "current_hp": 8324400000,
-            "total_hp": 13378500000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyLegUpperLeft",
-            "current_hp": 18729900000,
-            "total_hp": 18729900000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperLeft",
-            "current_hp": 12536150000,
-            "total_hp": 13378500000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyHandRight",
-            "current_hp": 9364950000,
-            "total_hp": 9364950000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandRight",
-            "current_hp": 10033875000,
-            "total_hp": 10033875000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyHandLeft",
-            "current_hp": 9364950000,
-            "total_hp": 9364950000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandLeft",
-            "current_hp": 9191525000,
-            "total_hp": 10033875000,
-            "cursed": false
-          }
+    "raid_started_at": "2026-09-10T14:30:42Z",
+    "raid": {
+        "spawn_sequence": [
+            "Jukk",
+            "Terro",
+            "Jukk",
+            "Jukk",
+            "Klonk"
         ],
-        "enemy_name": "Jukk",
-        "area_debuffs": [
-          {
-            "bonus_type": "ArmorArmsHPMult",
-            "bonus_amount": 0.5
-          }
+        "tier": 9999,
+        "level": 106,
+        "titans": [
+            {
+                "enemy_id": "Enemy3",
+                "current_hp": 65332640000.00001,
+                "total_hp": 65664000000.00001,
+                "parts": [
+                    {
+                        "part_id": "BodyHead",
+                        "current_hp": 22982400000,
+                        "total_hp": 22982400000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHead",
+                        "current_hp": 16075520000.000002,
+                        "total_hp": 16416000000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyChestUpper",
+                        "current_hp": 22982400000,
+                        "total_hp": 22982400000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorChestUpper",
+                        "current_hp": 15735040000.000002,
+                        "total_hp": 16416000000.000002,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyArmUpperRight",
+                        "current_hp": 2541440000,
+                        "total_hp": 2872800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperRight",
+                        "current_hp": 0,
+                        "total_hp": 2052000000.0000002,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyArmUpperLeft",
+                        "current_hp": 2872800000,
+                        "total_hp": 2872800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperLeft",
+                        "current_hp": 1711520000.0000002,
+                        "total_hp": 2052000000.0000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyLegUpperRight",
+                        "current_hp": 5745600000,
+                        "total_hp": 5745600000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperRight",
+                        "current_hp": 3763520000.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyLegUpperLeft",
+                        "current_hp": 5745600000,
+                        "total_hp": 5745600000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperLeft",
+                        "current_hp": 2742080000.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyHandRight",
+                        "current_hp": 2872800000,
+                        "total_hp": 2872800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandRight",
+                        "current_hp": 9120000.000000238,
+                        "total_hp": 2052000000.0000002,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyHandLeft",
+                        "current_hp": 2872800000,
+                        "total_hp": 2872800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandLeft",
+                        "current_hp": 1030560000.0000002,
+                        "total_hp": 2052000000.0000002,
+                        "cursed": false
+                    }
+                ],
+                "enemy_name": "Jukk",
+                "area_debuffs": [
+                    {
+                        "bonus_type": "AllLimbsHPMult",
+                        "bonus_amount": -0.5
+                    }
+                ],
+                "cursed_debuffs": [
+                    {
+                        "bonus_type": "BodyDamagePerCurse",
+                        "bonus_amount": -0.06
+                    }
+                ]
+            },
+            {
+                "enemy_id": "Enemy6",
+                "current_hp": 49248000000.00001,
+                "total_hp": 49248000000.00001,
+                "parts": [
+                    {
+                        "part_id": "BodyHead",
+                        "current_hp": 17729280000.000004,
+                        "total_hp": 17729280000.000004,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHead",
+                        "current_hp": 17035673600.000004,
+                        "total_hp": 18385920000.000004,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyChestUpper",
+                        "current_hp": 12476160000.000002,
+                        "total_hp": 12476160000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorChestUpper",
+                        "current_hp": 15750118400.000002,
+                        "total_hp": 16087680000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyArmUpperRight",
+                        "current_hp": 3611520000.0000005,
+                        "total_hp": 3611520000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperRight",
+                        "current_hp": 2078630400.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyArmUpperLeft",
+                        "current_hp": 3611520000.0000005,
+                        "total_hp": 3611520000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperLeft",
+                        "current_hp": 3091315200.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyLegUpperRight",
+                        "current_hp": 7223040000.000001,
+                        "total_hp": 7223040000.000001,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperRight",
+                        "current_hp": 5544473600.000001,
+                        "total_hp": 6894720000.000001,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyLegUpperLeft",
+                        "current_hp": 7223040000.000001,
+                        "total_hp": 7223040000.000001,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperLeft",
+                        "current_hp": 5882035200.000001,
+                        "total_hp": 6894720000.000001,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyHandRight",
+                        "current_hp": 3611520000.0000005,
+                        "total_hp": 3611520000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandRight",
+                        "current_hp": 3766438400.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyHandLeft",
+                        "current_hp": 3611520000.0000005,
+                        "total_hp": 3611520000.0000005,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandLeft",
+                        "current_hp": 3091315200.0000005,
+                        "total_hp": 4104000000.0000005,
+                        "cursed": false
+                    }
+                ],
+                "enemy_name": "Terro",
+                "area_debuffs": [
+                    {
+                        "bonus_type": "AllTorsoHPMult",
+                        "bonus_amount": -0.5
+                    }
+                ],
+                "cursed_debuffs": [
+                    {
+                        "bonus_type": "BodyDamagePerCurse",
+                        "bonus_amount": -0.06
+                    }
+                ]
+            },
+            {
+                "enemy_id": "Enemy7",
+                "current_hp": 59097600000.00001,
+                "total_hp": 59097600000.00001,
+                "parts": [
+                    {
+                        "part_id": "BodyHead",
+                        "current_hp": 24295680000.000004,
+                        "total_hp": 24295680000.000004,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHead",
+                        "current_hp": 17163110400,
+                        "total_hp": 19042560000,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyChestUpper",
+                        "current_hp": 30205440000.000004,
+                        "total_hp": 30205440000.000004,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorChestUpper",
+                        "current_hp": 18289612800,
+                        "total_hp": 19699200000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyArmUpperRight",
+                        "current_hp": 8864640000.000002,
+                        "total_hp": 8864640000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperRight",
+                        "current_hp": 12133612800,
+                        "total_hp": 13543200000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyArmUpperLeft",
+                        "current_hp": 8864640000.000002,
+                        "total_hp": 8864640000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorArmUpperLeft",
+                        "current_hp": 12133612800,
+                        "total_hp": 13543200000,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyLegUpperRight",
+                        "current_hp": 4924800000,
+                        "total_hp": 4924800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperRight",
+                        "current_hp": 933888000.0000005,
+                        "total_hp": 3283200000.0000005,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyLegUpperLeft",
+                        "current_hp": 4924800000,
+                        "total_hp": 4924800000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorLegUpperLeft",
+                        "current_hp": 2343475200.0000005,
+                        "total_hp": 3283200000.0000005,
+                        "cursed": true
+                    },
+                    {
+                        "part_id": "BodyHandRight",
+                        "current_hp": 8864640000.000002,
+                        "total_hp": 8864640000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandRight",
+                        "current_hp": 12603475200,
+                        "total_hp": 13543200000,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "BodyHandLeft",
+                        "current_hp": 8864640000.000002,
+                        "total_hp": 8864640000.000002,
+                        "cursed": false
+                    },
+                    {
+                        "part_id": "ArmorHandLeft",
+                        "current_hp": 12133612800,
+                        "total_hp": 13543200000,
+                        "cursed": false
+                    }
+                ],
+                "enemy_name": "Klonk",
+                "area_debuffs": [
+                    {
+                        "bonus_type": "AllArmsHPMult",
+                        "bonus_amount": 0.5
+                    }
+                ],
+                "cursed_debuffs": [
+                    {
+                        "bonus_type": "BodyDamagePerCurse",
+                        "bonus_amount": -0.06
+                    }
+                ]
+            }
         ],
-        "cursed_debuffs": [
-          {
-            "bonus_type": "AfflictedDamagePerCurse",
-            "bonus_amount": -0.06
-          }
+        "area_buffs": [
+            {
+                "bonus_type": "BurstDamage",
+                "bonus_amount": 0.3
+            }
         ]
-      },
-      {
-        "enemy_id": "Enemy4",
-        "current_hp": 107028000000,
-        "total_hp": 107028000000,
-        "parts": [
-          {
-            "part_id": "BodyHead",
-            "current_hp": 21405600000,
-            "total_hp": 21405600000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHead",
-            "current_hp": 17917280000,
-            "total_hp": 21405600000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyChestUpper",
-            "current_hp": 70638480000,
-            "total_hp": 70638480000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorChestUpper",
-            "current_hp": 26757000000,
-            "total_hp": 26757000000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyArmUpperRight",
-            "current_hp": 8027100000,
-            "total_hp": 8027100000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperRight",
-            "current_hp": 6545555000,
-            "total_hp": 10033875000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyArmUpperLeft",
-            "current_hp": 8027100000,
-            "total_hp": 8027100000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperLeft",
-            "current_hp": 8289715000,
-            "total_hp": 10033875000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyLegUpperRight",
-            "current_hp": 16054200000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperRight",
-            "current_hp": 19195670000,
-            "total_hp": 20067750000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyLegUpperLeft",
-            "current_hp": 16054200000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperLeft",
-            "current_hp": 18323590000,
-            "total_hp": 20067750000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyHandRight",
-            "current_hp": 8027100000,
-            "total_hp": 8027100000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandRight",
-            "current_hp": 5673475000,
-            "total_hp": 10033875000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyHandLeft",
-            "current_hp": 8027100000,
-            "total_hp": 8027100000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandLeft",
-            "current_hp": 8289715000,
-            "total_hp": 10033875000,
-            "cursed": false
-          }
-        ],
-        "enemy_name": "Sterl",
-        "area_debuffs": [
-          {
-            "bonus_type": "AllLimbsHPMult",
-            "bonus_amount": 0.5
-          }
-        ],
-        "cursed_debuffs": [
-          {
-            "bonus_type": "AfflictedDamagePerCurse",
-            "bonus_amount": -0.06
-          }
-        ]
-      },
-      {
-        "enemy_id": "Enemy8",
-        "current_hp": 107028000000,
-        "total_hp": 107028000000,
-        "parts": [
-          {
-            "part_id": "BodyHead",
-            "current_hp": 43667424000,
-            "total_hp": 43667424000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHead",
-            "current_hp": 28358456000.000004,
-            "total_hp": 29967840000.000004,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyChestUpper",
-            "current_hp": 16054200000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorChestUpper",
-            "current_hp": 12030740000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyArmUpperRight",
-            "current_hp": 13646070000,
-            "total_hp": 13646070000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperRight",
-            "current_hp": 7222408000,
-            "total_hp": 8027100000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyArmUpperLeft",
-            "current_hp": 13646070000,
-            "total_hp": 13646070000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorArmUpperLeft",
-            "current_hp": 5613024000,
-            "total_hp": 8027100000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyLegUpperRight",
-            "current_hp": 5351400000,
-            "total_hp": 5351400000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperRight",
-            "current_hp": 15249508000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyLegUpperLeft",
-            "current_hp": 5351400000,
-            "total_hp": 5351400000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorLegUpperLeft",
-            "current_hp": 15249508000,
-            "total_hp": 16054200000,
-            "cursed": false
-          },
-          {
-            "part_id": "BodyHandRight",
-            "current_hp": 13646070000,
-            "total_hp": 13646070000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandRight",
-            "current_hp": 7222408000,
-            "total_hp": 8027100000,
-            "cursed": true
-          },
-          {
-            "part_id": "BodyHandLeft",
-            "current_hp": 13646070000,
-            "total_hp": 13646070000,
-            "cursed": false
-          },
-          {
-            "part_id": "ArmorHandLeft",
-            "current_hp": 3198948000,
-            "total_hp": 8027100000,
-            "cursed": true
-          }
-        ],
-        "enemy_name": "Priker",
-        "area_debuffs": [
-          {
-            "bonus_type": "AllHeadHPMult",
-            "bonus_amount": -0.2
-          }
-        ],
-        "cursed_debuffs": [
-          {
-            "bonus_type": "BodyDamagePerCurse",
-            "bonus_amount": -0.06
-          }
-        ]
-      }
-    ],
-    "area_buffs": [
-      {
-        "bonus_type": "AfflictedDuration",
-        "bonus_amount": 0.5
-      }
+    },
+    "titan_target": [
+        {
+            "enemy_id": "Enemy3",
+            "state": [
+                {
+                    "id": "Head",
+                    "state": "2"
+                },
+                {
+                    "id": "ChestUpper",
+                    "state": "2"
+                },
+                {
+                    "id": "ArmUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "ArmUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "HandRight",
+                    "state": "2"
+                },
+                {
+                    "id": "HandLeft",
+                    "state": "2"
+                }
+            ]
+        },
+        {
+            "enemy_id": "Enemy6",
+            "state": [
+                {
+                    "id": "Head",
+                    "state": "2"
+                },
+                {
+                    "id": "ChestUpper",
+                    "state": "2"
+                },
+                {
+                    "id": "ArmUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "ArmUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "HandRight",
+                    "state": "2"
+                },
+                {
+                    "id": "HandLeft",
+                    "state": "2"
+                }
+            ]
+        },
+        {
+            "enemy_id": "Enemy7",
+            "state": [
+                {
+                    "id": "Head",
+                    "state": "2"
+                },
+                {
+                    "id": "ChestUpper",
+                    "state": "1"
+                },
+                {
+                    "id": "ArmUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "ArmUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperRight",
+                    "state": "2"
+                },
+                {
+                    "id": "LegUpperLeft",
+                    "state": "2"
+                },
+                {
+                    "id": "HandRight",
+                    "state": "1"
+                },
+                {
+                    "id": "HandLeft",
+                    "state": "2"
+                }
+            ]
+        }
     ]
-  },
-  "titan_target": [
-    {
-      "enemy_id": "Enemy3",
-      "state": [
-        {
-          "id": "Head",
-          "state": "1"
-        },
-        {
-          "id": "ChestUpper",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperRight",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperLeft",
-          "state": "2"
-        },
-        {
-          "id": "LegUpperRight",
-          "state": "2"
-        },
-        {
-          "id": "LegUpperLeft",
-          "state": "2"
-        },
-        {
-          "id": "HandRight",
-          "state": "2"
-        },
-        {
-          "id": "HandLeft",
-          "state": "2"
-        }
-      ]
-    },
-    {
-      "enemy_id": "Enemy4",
-      "state": [
-        {
-          "id": "Head",
-          "state": "1"
-        },
-        {
-          "id": "ChestUpper",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperRight",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperLeft",
-          "state": "2"
-        },
-        {
-          "id": "LegUpperRight",
-          "state": "2"
-        },
-        {
-          "id": "LegUpperLeft",
-          "state": "1"
-        },
-        {
-          "id": "HandRight",
-          "state": "2"
-        },
-        {
-          "id": "HandLeft",
-          "state": "2"
-        }
-      ]
-    },
-    {
-      "enemy_id": "Enemy8",
-      "state": [
-        {
-          "id": "Head",
-          "state": "2"
-        },
-        {
-          "id": "ChestUpper",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperRight",
-          "state": "2"
-        },
-        {
-          "id": "ArmUpperLeft",
-          "state": "2"
-        },
-        {
-          "id": "LegUpperRight",
-          "state": "1"
-        },
-        {
-          "id": "LegUpperLeft",
-          "state": "1"
-        },
-        {
-          "id": "HandRight",
-          "state": "2"
-        },
-        {
-          "id": "HandLeft",
-          "state": "2"
-        }
-      ]
-    }
-  ]
 }
