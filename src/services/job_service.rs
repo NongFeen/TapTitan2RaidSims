@@ -29,6 +29,10 @@ use crate::{
 const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v2");
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
+/// Re-recommend (`custom_recommendation`) re-runs the exhaustive deck search
+/// synchronously on every call rather than as a background job, so its cap
+/// is lower than the general recommendation limit to keep that search fast.
+pub const MAX_CUSTOM_RECOMMENDATION_DECK_COUNT: usize = 9;
 
 struct PreparedRecommendation {
     deck_count: usize,
@@ -856,9 +860,9 @@ pub async fn custom_recommendation(
     excluded_cards: &[CardName],
     required_cards: &[CardName],
 ) -> Result<RecommendationView, AppError> {
-    if !(1..=MAX_RECOMMENDATION_DECK_COUNT).contains(&deck_count) {
+    if !(1..=MAX_CUSTOM_RECOMMENDATION_DECK_COUNT).contains(&deck_count) {
         return Err(AppError::BadRequest(format!(
-            "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
+            "deck_count must be between 1 and {MAX_CUSTOM_RECOMMENDATION_DECK_COUNT}"
         )));
     }
     let recommendation_phase = if include_body_phase {

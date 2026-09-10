@@ -12,7 +12,10 @@ use crate::{
     error::AppError,
     models::{app::RecommendationView, cards::CardName},
     services::{
-        job_service::{DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_RECOMMENDATION_DECK_COUNT},
+        job_service::{
+            DEFAULT_RECOMMENDATION_DECK_COUNT, MAX_CUSTOM_RECOMMENDATION_DECK_COUNT,
+            MAX_RECOMMENDATION_DECK_COUNT,
+        },
         taptitan::recommendation::cards_from_mask,
     },
     state::AppState,
@@ -33,10 +36,10 @@ fn default_deck_count() -> i32 {
     DEFAULT_RECOMMENDATION_DECK_COUNT as i32
 }
 
-fn validate_deck_count(deck_count: i32) -> Result<usize, AppError> {
-    if !(1..=MAX_RECOMMENDATION_DECK_COUNT as i32).contains(&deck_count) {
+fn validate_deck_count(deck_count: i32, max: usize) -> Result<usize, AppError> {
+    if !(1..=max as i32).contains(&deck_count) {
         return Err(AppError::BadRequest(format!(
-            "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
+            "deck_count must be between 1 and {max}"
         )));
     }
     Ok(deck_count as usize)
@@ -74,7 +77,7 @@ pub async fn generate_for_player(
     Path(player_id): Path<String>,
     Json(request): Json<GenerateRecommendationRequest>,
 ) -> Result<Json<GenerateRecommendationResponse>, AppError> {
-    let deck_count = validate_deck_count(request.deck_count)?;
+    let deck_count = validate_deck_count(request.deck_count, MAX_RECOMMENDATION_DECK_COUNT)?;
     let created = crate::services::job_service::generate_deck_recommendations(
         &state,
         &player_id,
@@ -127,7 +130,7 @@ pub async fn custom_for_player(
     Path(player_id): Path<String>,
     Json(request): Json<CustomRecommendationRequest>,
 ) -> Result<Json<RecommendationView>, AppError> {
-    let deck_count = validate_deck_count(request.deck_count)?;
+    let deck_count = validate_deck_count(request.deck_count, MAX_CUSTOM_RECOMMENDATION_DECK_COUNT)?;
     let mut required_cards = Vec::with_capacity(2);
     if request.must_include_mirror_force {
         required_cards.push(CardName::MirrorForce);
@@ -163,7 +166,7 @@ pub async fn current_for_player(
     Path(player_id): Path<String>,
     Query(query): Query<RecommendationQuery>,
 ) -> Result<Json<RecommendationView>, AppError> {
-    validate_deck_count(query.deck_count)?;
+    validate_deck_count(query.deck_count, MAX_RECOMMENDATION_DECK_COUNT)?;
     let player_exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM players WHERE player_id=$1)")
             .bind(&player_id)
