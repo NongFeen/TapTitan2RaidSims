@@ -1,0 +1,222 @@
+{
+  "attack_log": {
+    "attack_datetime": "2026-09-10T16:27:23Z",
+    "cards_damage": [
+      {
+        "titan_index": 0,
+        "id": null,
+        "damage_log": [
+          {
+            "id": "BodyHandRight",
+            "value": 643986
+          },
+          {
+            "id": "BodyLegUpperRight",
+            "value": 1024522
+          },
+          {
+            "id": "BodyChestUpper",
+            "value": 1336757
+          },
+          {
+            "id": "BodyArmUpperLeft",
+            "value": 702530
+          },
+          {
+            "id": "BodyHead",
+            "value": 643986
+          },
+          {
+            "id": "BodyArmUpperRight",
+            "value": 156118
+          },
+          {
+            "id": "BodyLegUpperLeft",
+            "value": 556169
+          },
+          {
+            "id": "BodyHandLeft",
+            "value": 790346
+          }
+        ]
+      },
+      {
+        "titan_index": 0,
+        "id": "Purify",
+        "damage_log": [
+          {
+            "id": "BodyHandRight",
+            "value": 60565346
+          },
+          {
+            "id": "BodyHead",
+            "value": 64603036
+          },
+          {
+            "id": "BodyLegUpperRight",
+            "value": 113055313
+          },
+          {
+            "id": "BodyArmUpperRight",
+            "value": 4037690
+          },
+          {
+            "id": "BodyChestUpper",
+            "value": 133243762
+          },
+          {
+            "id": "BodyLegUpperLeft",
+            "value": 68640726
+          },
+          {
+            "id": "BodyArmUpperLeft",
+            "value": 56527657
+          },
+          {
+            "id": "BodyHandLeft",
+            "value": 68640726
+          }
+        ]
+      },
+      {
+        "titan_index": 0,
+        "id": "TriangleSupport",
+        "damage_log": []
+      },
+      {
+        "titan_index": 0,
+        "id": "BurningAttack",
+        "damage_log": [
+          {
+            "id": "BodyChestUpper",
+            "value": 33600507
+          },
+          {
+            "id": "BodyHead",
+            "value": 34918174
+          },
+          {
+            "id": "BodyHandRight",
+            "value": 35577007
+          },
+          {
+            "id": "BodyHandLeft",
+            "value": 32151073
+          },
+          {
+            "id": "BodyLegUpperRight",
+            "value": 38739408
+          },
+          {
+            "id": "BodyLegUpperLeft",
+            "value": 32941673
+          },
+          {
+            "id": "BodyArmUpperRight",
+            "value": 11859003
+          },
+          {
+            "id": "BodyArmUpperLeft",
+            "value": 28856906
+          }
+        ]
+      }
+    ],
+    "cards_level": [
+      {
+        "id": "Purify",
+        "value": 70
+      },
+      {
+        "id": "BurningAttack",
+        "value": 66
+      },
+      {
+        "id": "TriangleSupport",
+        "value": 88
+      }
+    ]
+  },
+  "clan_code": "zxw8e",
+  "raid_id": 3324689,
+  "player": {
+    "attacks_remaining": 5,
+    "player_code": "933qd64",
+    "name": "12 Kero -> Feen",
+    "raid_level": 1526
+  },
+  "raid_state": {
+    "current": {
+      "enemy_id": "Enemy3",
+      "current_hp": 23437513500,
+      "parts": [
+        {
+          "part_id": "BodyHead",
+          "current_hp": 12815706136
+        },
+        {
+          "part_id": "ArmorHead",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyChestUpper",
+          "current_hp": 8268184482
+        },
+        {
+          "part_id": "ArmorChestUpper",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyArmUpperRight",
+          "current_hp": 137157928
+        },
+        {
+          "part_id": "ArmorArmUpperRight",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyArmUpperLeft",
+          "current_hp": 329170074
+        },
+        {
+          "part_id": "ArmorArmUpperLeft",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyLegUpperRight",
+          "current_hp": 1996153947
+        },
+        {
+          "part_id": "ArmorLegUpperRight",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyLegUpperLeft",
+          "current_hp": 1736889307
+        },
+        {
+          "part_id": "ArmorLegUpperLeft",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyHandRight",
+          "current_hp": 612808826
+        },
+        {
+          "part_id": "ArmorHandRight",
+          "current_hp": 0
+        },
+        {
+          "part_id": "BodyHandLeft",
+          "current_hp": 824642812
+        },
+        {
+          "part_id": "ArmorHandLeft",
+          "current_hp": 0
+        }
+      ]
+    },
+    "titan_index": 0
+  },
+  "cycle": 1
+}

@@ -1,0 +1,6 @@
+# sqlx checksums migration files by raw byte content, so a Windows checkout
+# converting these to CRLF (via core.autocrlf) silently breaks the checksum
+# recorded in _sqlx_migrations, even though nothing about the SQL actually
+# changed. Force LF regardless of platform so every checkout hashes
+# identically to what's stored in the database.
+*.sql text eol=lf
