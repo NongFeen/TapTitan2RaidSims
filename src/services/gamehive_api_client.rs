@@ -106,7 +106,6 @@ pub struct GameHiveApiClient {
     http: reqwest::Client,
     connected: AtomicBool,
     raid_connected: AtomicBool,
-    raid_subscription_started: AtomicBool,
 }
 
 impl GameHiveApiClient {
@@ -118,7 +117,6 @@ impl GameHiveApiClient {
             http: reqwest::Client::new(),
             connected: AtomicBool::new(false),
             raid_connected: AtomicBool::new(false),
-            raid_subscription_started: AtomicBool::new(false),
         }))
     }
 
@@ -209,24 +207,27 @@ impl GameHiveApiClient {
                     } else if packet.starts_with("40/raid") {
                         self.raid_connected.store(true, Ordering::Release);
                         tracing::info!("TT2 /raid Socket.IO namespace connected");
-                        if self
-                            .raid_subscription_started
-                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                        {
-                            let subscription_client = Arc::clone(self);
-                            tokio::spawn(async move {
-                                match subscription_client.subscribe_raid_once().await {
-                                    Ok(()) => tracing::info!(
-                                        "TT2 raid unsubscribe/subscribe completed once"
-                                    ),
-                                    Err(error) => tracing::error!(
-                                        ?error,
-                                        "TT2 one-time raid subscription failed"
-                                    ),
+                        // Re-subscribe on every raid-namespace connect, not just the
+                        // first one ever -- TT2 only sends sub_start/sub_cycle's
+                        // "initial state" burst in response to a fresh subscribe.
+                        // Without this, reconnecting after an outage (e.g. a new
+                        // raid started while TT2 was unreachable) leaves the
+                        // backend with no way to learn the new raid's state until
+                        // the next naturally-occurring sub_cycle/cycle_reset, up
+                        // to a full cycle later. subscribe_raid() unsubscribes
+                        // first (tolerating "wasn't subscribed"), so it's safe to
+                        // call unconditionally here regardless of prior state.
+                        let subscription_client = Arc::clone(self);
+                        tokio::spawn(async move {
+                            match subscription_client.subscribe_raid().await {
+                                Ok(()) => {
+                                    tracing::info!("TT2 raid unsubscribe/subscribe completed")
                                 }
-                            });
-                        }
+                                Err(error) => {
+                                    tracing::error!(?error, "TT2 raid subscription failed")
+                                }
+                            }
+                        });
                     } else if packet == "2" {
                         if let Err(error) = socket.send(Message::Text("3".into())).await {
                             tracing::error!(?error, "Could not send TT2 Engine.IO pong");
@@ -279,7 +280,7 @@ impl GameHiveApiClient {
         tracing::warn!("TT2 socket stopped");
     }
 
-    async fn subscribe_raid_once(&self) -> Result<(), AppError> {
+    async fn subscribe_raid(&self) -> Result<(), AppError> {
         let body = RaidSubscriptionRequest {
             player_tokens: vec![self.config.raid_subscription_player_token.as_str()],
         };
@@ -459,8 +460,12 @@ fn dispatch_socket_event(
             if namespace == "/raid" =>
         {
             if let Some(state) = state {
-                if event == "attack" {
-                    tracing::info!(namespace, "TT2 raid attack event received");
+                match event {
+                    "attack" => tracing::info!(namespace, "TT2 raid attack event received"),
+                    "sub_start" | "sub_cycle" | "cycle_reset" => {
+                        tracing::info!(namespace, event, "TT2 raid event received")
+                    }
+                    _ => {}
                 }
                 let event = event.to_string();
                 tokio::spawn(async move {
