@@ -189,7 +189,7 @@ async fn handle_sub_start_creates_raid_cycle_and_boss_rows_for_a_new_raid(pool: 
         titan_target: vec![],
     };
 
-    handle_sub_start(&state, event, serde_json::json!({}))
+    handle_sub_start(&state, event, serde_json::json!({}), true)
         .await
         .expect("a brand new raid's sub_start should succeed");
 
@@ -233,7 +233,7 @@ async fn repeated_sub_start_for_the_same_raid_only_refreshes_raid_data(pool: sql
         start_at: Utc::now(),
         titan_target: vec![],
     };
-    handle_sub_start(&state, first_event, serde_json::json!({}))
+    handle_sub_start(&state, first_event, serde_json::json!({}), true)
         .await
         .unwrap();
     let first_version = boss_repo::load(&pool).await.unwrap().unwrap().version;
@@ -255,7 +255,7 @@ async fn repeated_sub_start_for_the_same_raid_only_refreshes_raid_data(pool: sql
             }],
         }],
     };
-    handle_sub_start(&state, second_event, serde_json::json!({}))
+    handle_sub_start(&state, second_event, serde_json::json!({}), true)
         .await
         .expect("a later sub_start for an already-established raid should succeed");
 
@@ -305,6 +305,7 @@ async fn handle_attack_updates_hp_without_bumping_version_when_nothing_changed(p
             titan_target: vec![],
         },
         serde_json::json!({}),
+        true,
     )
     .await
     .unwrap();
@@ -365,6 +366,7 @@ async fn handle_attack_triggers_full_refresh_and_queues_auto_simulations_when_a_
             titan_target: vec![],
         },
         serde_json::json!({}),
+        true,
     )
     .await
     .unwrap();
@@ -445,6 +447,7 @@ async fn handle_sub_cycle_updates_targets_only_and_never_touches_current_hp(pool
             titan_target: vec![],
         },
         serde_json::json!({}),
+        true,
     )
     .await
     .unwrap();
