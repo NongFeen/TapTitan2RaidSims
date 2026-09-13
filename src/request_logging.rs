@@ -9,6 +9,9 @@ pub struct FilteredHttpTrace;
 
 fn suppress_request_log(path: &str) -> bool {
     path.starts_with("/api/players/")
+        || path == "/api/taptitan/cards"
+        || path == "/api/raid-cycle/current"
+        || path.starts_with("/api/live-attacking-players")
 }
 
 impl<B> MakeSpan<B> for FilteredHttpTrace {

@@ -456,12 +456,19 @@ fn dispatch_socket_event(
             connected.store(false, Ordering::Release);
             tracing::error!(namespace, ?data, "TT2 connect_error event received");
         }
-        "attack" | "sub_start" | "sub_cycle" | "cycle_reset" | "start_attack"
+        "attack" | "start" | "sub_start" | "sub_cycle" | "cycle_reset" | "start_attack"
             if namespace == "/raid" =>
         {
             if let Some(state) = state {
                 match event {
                     "attack" => tracing::info!(namespace, "TT2 raid attack event received"),
+                    // Payload logged only for "start" -- no captured example
+                    // exists for it yet (see exampleSocketdatajson/), so
+                    // this is how we'll see its real shape if the
+                    // handle_sub_start-reusing parser below fails on it.
+                    "start" => {
+                        tracing::info!(namespace, ?data, "TT2 raid start event received")
+                    }
                     "sub_start" | "sub_cycle" | "cycle_reset" => {
                         tracing::info!(namespace, event, "TT2 raid event received")
                     }
@@ -478,6 +485,7 @@ fn dispatch_socket_event(
                 });
             }
         }
+        "morale" => {}
         _ => tracing::debug!(namespace, event, "Ignoring unexpected TT2 event"),
     }
 }

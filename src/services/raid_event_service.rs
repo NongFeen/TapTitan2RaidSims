@@ -22,10 +22,18 @@ const RAID_STATE_LOCK: i64 = 721_934_762;
 const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
-    let affects_live_boss = matches!(event, "start" | "attack" | "sub_start" | "sub_cycle" | "cycle_reset");
+    let affects_live_boss = matches!(
+        event,
+        "start" | "attack" | "sub_start" | "sub_cycle" | "cycle_reset" | "target"
+    );
     let result = match event {
-        "start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
-        "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data).await,
+        // `start` never triggers sims -- it fires the instant a raid begins,
+        // well before any real targeting exists, and reuses SubStartEvent's
+        // parser purely for the raid-establishment side effects (same as a
+        // sub_start for a not-yet-seen raid_id), not its targeting data.
+        "start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data, false).await,
+        "sub_start" => handle_sub_start(state, serde_json::from_value(data.clone())?, data, true).await,
+        "target" => handle_target(state, serde_json::from_value(data)?).await,
         "cycle_reset" => handle_cycle_reset(state, serde_json::from_value(data)?).await,
         "sub_cycle" => handle_sub_cycle(state, serde_json::from_value(data.clone())?, data).await,
         "attack" => handle_attack(state, serde_json::from_value(data)?).await,
@@ -119,6 +127,7 @@ async fn handle_sub_start(
     state: &Arc<AppState>,
     event: SubStartEvent,
     raw_payload: Value,
+    allow_sim_trigger: bool,
 ) -> Result<(), AppError> {
     store_sub_start_cycle_state(
         state,
@@ -252,7 +261,7 @@ async fn handle_sub_start(
 
     if let Some((boss_version, enemy_id)) = new_boss_version {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
-        if is_fully_targeted(&event.titan_target, &enemy_id) {
+        if allow_sim_trigger && is_fully_targeted(&event.titan_target, &enemy_id) {
             queue_auto_simulations(state, None).await?;
         }
     }
@@ -952,6 +961,61 @@ async fn handle_sub_cycle(
     Ok(())
 }
 
+/// A single-titan targeting update, sent whenever anyone in the clan changes
+/// which parts are marked to attack/avoid on a titan -- see
+/// https://tt2-docs.gamehivegames.com/socket/#message-target. Same
+/// `state`/part shape as one entry of `sub_start`/`sub_cycle`'s
+/// `titan_target` array, just flattened to a single enemy per event instead
+/// of one array covering every titan in the raid.
+async fn handle_target(state: &Arc<AppState>, event: TargetEvent) -> Result<(), AppError> {
+    let mut tx = state.db()?.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(RAID_STATE_LOCK)
+        .execute(&mut *tx)
+        .await?;
+
+    // Only the currently-active titan's targeting affects the sims boss --
+    // a target update for some other titan in the spawn sequence (not yet
+    // reached) has nothing to apply it to yet, since the boss row always
+    // represents whichever titan is actually being fought right now.
+    let current = boss_repo::load_for_update(&mut tx).await?;
+    let is_current_titan = current
+        .as_ref()
+        .and_then(|boss| boss.source_enemy_id.as_deref())
+        == Some(event.enemy_id.as_str());
+    if !is_current_titan {
+        tx.commit().await?;
+        tracing::debug!(
+            raid_id = event.raid_id,
+            enemy_id = event.enemy_id,
+            "TT2 target event is for a titan that isn't currently active; ignoring"
+        );
+        return Ok(());
+    }
+
+    let titan_target = [TitanTarget {
+        enemy_id: event.enemy_id.clone(),
+        state: event.state,
+    }];
+    let targets_changed =
+        update_boss_targets_from_titan_target(&mut tx, &titan_target, &event.enemy_id).await?;
+    tx.commit().await?;
+
+    if let Some(boss_version) = targets_changed {
+        job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
+        queue_auto_simulations(state, None).await?;
+    }
+
+    tracing::info!(
+        raid_id = event.raid_id,
+        clan_code = event.clan_code,
+        enemy_id = event.enemy_id,
+        targets_changed = targets_changed.is_some(),
+        "applied TT2 target event to the stored base raid boss"
+    );
+    Ok(())
+}
+
 async fn handle_cycle_reset(state: &Arc<AppState>, event: CycleResetEvent) -> Result<(), AppError> {
     let mirror_changed = store_cycle_state(
         state,
@@ -1597,6 +1661,17 @@ struct TitanBonus {
 
 #[derive(Debug, Deserialize, serde::Serialize)]
 struct TitanTarget {
+    enemy_id: String,
+    state: Vec<TitanTargetPart>,
+}
+
+/// https://tt2-docs.gamehivegames.com/socket/#message-target
+#[derive(Debug, Deserialize)]
+struct TargetEvent {
+    clan_code: String,
+    raid_id: i64,
+    // `updated_at` and `player` (who changed the target) are documented but
+    // unused here.
     enemy_id: String,
     state: Vec<TitanTargetPart>,
 }
