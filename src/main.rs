@@ -61,16 +61,11 @@ async fn run() {
         None
     };
     let pool = match config.database_url.as_deref() {
-        Some(database_url) => match database::connect(database_url).await {
-            Ok(pool) => {
-                tracing::info!("database connected and migrations applied");
-                Some(pool)
-            }
-            Err(error) => {
-                tracing::warn!(?error, "database unavailable; starting in degraded mode");
-                None
-            }
-        },
+        Some(database_url) => {
+            let pool = database::connect_with_retry(database_url).await;
+            tracing::info!("database connected and migrations applied");
+            Some(pool)
+        }
         None => {
             tracing::warn!("DATABASE_URL is not configured; starting in degraded mode");
             None

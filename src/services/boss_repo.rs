@@ -236,9 +236,9 @@ where
 }
 
 /// Same as `load`, but locks the singleton row for the duration of `tx` --
-/// used by the raid-ingestion pipeline, which already holds an advisory
-/// lock (`RAID_STATE_LOCK`) serializing all boss-state writes anyway; this
-/// row lock is defense-in-depth on top of that.
+/// used by the raid-ingestion pipeline, which already holds an in-process
+/// mutex (`AppState::raid_state_lock`) serializing all boss-state writes
+/// anyway; this row lock is defense-in-depth on top of that.
 pub async fn load_for_update(
     tx: &mut Transaction<'_, Postgres>,
 ) -> Result<Option<LoadedBoss>, AppError> {
