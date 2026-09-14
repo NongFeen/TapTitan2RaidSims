@@ -93,20 +93,21 @@ pub fn on_tick(
         bonus_c: affliction.source_skill.bonus_c,
     };
 
-    affliction.tick_elapsed += elapsed_seconds;
+    if affliction.stacks.iter().all(|stack| stack.is_expired()) {
+        affliction.tick_elapsed = 0.0;
+    } else {
+        affliction.tick_elapsed += elapsed_seconds;
+    }
 
-    while affliction.tick_elapsed + f64::EPSILON >= tick_interval_seconds
-        && affliction
-            .stacks
-            .iter()
-            .any(|stack| stack.remaining_duration > 0.0)
+    while affliction.tick_elapsed  >= tick_interval_seconds
+        && affliction.stacks.iter().any(|stack| !stack.is_expired())
     {
         affliction.tick_elapsed -= tick_interval_seconds;
 
         let tick_damage = affliction
             .stacks
             .iter()
-            .filter(|stack| stack.remaining_duration > 0.0)
+            .filter(|stack| !stack.is_expired())
             .map(|stack| {
                 tick_damage_for(
                     affliction,
@@ -122,7 +123,7 @@ pub fn on_tick(
             let _lowest_remaining = affliction
                 .stacks
                 .iter()
-                .filter(|stack| stack.remaining_duration > 0.0)
+                .filter(|stack| !stack.is_expired())
                 .map(|stack| stack.remaining_duration)
                 .min_by(|left, right| left.total_cmp(right))
                 .unwrap_or(0.0);
