@@ -80,7 +80,7 @@ impl AfflictionStack {
     }
 
     pub fn is_expired(&self) -> bool {
-        self.remaining_duration <= 0.0
+        self.remaining_duration <= f64::EPSILON
     }
 }
 
