@@ -17,6 +17,19 @@ pub struct AppState {
     pub internal_api_enabled: bool,
     pub gamehive_api: Option<Arc<GameHiveApiClient>>,
     pub clan_fetch_lock: Arc<Mutex<()>>,
+    /// Serializes the raid-event handlers that read-then-write the shared
+    /// `raid_current_state`/sims-boss rows (`handle_attack`, `handle_sub_start`,
+    /// `handle_sub_cycle`, `handle_cycle_reset`, `handle_target` in
+    /// `raid_event_service.rs`) -- each TT2 socket event is dispatched via
+    /// its own `tokio::spawn`, so without this a burst of concurrent events
+    /// could race on the same rows. This used to be a Postgres advisory lock
+    /// (`pg_advisory_xact_lock`), but that meant every handler queued behind
+    /// it held a full pool connection for as long as it waited its turn --
+    /// a burst of events could exhaust the whole connection pool and cause
+    /// unrelated queries to fail with `PoolTimedOut`. An in-process mutex
+    /// gives the same serialization (every handler runs in this one process
+    /// anyway) without ever touching the database while waiting.
+    pub raid_state_lock: Arc<Mutex<()>>,
     pub live_attack_boss: Arc<RwLock<Option<LiveAttackBossView>>>,
     pub live_attacking_players: Arc<RwLock<HashMap<String, LiveAttackingPlayer>>>,
     /// Fans out newly-started attacks to any SSE listeners (see
@@ -49,6 +62,7 @@ impl AppState {
             internal_api_enabled,
             gamehive_api,
             clan_fetch_lock: Arc::new(Mutex::new(())),
+            raid_state_lock: Arc::new(Mutex::new(())),
             live_attack_boss: Arc::new(RwLock::new(None)),
             live_attacking_players: Arc::new(RwLock::new(HashMap::new())),
             live_attacking_players_tx: broadcast::channel(32).0,
