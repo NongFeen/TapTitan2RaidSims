@@ -18,7 +18,6 @@ use crate::{
     state::AppState,
 };
 
-const RAID_STATE_LOCK: i64 = 721_934_762;
 const RESET_INTERVAL_HOURS: i64 = 12;
 
 pub async fn handle_event(state: &Arc<AppState>, event: &str, data: Value) -> Result<(), AppError> {
@@ -149,13 +148,12 @@ async fn handle_sub_start(
     // the `else` branch below).
     let titan_target_json = serde_json::to_value(&event.titan_target)?;
 
-    let mut tx = state.db()?.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(RAID_STATE_LOCK)
-        .execute(&mut *tx)
-        .await?;
     // Held across every check and write below so a concurrent attack event
     // (which takes the same lock) can't observe or leave things half-updated.
+    // An in-process mutex, not a DB-level lock, so a handler queued waiting
+    // its turn never ties up a pool connection -- see `AppState::raid_state_lock`.
+    let raid_state_guard = state.raid_state_lock.lock().await;
+    let mut tx = state.db()?.begin().await?;
     let is_new_raid_row = !sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM raid_current_state WHERE raid_id=$1)",
     )
@@ -258,6 +256,7 @@ async fn handle_sub_start(
         None
     };
     tx.commit().await?;
+    drop(raid_state_guard);
 
     if let Some((boss_version, enemy_id)) = new_boss_version {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
@@ -321,11 +320,8 @@ async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(),
         .map(|component| component.total_damage)
         .sum::<u64>();
 
+    let raid_state_guard = state.raid_state_lock.lock().await;
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(RAID_STATE_LOCK)
-        .execute(&mut *tx)
-        .await?;
 
     // Attacks can arrive for a player who isn't in `players` yet (they've
     // never been through a clan-stats sync). Rather than store an
@@ -357,6 +353,7 @@ async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(),
 
         if inserted.rows_affected() == 0 {
             tx.commit().await?;
+            drop(raid_state_guard);
             sync_sims_boss_on_phase_transition(state, &attack).await?;
             return Ok(());
         }
@@ -400,6 +397,7 @@ async fn handle_attack(state: &Arc<AppState>, attack: AttackEvent) -> Result<(),
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    drop(raid_state_guard);
 
     tracing::info!(
         raid_id = attack.raid_id,
@@ -425,11 +423,8 @@ async fn sync_sims_boss_on_phase_transition(
     state: &Arc<AppState>,
     attack: &AttackEvent,
 ) -> Result<bool, AppError> {
+    let raid_state_guard = state.raid_state_lock.lock().await;
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(RAID_STATE_LOCK)
-        .execute(&mut *tx)
-        .await?;
 
     let Some(current) = boss_repo::load_for_update(&mut tx).await? else {
         return Ok(false);
@@ -535,6 +530,7 @@ async fn sync_sims_boss_on_phase_transition(
         )
         .await?;
         tx.commit().await?;
+        drop(raid_state_guard);
 
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
         queue_auto_simulations(
@@ -570,6 +566,7 @@ async fn sync_sims_boss_on_phase_transition(
         )
         .await?;
         tx.commit().await?;
+        drop(raid_state_guard);
         tracing::debug!(
             raid_id = attack.raid_id,
             titan_index = attack.raid_state.titan_index,
@@ -882,11 +879,8 @@ async fn handle_sub_cycle(
         .ok_or_else(|| AppError::Conflict("No attack has identified the current titan".into()))?;
     let titan_index = titan_index.unwrap_or_default();
 
+    let raid_state_guard = state.raid_state_lock.lock().await;
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(RAID_STATE_LOCK)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query(
         "UPDATE raid_current_state SET clan_code=$2,titan_targets=$3,raw_sub_cycle=$4,raid_data=CASE WHEN raw_sub_start IS NULL THEN $5 ELSE raid_data END,received_at=NOW(),refresh_required=FALSE,updated_at=NOW() WHERE raid_id=$1",
     )
@@ -928,6 +922,7 @@ async fn handle_sub_cycle(
         )
         .await?;
         tx.commit().await?;
+        drop(raid_state_guard);
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
         if is_fully_targeted(&event.titan_target, &enemy_id) {
             needs_simulation = true;
@@ -938,6 +933,7 @@ async fn handle_sub_cycle(
         targets_changed =
             update_boss_targets_from_titan_target(&mut tx, &event.titan_target, &enemy_id).await?;
         tx.commit().await?;
+        drop(raid_state_guard);
         if let Some(boss_version) = targets_changed {
             job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
             needs_simulation = true;
@@ -968,11 +964,8 @@ async fn handle_sub_cycle(
 /// `titan_target` array, just flattened to a single enemy per event instead
 /// of one array covering every titan in the raid.
 async fn handle_target(state: &Arc<AppState>, event: TargetEvent) -> Result<(), AppError> {
+    let raid_state_guard = state.raid_state_lock.lock().await;
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(RAID_STATE_LOCK)
-        .execute(&mut *tx)
-        .await?;
 
     // Only the currently-active titan's targeting affects the sims boss --
     // a target update for some other titan in the spawn sequence (not yet
@@ -1000,6 +993,7 @@ async fn handle_target(state: &Arc<AppState>, event: TargetEvent) -> Result<(), 
     let targets_changed =
         update_boss_targets_from_titan_target(&mut tx, &titan_target, &event.enemy_id).await?;
     tx.commit().await?;
+    drop(raid_state_guard);
 
     if let Some(boss_version) = targets_changed {
         job_service::spawn_old_job_cleanup(Arc::clone(state), boss_version);
