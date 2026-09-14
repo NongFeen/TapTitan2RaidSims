@@ -54,6 +54,31 @@ impl AttackPattern {
         }
 
         if let AttackPattern::FusionBombSpread = self {
+            // A real player doesn't notice Fuse proc'ing and retarget on the
+            // very next tap -- they keep tapping the same part for a few
+            // more taps first. Model that reaction delay: stay on
+            // `last_target` until its bomb has been attached for at least
+            // `REACTION_TAPS` ticks, then switch to an open part.
+            const REACTION_TAPS: f64 = 3.0;
+            const TICK_SECONDS: f64 = 1.0 / 20.0;
+            const REACTION_SECONDS: f64 = REACTION_TAPS * TICK_SECONDS;
+
+            if let Some(last) = last_target {
+                if candidates.contains(&last) {
+                    let bomb_elapsed = boss
+                        .afflictions(last)
+                        .iter()
+                        .find(|aff| aff.kind == AfflictionKind::FusionBombDebuff)
+                        .and_then(|aff| aff.stacks.first())
+                        .map(|stack| stack.elapsed_attached_duration);
+                    match bomb_elapsed {
+                        None => return Some(last),
+                        Some(elapsed) if elapsed < REACTION_SECONDS => return Some(last),
+                        Some(_) => {}
+                    }
+                }
+            }
+
             if let Some(open_part) = candidates.iter().copied().find(|part| {
                 !boss
                     .afflictions(*part)
@@ -178,6 +203,28 @@ impl AttackPattern {
         }
 
         if let AttackPattern::BlazingInfernoStack = self {
+            // Same reaction-delay modeling as FusionBombSpread: a real
+            // player doesn't recount stacks and hop to whichever part has
+            // the fewest the instant a new one lands -- they keep tapping
+            // the same part for a few more taps first.
+            const REACTION_TAPS: f64 = 5.0;
+            const TICK_SECONDS: f64 = 1.0 / 20.0;
+            const REACTION_SECONDS: f64 = REACTION_TAPS * TICK_SECONDS;
+
+            if let Some(last) = last_target {
+                if candidates.contains(&last) {
+                    let just_stacked = boss
+                        .afflictions(last)
+                        .iter()
+                        .find(|aff| aff.kind == AfflictionKind::BlazingInfernoDebuff)
+                        .and_then(|aff| aff.stacks.last())
+                        .is_some_and(|stack| stack.elapsed_attached_duration < REACTION_SECONDS);
+                    if just_stacked {
+                        return Some(last);
+                    }
+                }
+            }
+
             let best_burning_stack_count = candidates
                 .iter()
                 .map(|part| {
