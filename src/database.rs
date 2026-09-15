@@ -3,7 +3,7 @@ use std::time::Duration;
 
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
-        .max_connections(1000)
+        .max_connections(15)
         .acquire_timeout(Duration::from_secs(30))
         .connect(database_url)
         .await?;
