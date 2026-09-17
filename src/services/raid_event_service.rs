@@ -444,6 +444,28 @@ async fn sync_sims_boss_on_phase_transition(
         && source_titan_index
             .is_none_or(|titan_index| titan_index == attack.raid_state.titan_index);
 
+    // Raid IDs are not sequential/orderable, so there's no numeric way to
+    // tell "this attack is for a raid that started later" from "this attack
+    // is a late-arriving straggler for a raid that already ended" -- every
+    // socket event is dispatched via its own independent task with no
+    // ordering guarantee, so either is possible. Rather than guess, `attack`
+    // is simply never allowed to change *which raid* the sims boss tracks --
+    // that's exclusively `start`/`sub_start`'s job (whichever of those
+    // arrives establishes the raid; we always trust the latest one to
+    // land). If this attack's raid doesn't match what's currently
+    // established, skip syncing from it instead of self-healing onto a raid
+    // that may not even be the current one.
+    if let Some(current_raid_id) = source_raid_id {
+        if attack.raid_id != current_raid_id {
+            tracing::debug!(
+                raid_id = attack.raid_id,
+                current_raid_id,
+                "ignoring attack for a raid other than the one currently established by start/sub_start"
+            );
+            return Ok(false);
+        }
+    }
+
     let (incoming, attackable_parts_override) = if source_matches {
         (
             boss_from_attack_snapshot(&boss, &attack.raid_state.current)?,
