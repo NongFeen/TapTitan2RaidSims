@@ -1493,7 +1493,7 @@ fn global_modifier(value: &str) -> Result<GlobalRaidModifier, AppError> {
         "SupportEffect" => Ok(GlobalRaidModifier::SupportEffect),
         "AfflictedChance" | "AfflictionChance" => Ok(GlobalRaidModifier::AfflictionChance),
         "AfflictedDamage" | "AfflictionDamage" => Ok(GlobalRaidModifier::AfflictionDamage),
-        "AllDamage" => Ok(GlobalRaidModifier::AllDamage),
+        "AllDamage" | "AllRaidDamage" => Ok(GlobalRaidModifier::AllDamage),
         "AttackDuration" => Ok(GlobalRaidModifier::AttackDuration),
         "AfflictedDuration" | "AfflictionDuration" => Ok(GlobalRaidModifier::AfflictionDuration),
         _ => Err(AppError::BadRequest(format!(
