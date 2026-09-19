@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Seasonal card boosts",
+  "description": "Flat level-boost per card ID. Keys are CardName strum/serde IDs from src/models/cards.rs; values are added to the saved level and clamped to the card's max_level.",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "boost": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Levels added on top of the player's saved level (u16)."
+    }
+  },
+  "properties": {
+    "MoonBeam": { "$ref": "#/definitions/boost", "title": "Burst - MoonBeam" },
+    "Fragmentize": { "$ref": "#/definitions/boost", "title": "Burst - Fragmentize" },
+    "SkullBash": { "$ref": "#/definitions/boost", "title": "Burst - SkullBash" },
+    "RazorWind": { "$ref": "#/definitions/boost", "title": "Burst - RazorWind" },
+    "WhipOfLightning": { "$ref": "#/definitions/boost", "title": "Burst - WhipOfLightning" },
+    "BurstCount": { "$ref": "#/definitions/boost", "title": "Burst - ClanshipBarrage" },
+    "Purify": { "$ref": "#/definitions/boost", "title": "Burst - PurifyingBlast" },
+    "LimbBurst": { "$ref": "#/definitions/boost", "title": "Burst - PsychicShackles" },
+    "FlakShot": { "$ref": "#/definitions/boost", "title": "Burst - FlakShot" },
+    "Haymaker": { "$ref": "#/definitions/boost", "title": "Burst - CosmicHaymaker" },
+    "ChainLightning": { "$ref": "#/definitions/boost", "title": "Burst - ChainOfVengeance" },
+    "MirrorForce": { "$ref": "#/definitions/boost", "title": "Burst - MirrorForce" },
+    "CelestialStatic": { "$ref": "#/definitions/boost", "title": "Burst - CelestialStatic" },
+    "Weaken": { "$ref": "#/definitions/boost", "title": "Burst - GuardBreak" },
+    "BarbedMorningstar": { "$ref": "#/definitions/boost", "title": "Burst - BarbedMorningstar" },
+
+    "BurningAttack": { "$ref": "#/definitions/boost", "title": "Affliction - BlazingInferno" },
+    "PoisonAttack": { "$ref": "#/definitions/boost", "title": "Affliction - AcidDrench" },
+    "DecayingAttack": { "$ref": "#/definitions/boost", "title": "Affliction - DecayingStrike" },
+    "Fuse": { "$ref": "#/definitions/boost", "title": "Affliction - FusionBomb" },
+    "Shadow": { "$ref": "#/definitions/boost", "title": "Affliction - GrimShadow" },
+    "PlagueAttack": { "$ref": "#/definitions/boost", "title": "Affliction - ThrivingPlague" },
+    "Disease": { "$ref": "#/definitions/boost", "title": "Affliction - Radioactivity" },
+    "Swarm": { "$ref": "#/definitions/boost", "title": "Affliction - RavenousSwarm" },
+    "RuinousRust": { "$ref": "#/definitions/boost", "title": "Affliction - RuinousRain" },
+    "PowerBubble": { "$ref": "#/definitions/boost", "title": "Affliction - CorrosiveBubbles" },
+    "RuneAttack": { "$ref": "#/definitions/boost", "title": "Affliction - Maelstrom" },
+    "MagicPotion": { "$ref": "#/definitions/boost", "title": "Affliction - Amplify" },
+    "SandsOfTime": { "$ref": "#/definitions/boost", "title": "Affliction - SandsOfTime" },
+    "CosmicBarb": { "$ref": "#/definitions/boost", "title": "Affliction - ElectroZap" },
+
+    "ExecutionersAxe": { "$ref": "#/definitions/boost", "title": "Support - CrushingInstinct" },
+    "CrushingVoid": { "$ref": "#/definitions/boost", "title": "Support - InsanityVoid" },
+    "MentalFocus": { "$ref": "#/definitions/boost", "title": "Support - RancidGas" },
+    "ImpactAttack": { "$ref": "#/definitions/boost", "title": "Support - InspiringForce" },
+    "InnerTruth": { "$ref": "#/definitions/boost", "title": "Support - SoulFire" },
+    "FinisherAttack": { "$ref": "#/definitions/boost", "title": "Support - VictoryMarch" },
+    "SuperheatMetal": { "$ref": "#/definitions/boost", "title": "Support - PrismaticRift" },
+    "BurstBoost": { "$ref": "#/definitions/boost", "title": "Support - AncestralFavor" },
+    "LimbSupport": { "$ref": "#/definitions/boost", "title": "Support - GraspingVines" },
+    "TotemFairySkill": { "$ref": "#/definitions/boost", "title": "Support - TotemOfPower" },
+    "TeamTactics": { "$ref": "#/definitions/boost", "title": "Support - TeamTactics" },
+    "SpinalTap": { "$ref": "#/definitions/boost", "title": "Support - SkeletalSmash" },
+    "AstralEcho": { "$ref": "#/definitions/boost", "title": "Support - AstralEcho" },
+    "TriangleSupport": { "$ref": "#/definitions/boost", "title": "Support - RadiantKaleidoscope" },
+    "BattleDrums": { "$ref": "#/definitions/boost", "title": "Support - BattleDrums" }
+  }
+}
