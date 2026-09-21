@@ -803,12 +803,20 @@ pub fn live_boss_display_parts(
     else {
         return Ok(None);
     };
-    let Some(titan_target) = targets
-        .iter()
-        .find(|target| target.enemy_id == live.enemy_id)
-    else {
-        return Ok(None);
-    };
+    // No stored `titan_targets` entry for this enemy yet -- e.g. `attack`
+    // revealed a titan transition before the matching `sub_cycle` caught up,
+    // or this is the very first sub_start's placeholder ("0" for every
+    // part). Same "no selection reported" fallback as
+    // `boss_from_raid_snapshot`: treat every part as attackable rather than
+    // going blank and waiting on sub_cycle for something that just hasn't
+    // arrived yet.
+    let titan_target = targets.iter().find(|target| target.enemy_id == live.enemy_id);
+    // Same fallback again for a stored entry that exists but has nothing
+    // selected yet (every part "0", e.g. a brand new raid's first
+    // sub_start): `None` here means "show everything as attackable", same
+    // as an entirely missing entry above.
+    let selected_parts = titan_target
+        .filter(|target| target.state.iter().any(|part| part.state == "2"));
     let stored_parts = titan
         .parts
         .iter()
@@ -851,8 +859,10 @@ pub fn live_boss_display_parts(
             part_state,
             current_hp,
             max_hp,
-            is_targeted: titan_target.state.iter().any(|target| {
-                target.state == "2" && target_part_name(&target.id).ok() == Some(part_name)
+            is_targeted: selected_parts.is_none_or(|titan_target| {
+                titan_target.state.iter().any(|target| {
+                    target.state == "2" && target_part_name(&target.id).ok() == Some(part_name)
+                })
             }),
         });
     }
@@ -1014,6 +1024,14 @@ async fn handle_target(state: &Arc<AppState>, event: TargetEvent) -> Result<(), 
     }];
     let targets_changed =
         update_boss_targets_from_titan_target(&mut tx, &titan_target, &event.enemy_id).await?;
+    // Also merge into `raid_current_state.titan_targets` -- that column
+    // (not the sims boss `update_boss_targets_from_titan_target` just
+    // touched) is what the live boss display reads (see
+    // `live_boss_display_parts`), and its only other writer is `sub_cycle`.
+    // Without this, a live per-part targeting change wouldn't show up on
+    // the live display until the next sub_cycle synced the whole array.
+    let [titan_target] = titan_target;
+    upsert_titan_target(&mut tx, event.raid_id, titan_target).await?;
     tx.commit().await?;
     drop(raid_state_guard);
 
@@ -1411,6 +1429,45 @@ async fn update_boss_targets_from_titan_target(
     )
     .await?;
     Ok(Some(boss_version))
+}
+
+/// Merges a single titan's targeting into the raid's stored `titan_targets`
+/// array -- replacing any existing entry for the same enemy, appending
+/// otherwise. This is the column the live boss display reads (see
+/// `live_boss_display_parts`); besides this, only `sub_start` (once, usually
+/// with nothing decided yet) and `sub_cycle` write it, so without this a
+/// real-time `target` event would never reach the live display until the
+/// next sub_cycle resynced the whole array. A no-op if the raid isn't
+/// tracked yet (nothing to merge into).
+async fn upsert_titan_target(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    raid_id: i64,
+    titan_target: TitanTarget,
+) -> Result<(), AppError> {
+    let Some(stored): Option<Option<Value>> =
+        sqlx::query_scalar("SELECT titan_targets FROM raid_current_state WHERE raid_id=$1")
+            .bind(raid_id)
+            .fetch_optional(&mut **tx)
+            .await?
+    else {
+        return Ok(());
+    };
+    let mut targets: Vec<TitanTarget> = stored.map(serde_json::from_value).transpose()?.unwrap_or_default();
+    match targets
+        .iter_mut()
+        .find(|target| target.enemy_id == titan_target.enemy_id)
+    {
+        Some(existing) => *existing = titan_target,
+        None => targets.push(titan_target),
+    }
+    sqlx::query(
+        "UPDATE raid_current_state SET titan_targets=$2,updated_at=NOW() WHERE raid_id=$1",
+    )
+    .bind(raid_id)
+    .bind(serde_json::to_value(&targets)?)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 fn select_base_raid(
