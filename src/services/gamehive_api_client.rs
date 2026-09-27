@@ -1,9 +1,10 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use aes_gcm::{
@@ -55,6 +56,9 @@ pub const CLAN_PROPERTIES: [&str; 9] = [
 ];
 
 const RAID_LEVEL_BASE_DAMAGE_OFFSET: u16 = 101;
+/// Minimum gap between self-healing raid resubscribes requested by the
+/// raid-event pipeline -- see `GameHiveApiClient::request_raid_resubscribe`.
+const RAID_RESUBSCRIBE_COOLDOWN: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct TokenCipher(Aes256Gcm);
@@ -106,6 +110,7 @@ pub struct GameHiveApiClient {
     http: reqwest::Client,
     connected: AtomicBool,
     raid_connected: AtomicBool,
+    last_requested_resubscribe: Mutex<Option<Instant>>,
 }
 
 impl GameHiveApiClient {
@@ -117,6 +122,7 @@ impl GameHiveApiClient {
             http: reqwest::Client::new(),
             connected: AtomicBool::new(false),
             raid_connected: AtomicBool::new(false),
+            last_requested_resubscribe: Mutex::new(None),
         }))
     }
 
@@ -278,6 +284,36 @@ impl GameHiveApiClient {
         self.connected.store(false, Ordering::Release);
         self.raid_connected.store(false, Ordering::Release);
         tracing::warn!("TT2 socket stopped");
+    }
+
+    /// Asks TT2 to resend its `sub_start`/`sub_cycle` initial-state burst by
+    /// unsubscribing and resubscribing -- used by the raid-event pipeline when
+    /// an `attack` reveals a raid it has no base data for (e.g. the raid's
+    /// `start` event was lost or unparseable). Rate-limited to one request per
+    /// `RAID_RESUBSCRIBE_COOLDOWN`, and a no-op while `/raid` isn't connected
+    /// (the next namespace connect resubscribes on its own anyway).
+    pub fn request_raid_resubscribe(self: &Arc<Self>, reason: &'static str) {
+        if !self.is_raid_connected() {
+            return;
+        }
+        {
+            let mut last = self
+                .last_requested_resubscribe
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let now = Instant::now();
+            if last.is_some_and(|at| now.duration_since(at) < RAID_RESUBSCRIBE_COOLDOWN) {
+                return;
+            }
+            *last = Some(now);
+        }
+        tracing::warn!(reason, "requesting TT2 raid resubscribe to recover raid state");
+        let client = Arc::clone(self);
+        tokio::spawn(async move {
+            if let Err(error) = client.subscribe_raid().await {
+                tracing::error!(?error, "TT2 raid resubscribe failed");
+            }
+        });
     }
 
     async fn subscribe_raid(&self) -> Result<(), AppError> {
@@ -456,7 +492,8 @@ fn dispatch_socket_event(
             connected.store(false, Ordering::Release);
             tracing::error!(namespace, ?data, "TT2 connect_error event received");
         }
-        "attack" | "start" | "sub_start" | "sub_cycle" | "cycle_reset" | "start_attack"
+        "attack" | "start" | "sub_start" | "sub_cycle" | "cycle_reset" | "target"
+        | "start_attack"
             if namespace == "/raid" =>
         {
             if let Some(state) = state {
@@ -469,7 +506,7 @@ fn dispatch_socket_event(
                     "start" => {
                         tracing::info!(namespace, ?data, "TT2 raid start event received")
                     }
-                    "sub_start" | "sub_cycle" | "cycle_reset" => {
+                    "sub_start" | "sub_cycle" | "cycle_reset" | "target" => {
                         tracing::info!(namespace, event, "TT2 raid event received")
                     }
                     _ => {}
