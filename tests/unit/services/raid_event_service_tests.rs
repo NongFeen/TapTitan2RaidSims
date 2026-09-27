@@ -107,10 +107,11 @@ fn sub_start_supplies_base_raid_and_sub_cycle_supplies_only_targets() {
     assert_eq!(sub_start.raid_id, 3_318_220);
     assert_eq!(sub_start.raid.spawn_sequence.len(), 6);
     assert_eq!(sub_start.raid.titans.len(), 3);
-    assert_eq!(sub_start.morale.bonus_amount, 0.39);
+    assert_eq!(sub_start.morale.as_ref().unwrap().bonus_amount, 0.39);
     assert_eq!(
         sub_start
             .start_at
+            .unwrap()
             .with_timezone(&chrono::FixedOffset::east_opt(7 * 60 * 60).unwrap())
             .to_rfc3339(),
         "2026-08-20T03:31:24+07:00"
@@ -127,26 +128,47 @@ fn sub_start_supplies_base_raid_and_sub_cycle_supplies_only_targets() {
 }
 
 #[test]
-fn sub_cycle_raid_is_used_only_when_sub_start_is_missing() {
-    let sub_start: SubStartEvent = serde_json::from_str(include_str!(
-        "../../../exampleSocketdatajson/sub_start_example.json"
-    ))
-    .unwrap();
+fn infer_current_titan_picks_the_damaged_titan_from_a_sub_cycle() {
     let sub_cycle: SubCycleEvent = serde_json::from_str(include_str!(
         "../../../exampleSocketdatajson/sub_cycle_example.json"
     ))
     .unwrap();
+    // Jukk (Enemy3) is the only titan below full HP, and first spawns at slot 0.
+    assert_eq!(
+        infer_current_titan(&sub_cycle.raid).unwrap(),
+        (0, "Enemy3".to_string())
+    );
+}
 
-    let (fallback, used_fallback) = select_base_raid(None, false, &sub_cycle.raid).unwrap();
-    assert!(used_fallback);
-    assert_eq!(fallback.spawn_sequence, sub_cycle.raid.spawn_sequence);
+#[test]
+fn infer_current_titan_falls_back_to_spawn_order_for_an_untouched_raid() {
+    let mut raid = sub_start_sample().raid;
+    for titan in &mut raid.titans {
+        for part in &mut titan.parts {
+            part.current_hp = part.total_hp;
+        }
+    }
+    let first = first_titan_enemy_id(&raid).unwrap().to_string();
+    assert_eq!(infer_current_titan(&raid).unwrap(), (0, first));
+}
 
-    let stored = serde_json::to_value(&sub_start.raid).unwrap();
-    let (authoritative, used_fallback) =
-        select_base_raid(Some(stored), true, &sub_cycle.raid).unwrap();
-    assert!(!used_fallback);
-    assert_eq!(authoritative.spawn_sequence, sub_start.raid.spawn_sequence);
-    assert_ne!(authoritative.spawn_sequence, sub_cycle.raid.spawn_sequence);
+#[test]
+fn boss_state_change_separates_hp_only_from_structural_changes() {
+    let (boss, _) = boss_from_raid_snapshot(&sub_start_sample().raid, &[], "Enemy2", false).unwrap();
+    assert_eq!(boss_state_change(&boss, &boss), BossStateChange::None);
+
+    let mut chipped = boss.clone();
+    chipped.head.current_armor -= 1;
+    assert_eq!(boss_state_change(&boss, &chipped), BossStateChange::HpOnly);
+
+    let mut broken = boss.clone();
+    broken.head.current_armor = 0;
+    broken.sync_part_states_from_current_values();
+    assert_eq!(boss_state_change(&boss, &broken), BossStateChange::Structural);
+
+    let mut buffed = boss.clone();
+    buffed.global_raid_modifier = GlobalRaidModifier::AllDamage;
+    assert_eq!(boss_state_change(&boss, &buffed), BossStateChange::Structural);
 }
 
 #[test]
@@ -1017,4 +1039,103 @@ async fn handle_cycle_reset_rejects_invalid_morale_before_touching_the_database(
     // DatabaseUnavailable rather than BadRequest.
     let result = handle_event(&state, "cycle_reset", raw).await;
     assert!(matches!(result, Err(AppError::BadRequest(_))));
+}
+
+#[test]
+fn start_payload_without_start_at_or_morale_still_parses() {
+    let mut raw: Value = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap();
+    let object = raw.as_object_mut().unwrap();
+    object.remove("start_at");
+    object.remove("morale");
+    object.remove("titan_target");
+
+    let event: SubStartEvent = serde_json::from_value(raw).unwrap();
+    assert_eq!(event.raid_id, 3_318_220);
+    assert!(event.start_at.is_none());
+    assert!(event.morale.is_none());
+    assert!(event.titan_target.is_empty());
+}
+
+#[test]
+fn start_payload_accepts_raid_started_at_in_place_of_start_at() {
+    let mut raw: Value = serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap();
+    let object = raw.as_object_mut().unwrap();
+    let start_at = object.remove("start_at").unwrap();
+    object.insert("raid_started_at".to_string(), start_at);
+
+    let event: SubStartEvent = serde_json::from_value(raw).unwrap();
+    assert_eq!(
+        event.start_at.unwrap().to_rfc3339(),
+        "2026-08-19T20:31:24+00:00"
+    );
+}
+
+fn sub_start_sample() -> SubStartEvent {
+    serde_json::from_str(include_str!(
+        "../../../exampleSocketdatajson/sub_start_example.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn unsupported_area_buff_is_ignored_instead_of_rejecting_the_raid() {
+    let mut raid = sub_start_sample().raid;
+    raid.area_buffs = vec![TitanBonus {
+        bonus_type: "NotARealModifier".to_string(),
+        bonus_amount: 0.5,
+    }];
+    let (boss, _) = boss_from_raid_snapshot(&raid, &[], "Enemy2", false).unwrap();
+    assert_eq!(boss.global_raid_modifier, GlobalRaidModifier::None);
+    assert_eq!(boss.global_raid_modifier_amount, None);
+}
+
+#[test]
+fn only_the_first_supported_area_buff_is_simulated() {
+    let mut raid = sub_start_sample().raid;
+    raid.area_buffs = vec![
+        TitanBonus {
+            bonus_type: "NotARealModifier".to_string(),
+            bonus_amount: 0.9,
+        },
+        TitanBonus {
+            bonus_type: "BurstDamage".to_string(),
+            bonus_amount: 0.25,
+        },
+        TitanBonus {
+            bonus_type: "AllDamage".to_string(),
+            bonus_amount: 0.1,
+        },
+    ];
+    let (boss, _) = boss_from_raid_snapshot(&raid, &[], "Enemy2", false).unwrap();
+    assert_eq!(boss.global_raid_modifier, GlobalRaidModifier::BurstDamage);
+    assert_eq!(boss.global_raid_modifier_amount, Some(0.25));
+}
+
+#[test]
+fn unsupported_curse_is_ignored_instead_of_rejecting_the_raid() {
+    let mut raid = sub_start_sample().raid;
+    let titan = raid
+        .titans
+        .iter_mut()
+        .find(|titan| titan.enemy_id == "Enemy2")
+        .unwrap();
+    titan.cursed_debuffs = vec![
+        TitanBonus {
+            bonus_type: "NotARealCurse".to_string(),
+            bonus_amount: -0.1,
+        },
+        TitanBonus {
+            bonus_type: "BodyDamagePerCurse".to_string(),
+            bonus_amount: -0.08,
+        },
+    ];
+    let (boss, _) = boss_from_raid_snapshot(&raid, &[], "Enemy2", false).unwrap();
+    assert_eq!(boss.curse_type, CurseType::BodyDamage);
+    assert!((boss.curse_damage_per_curse - 0.08).abs() < 1e-9);
 }
