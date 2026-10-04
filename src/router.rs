@@ -55,6 +55,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/players/{player_id}/simulation-jobs",
             get(routes::jobs::list_for_player),
         )
+        .route("/api/simulation-queue", get(routes::jobs::queue))
 
         // UNUSED FETCH FROM GAME NO MANUAL UPDATE
         // .route(

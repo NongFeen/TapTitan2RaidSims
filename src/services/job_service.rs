@@ -6,10 +6,13 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        app::{CreateSimulationJobRequest, RecommendationView, SimulationJobView},
+        app::{
+            CreateSimulationJobRequest, RecommendationView, SimulationJobView, SimulationQueueEntry,
+            SimulationQueueView,
+        },
         boss::{Boss, BossPartName, PartState},
         cards::CardName,
-        db_enums::{RecommendationPhase, RecomputeMode},
+        db_enums::{JobStatus, RecommendationPhase, RecomputeMode},
         player_raid_data::PlayerRaidData,
         sim_payload::SimPayLoad,
     },
@@ -1110,6 +1113,35 @@ pub async fn get_job(state: &AppState, job_id: Uuid) -> Result<SimulationJobView
         .fetch_optional(state.db()?)
         .await?
         .ok_or_else(|| AppError::NotFound("Simulation job not found".to_string()))
+}
+
+pub async fn list_simulation_queue(
+    state: &AppState,
+) -> Result<SimulationQueueView, AppError> {
+    let db = state.db()?;
+    let mut active: Vec<SimulationQueueEntry> = sqlx::query_as(
+        "SELECT j.id AS job_id, j.player_id, COALESCE(p.display_name, j.player_id) AS display_name, j.status, NULL::BIGINT AS position, j.created_at, j.started_at, j.completed_at FROM simulation_jobs j LEFT JOIN players p ON p.player_id=j.player_id WHERE j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND j.status IN ('pending','running','optimizing') ORDER BY j.created_at",
+    )
+    .fetch_all(db)
+    .await?;
+    let mut waiting_position = 0i64;
+    for entry in &mut active {
+        if entry.status == JobStatus::Pending {
+            waiting_position += 1;
+            entry.position = Some(waiting_position);
+        }
+    }
+
+    let recently_completed = sqlx::query_as(
+        "SELECT j.id AS job_id, j.player_id, COALESCE(p.display_name, j.player_id) AS display_name, j.status, NULL::BIGINT AS position, j.created_at, j.started_at, j.completed_at FROM simulation_jobs j LEFT JOIN players p ON p.player_id=j.player_id WHERE j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND j.status='completed' ORDER BY j.completed_at DESC NULLS LAST LIMIT 50",
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(SimulationQueueView {
+        active,
+        recently_completed,
+    })
 }
 
 pub async fn list_player_jobs(
