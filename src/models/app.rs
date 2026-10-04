@@ -124,6 +124,27 @@ pub struct SimulationJobView {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
+pub struct SimulationQueueEntry {
+    pub job_id: Uuid,
+    pub player_id: String,
+    pub display_name: String,
+    pub status: JobStatus,
+    /// 1-based position among jobs still waiting to start (`pending` only).
+    pub position: Option<i64>,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SimulationQueueView {
+    /// Jobs still waiting or running, in the order they will be processed.
+    pub active: Vec<SimulationQueueEntry>,
+    /// Most recently completed jobs first -- i.e. who got their sim first.
+    pub recently_completed: Vec<SimulationQueueEntry>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSimulationJobRequest {
     pub player_id: String,

@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        app::{CreateSimulationJobRequest, SimulationJobView},
+        app::{CreateSimulationJobRequest, SimulationJobView, SimulationQueueView},
         db_enums::JobStatus,
     },
     services::job_service,
@@ -244,6 +244,20 @@ pub async fn get(
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<SimulationJobView>, AppError> {
     Ok(Json(job_service::get_job(&state, job_id).await?))
+}
+
+/// Live simulation queue for the current boss: who is waiting, who's running,
+/// and who finished most recently.
+#[utoipa::path(
+    get,
+    path = "/api/simulation-queue",
+    tag = "jobs",
+    responses((status = 200, description = "Current simulation queue", body = SimulationQueueView))
+)]
+pub async fn queue(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<SimulationQueueView>, AppError> {
+    Ok(Json(job_service::list_simulation_queue(&state).await?))
 }
 
 /// List a player's simulation jobs
