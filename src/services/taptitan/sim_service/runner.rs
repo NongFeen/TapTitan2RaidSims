@@ -3,13 +3,14 @@ use super::*;
 impl SimService {
     pub fn run_simulation_with_optional_body_phase(
         payload: SimPayLoad,
+        cancel: Option<Arc<AtomicBool>>,
     ) -> (SimRunResult, Option<SimRunResult>) {
         let should_run_body_phase = should_run_targeted_body_phase(
             payload.include_body_phase,
             &payload.boss_data,
             &payload.attackable_part,
         );
-        let current_result = Self::run_simulation(payload.clone());
+        let current_result = Self::run_simulation_internal(payload.clone(), None, cancel.clone());
         if !should_run_body_phase {
             return (current_result, None);
         }
@@ -17,8 +18,11 @@ impl SimService {
         let mut body_payload = payload;
         convert_targeted_armor_to_body(&mut body_payload.boss_data, &body_payload.attackable_part);
         body_payload.include_body_phase = false;
-        let mut body_result =
-            Self::run_simulation_requiring_card(body_payload, CardName::InsanityVoid);
+        let mut body_result = Self::run_simulation_internal(
+            body_payload,
+            Some(CardName::InsanityVoid),
+            cancel,
+        );
         for deck in &mut body_result.decks {
             deck.simulation_phase = SimulationPhase::TargetedBody;
         }
@@ -54,16 +58,13 @@ impl SimService {
     }
 
     pub fn run_simulation(payload: SimPayLoad) -> SimRunResult {
-        Self::run_simulation_internal(payload, None)
-    }
-
-    fn run_simulation_requiring_card(payload: SimPayLoad, required_card: CardName) -> SimRunResult {
-        Self::run_simulation_internal(payload, Some(required_card))
+        Self::run_simulation_internal(payload, None, None)
     }
 
     fn run_simulation_internal(
         mut payload: SimPayLoad,
         required_card: Option<CardName>,
+        cancel: Option<Arc<AtomicBool>>,
     ) -> SimRunResult {
         payload.boss_data.snapshot_initial_curse_parts();
         let sim_stats = SimStats {
@@ -93,6 +94,7 @@ impl SimService {
                 .iter()
                 .map(|(_, attack_patterns)| attack_patterns.len())
                 .sum(),
+            cancel,
         };
 
         let mut card_proc_cache = PreDeterminedProc::new();
@@ -213,6 +215,17 @@ impl SimService {
         proc_cache: &PreDeterminedProc,
         progress: Option<&SimProgress>,
     ) -> SimDeckResult {
+        if progress.is_some_and(SimProgress::is_cancelled) {
+            return SimDeckResult {
+                deck: Vec::new(),
+                deck_names: Vec::new(),
+                total_attack_patterns: 0,
+                best_pattern: None,
+                simulation_phase: SimulationPhase::Current,
+                patterns: Vec::new(),
+                dependency_part_mask: 0,
+            };
+        }
         if Self::is_fast_calc_deck(&deck) {
             Self::run_fast_calc_deck_sim(sim_stats, deck, attack_patterns, proc_cache, progress)
         } else {

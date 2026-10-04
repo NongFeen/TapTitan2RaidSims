@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering as AtomicOrdering},
+    atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering},
 };
 use strum::IntoEnumIterator;
 

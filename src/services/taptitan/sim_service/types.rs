@@ -187,6 +187,17 @@ pub struct SimCardDamageResult {
 pub struct SimProgress {
     pub(super) current_pattern: AtomicUsize,
     pub(super) total_patterns: usize,
+    /// Set when the boss changed phase under this run -- remaining decks are
+    /// skipped, since their results would be discarded anyway.
+    pub(super) cancel: Option<Arc<AtomicBool>>,
+}
+
+impl SimProgress {
+    pub(super) fn is_cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|flag| flag.load(AtomicOrdering::Relaxed))
+    }
 }
 
 pub(super) type DeckPatternWork = (Vec<Card>, Vec<AttackPattern>);
