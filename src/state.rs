@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::{Mutex, RwLock, Semaphore, broadcast};
 use uuid::Uuid;
 
@@ -44,6 +45,10 @@ pub struct AppState {
     /// view depends on more than just `live_attack_boss` (it's also merged
     /// with `raid_current_state` for `display_parts`).
     pub live_boss_tx: broadcast::Sender<()>,
+    /// Cancel flag for every simulation currently running, keyed by job id,
+    /// along with the boss version it was started against. Flipped by
+    /// `job_service::spawn_old_job_cleanup` when a newer boss version lands.
+    pub running_sims: Arc<StdMutex<HashMap<Uuid, (i64, Arc<AtomicBool>)>>>,
 }
 
 impl AppState {
@@ -67,6 +72,7 @@ impl AppState {
             live_attacking_players: Arc::new(RwLock::new(HashMap::new())),
             live_attacking_players_tx: broadcast::channel(32).0,
             live_boss_tx: broadcast::channel(16).0,
+            running_sims: Arc::new(StdMutex::new(HashMap::new())),
         }
     }
 

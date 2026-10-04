@@ -1,4 +1,10 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering as AtomicOrdering},
+    },
+    time::Instant,
+};
 
 use chrono::Utc;
 use uuid::Uuid;
@@ -283,12 +289,40 @@ async fn create_job_with_mode(
     Ok((id, created))
 }
         
+/// Raises the cancel flag on every running simulation for an older boss
+/// version. Synchronous so running sims start winding down immediately.
+fn cancel_older_running_sims(state: &AppState, current_boss_version: i64) {
+    let running = state
+        .running_sims
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (boss_version, cancel) in running.values() {
+        if *boss_version < current_boss_version {
+            cancel.store(true, AtomicOrdering::Relaxed);
+        }
+    }
+}
+
+/// Marks every not-yet-finished job for an older boss version as superseded
+/// (stored as `failed` so the existing cleanup can delete it). Jobs that are
+/// running get their cancel flag raised too, so they stop between decks.
 pub fn spawn_old_job_cleanup(state: Arc<AppState>, current_boss_version: i64) {
+    cancel_older_running_sims(&state, current_boss_version);
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         let Ok(db) = state.db() else {
             return;
         };
+        if let Err(error) = sqlx::query(
+            "UPDATE simulation_jobs SET status='failed', error_message=$2, completed_at=NOW(), updated_at=NOW() WHERE boss_version < $1 AND status IN ('pending','running','optimizing')",
+        )
+        .bind(current_boss_version)
+        .bind(format!("superseded by boss version {current_boss_version}"))
+        .execute(db)
+        .await
+        {
+            tracing::error!(?error, current_boss_version, "failed to mark superseded simulation jobs");
+        }
         let mut deleted_total = 0u64;
         loop {
             let result = sqlx::query(
@@ -379,6 +413,51 @@ pub fn spawn_job(state: Arc<AppState>, job_id: Uuid) {
     });
 }
 
+/// Holds a job's entry in `AppState::running_sims` for as long as it runs.
+struct RunningSimGuard {
+    state: Arc<AppState>,
+    job_id: Uuid,
+}
+
+impl RunningSimGuard {
+    fn register(state: &Arc<AppState>, job_id: Uuid, boss_version: i64) -> (Self, Arc<AtomicBool>) {
+        let cancel = Arc::new(AtomicBool::new(false));
+        state
+            .running_sims
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(job_id, (boss_version, Arc::clone(&cancel)));
+        (
+            Self {
+                state: Arc::clone(state),
+                job_id,
+            },
+            cancel,
+        )
+    }
+}
+
+impl Drop for RunningSimGuard {
+    fn drop(&mut self) {
+        self.state
+            .running_sims
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.job_id);
+    }
+}
+
+async fn mark_superseded(state: &AppState, job_id: Uuid) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE simulation_jobs SET status='failed', error_message='superseded by a newer boss phase', completed_at=NOW(), updated_at=NOW() WHERE id=$1 AND status IN ('pending','running','optimizing')",
+    )
+    .bind(job_id)
+    .execute(state.db()?)
+    .await?;
+    tracing::info!(%job_id, "simulation job superseded by a newer boss phase; stopped");
+    Ok(())
+}
+
 async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError> {
     let _permit = state
         .simulation_slots
@@ -397,6 +476,16 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     else {
         return Ok(());
     };
+    // Registered before the staleness check, so a boss change that lands
+    // right after the check still finds this job and cancels it.
+    let (_running_guard, cancel) = RunningSimGuard::register(state, job_id, boss_version);
+    let current_boss_version: Option<i64> =
+        sqlx::query_scalar("SELECT version FROM current_boss WHERE singleton=TRUE")
+            .fetch_optional(state.db()?)
+            .await?;
+    if current_boss_version.is_some_and(|current| current != boss_version) {
+        return mark_superseded(state, job_id).await;
+    }
     let payload: SimPayLoad = serde_json::from_value(payload_json)?;
     let total_processing_started = Instant::now();
     let simulation_started = Instant::now();
@@ -435,21 +524,34 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
                     "phase-aware simulation has no compatible reusable base; running full simulation"
                 );
             }
+            let sim_cancel = Arc::clone(&cancel);
             let (current, void_result) = tokio::task::spawn_blocking(move || {
-                SimService::run_simulation_with_optional_body_phase(payload)
+                SimService::run_simulation_with_optional_body_phase(payload, Some(sim_cancel))
             })
             .await
             .map_err(|error| AppError::Internal(format!("Simulation worker panicked: {error}")))?;
+            if cancel.load(AtomicOrdering::Relaxed) {
+                return mark_superseded(state, job_id).await;
+            }
             let rerun_decks =
                 current.decks.len() + void_result.as_ref().map_or(0, |result| result.decks.len());
             (current, void_result, None, 0, rerun_decks, "full")
         };
     let simulation_duration_ms = simulation_started.elapsed().as_millis() as u64;
 
-    sqlx::query("UPDATE simulation_jobs SET status='optimizing', updated_at=NOW() WHERE id=$1")
-        .bind(job_id)
-        .execute(state.db()?)
-        .await?;
+    // Conditional on still being `running`: if a boss change superseded this
+    // job while it was simulating, it was already marked failed -- don't
+    // revive it.
+    let moved_to_optimizing = sqlx::query(
+        "UPDATE simulation_jobs SET status='optimizing', updated_at=NOW() WHERE id=$1 AND status='running'",
+    )
+    .bind(job_id)
+    .execute(state.db()?)
+    .await?
+    .rows_affected();
+    if moved_to_optimizing == 0 {
+        return Ok(());
+    }
     let body_phase_ran = void_result.is_some();
     let recommendation_started = Instant::now();
     let prepared =
@@ -471,7 +573,7 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     let deck_result_count = prepared.deck_result_count;
     persist_results(state.db()?, job_id, prepared).await?;
     let total_duration_ms = total_processing_started.elapsed().as_millis() as u64;
-    sqlx::query("UPDATE simulation_jobs SET status='completed', result=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1")
+    sqlx::query("UPDATE simulation_jobs SET status='completed', result=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1 AND status='optimizing'")
         .bind(job_id)
         .bind(serde_json::json!({
             "deck_result_count": deck_result_count,
