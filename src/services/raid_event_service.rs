@@ -1,4 +1,8 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -1173,37 +1177,27 @@ async fn handle_target(state: &Arc<AppState>, event: TargetEvent) -> Result<(), 
     let raid_state_guard = state.raid_state_lock.lock().await;
     let mut tx = state.db()?.begin().await?;
 
-    // Only the currently-active titan's targeting affects the sims boss --
-    // a target update for some other titan in the spawn sequence (not yet
-    // reached) has nothing to apply it to yet, since the boss row always
-    // represents whichever titan is actually being fought right now.
+    // The sims boss row only ever represents the titan being fought right
+    // now, so only that titan's targeting is applied to it. Every titan in
+    // the raid gets the event stored, though: `raid_current_state.titan_targets`
+    // is what the live display reads and what a later titan's sims boss is
+    // rebuilt from when it becomes current, so skipping the others would leave
+    // their targeting stale until a `sub_cycle` resynced it.
     let current = boss_repo::load_for_update(&mut tx).await?;
     let is_current_titan = current.as_ref().is_some_and(|boss| {
         boss.source_raid_id.is_none_or(|raid_id| raid_id == event.raid_id)
             && boss.source_enemy_id.as_deref() == Some(event.enemy_id.as_str())
     });
-    if !is_current_titan {
-        tx.commit().await?;
-        tracing::debug!(
-            raid_id = event.raid_id,
-            enemy_id = event.enemy_id,
-            "TT2 target event is for a raid/titan that isn't currently active; ignoring"
-        );
-        return Ok(());
-    }
 
     let titan_target = [TitanTarget {
         enemy_id: event.enemy_id.clone(),
         state: event.state,
     }];
-    let targets_changed =
-        update_boss_targets_from_titan_target(&mut tx, &titan_target, &event.enemy_id).await?;
-    // Also merge into `raid_current_state.titan_targets` -- that column
-    // (not the sims boss `update_boss_targets_from_titan_target` just
-    // touched) is what the live boss display reads (see
-    // `live_boss_display_parts`), and its only other writer is `sub_cycle`.
-    // Without this, a live per-part targeting change wouldn't show up on
-    // the live display until the next sub_cycle synced the whole array.
+    let targets_changed = if is_current_titan {
+        update_boss_targets_from_titan_target(&mut tx, &titan_target, &event.enemy_id).await?
+    } else {
+        None
+    };
     let [titan_target] = titan_target;
     upsert_titan_target(&mut tx, event.raid_id, titan_target).await?;
     tx.commit().await?;
@@ -1337,6 +1331,31 @@ async fn store_cycle_state(
     }))
 }
 
+/// Players who have already made all of their attacks in the current cycle.
+/// "Current cycle" matches `routes/raid_cycle.rs`: the latest raid and that
+/// raid's highest TT2 `cycle` number.
+async fn players_finished_this_cycle(state: &AppState) -> Result<HashSet<String>, AppError> {
+    let player_ids: Vec<String> = sqlx::query_scalar(
+        "WITH current_raid AS (
+             SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1
+         ),
+         current_cycle AS (
+             SELECT COALESCE(MAX(l.cycle), 0) AS cycle
+             FROM raid_attack_logs l JOIN current_raid r ON r.raid_id=l.raid_id
+         )
+         SELECT l.player_id
+         FROM raid_attack_logs l
+         JOIN current_raid r ON r.raid_id=l.raid_id
+         JOIN current_cycle cc ON cc.cycle=l.cycle
+         GROUP BY l.player_id
+         HAVING COUNT(*) >= $1",
+    )
+    .bind(job_service::ATTACKS_PER_CYCLE)
+    .fetch_all(state.db()?)
+    .await?;
+    Ok(player_ids.into_iter().collect())
+}
+
 async fn queue_auto_simulations(
     state: &Arc<AppState>,
     phase_change_mask: Option<u8>,
@@ -1346,7 +1365,13 @@ async fn queue_auto_simulations(
     )
     .fetch_all(state.db()?)
     .await?;
-    for player_id in player_ids {
+    // Jobs run in creation order, so players who still owe attacks this cycle
+    // are queued first and players who already finished theirs go after them.
+    let finished = players_finished_this_cycle(state).await?;
+    let (finished_ids, unfinished_ids): (Vec<String>, Vec<String>) = player_ids
+        .into_iter()
+        .partition(|player_id| finished.contains(player_id));
+    for player_id in unfinished_ids.into_iter().chain(finished_ids) {
         let request = CreateSimulationJobRequest {
             player_id: player_id.clone(),
             include_body_phase: true,

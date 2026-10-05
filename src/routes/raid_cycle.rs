@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::{error::AppError, state::AppState};
+use crate::{error::AppError, services::job_service::ATTACKS_PER_CYCLE, state::AppState};
 
 #[derive(Debug, Serialize, sqlx::FromRow, ToSchema)]
 pub struct RaidCycleView {
@@ -117,4 +117,56 @@ pub async fn current_attack_summary(
         attack_count,
         card_usage,
     }))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CyclePlayerAttacksView {
+    pub player_id: String,
+    pub attack_count: i64,
+    /// True once the player has made all of their attacks this cycle.
+    pub finished: bool,
+}
+
+/// Get how many attacks each player has made in the current cycle
+///
+/// Only players with at least one attack appear. The cards each attack used
+/// come from the player attack log endpoint instead.
+#[utoipa::path(
+    get,
+    path = "/api/raid-cycle/current/player-attacks",
+    tag = "raids",
+    responses(
+        (status = 200, description = "Players who attacked this cycle, with their attack count", body = [CyclePlayerAttacksView]),
+    ),
+)]
+pub async fn current_player_attacks(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<CyclePlayerAttacksView>>, AppError> {
+    let counts: Vec<(String, i64)> = sqlx::query_as(
+        "WITH current_raid AS ( \
+           SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1 \
+         ), \
+         current_cycle AS ( \
+           SELECT COALESCE(MAX(l.cycle), 0) AS cycle FROM raid_attack_logs l JOIN current_raid r ON r.raid_id=l.raid_id \
+         ) \
+         SELECT l.player_id, COUNT(*) \
+         FROM raid_attack_logs l \
+         JOIN current_raid r ON r.raid_id=l.raid_id \
+         JOIN current_cycle cc ON cc.cycle=l.cycle \
+         GROUP BY l.player_id \
+         ORDER BY l.player_id",
+    )
+    .fetch_all(state.db()?)
+    .await?;
+
+    Ok(Json(
+        counts
+            .into_iter()
+            .map(|(player_id, attack_count)| CyclePlayerAttacksView {
+                player_id,
+                attack_count,
+                finished: attack_count >= ATTACKS_PER_CYCLE,
+            })
+            .collect(),
+    ))
 }
