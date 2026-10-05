@@ -1,4 +1,6 @@
 use std::{
+    collections::HashSet,
+    str::FromStr,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering as AtomicOrdering},
@@ -38,6 +40,8 @@ use crate::{
 const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v2");
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
+/// Attacks each player gets per raid cycle.
+pub const ATTACKS_PER_CYCLE: i64 = 6;
 
 struct PreparedRecommendation {
     deck_count: usize,
@@ -115,6 +119,7 @@ fn prepare_recommendations(
 fn prepare_results(
     result: SimRunResult,
     recommendation_phase: RecommendationPhase,
+    deck_count: usize,
 ) -> Result<PreparedResults, serde_json::Error> {
     let candidates =
         crate::services::taptitan::recommendation::candidates_from_results(&result.decks);
@@ -152,11 +157,7 @@ fn prepare_results(
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let recommendations = prepare_recommendations(
-        &candidates,
-        &[DEFAULT_RECOMMENDATION_DECK_COUNT],
-        recommendation_phase,
-    );
+    let recommendations = prepare_recommendations(&candidates, &[deck_count], recommendation_phase);
 
     Ok(PreparedResults {
         deck_result_count: result.decks.len(),
@@ -458,6 +459,44 @@ async fn mark_superseded(state: &AppState, job_id: Uuid) -> Result<(), AppError>
     Ok(())
 }
 
+/// A player's attacks in the current cycle and the cards those attacks used.
+/// "Current cycle" matches `routes/raid_cycle.rs`: the latest raid and that
+/// raid's highest TT2 `cycle` number.
+async fn player_attack_card_usage_current_cycle(
+    db: &sqlx::PgPool,
+    player_id: &str,
+) -> Result<(i64, HashSet<CardName>), AppError> {
+    let rows: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "WITH current_raid AS (
+             SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1
+         ),
+         current_cycle AS (
+             SELECT COALESCE(MAX(l.cycle), 0) AS cycle
+             FROM raid_attack_logs l JOIN current_raid r ON r.raid_id=l.raid_id
+         )
+         SELECT c.card1, c.card2, c.card3
+         FROM raid_attack_logs l
+         JOIN current_raid r ON r.raid_id=l.raid_id
+         JOIN current_cycle cc ON cc.cycle=l.cycle
+         LEFT JOIN raid_attack_components c ON c.raid_id=l.raid_id
+             AND c.player_id=l.player_id AND c.attack_datetime=l.attack_datetime
+         WHERE l.player_id=$1",
+    )
+    .bind(player_id)
+    .fetch_all(db)
+    .await?;
+    // One row per attack (the components join is LEFT), so the row count is
+    // the attack count.
+    let attacks = rows.len() as i64;
+    let cards = rows
+        .into_iter()
+        .flat_map(|(card1, card2, card3)| [card1, card2, card3])
+        .flatten()
+        .filter_map(|card_id| CardName::from_str(&card_id).ok())
+        .collect();
+    Ok((attacks, cards))// player total attack of this cycle, card already used in this cycle
+}
+
 async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError> {
     let _permit = state
         .simulation_slots
@@ -486,7 +525,19 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     if current_boss_version.is_some_and(|current| current != boss_version) {
         return mark_superseded(state, job_id).await;
     }
-    let payload: SimPayLoad = serde_json::from_value(payload_json)?;
+    let mut payload: SimPayLoad = serde_json::from_value(payload_json)?;
+    // A phase-change run only covers what an unfinished player can still
+    // attack with this cycle: cards they haven't used yet, and one recommended
+    // deck per attack left. Players who finished their attacks get the full run.
+    let mut deck_count = DEFAULT_RECOMMENDATION_DECK_COUNT;
+    if recompute_mode == RecomputeMode::PhaseAware {
+        let (attacks_done, cards_used) =
+            player_attack_card_usage_current_cycle(state.db()?, &player_id).await?;
+        if attacks_done < ATTACKS_PER_CYCLE {
+            payload.usable_card.retain(|card| !cards_used.contains(card));
+            deck_count = (ATTACKS_PER_CYCLE - attacks_done) as usize;
+        }
+    }
     let total_processing_started = Instant::now();
     let simulation_started = Instant::now();
     let incremental = if recompute_mode == RecomputeMode::PhaseAware {
@@ -556,11 +607,11 @@ async fn process_job(state: &Arc<AppState>, job_id: Uuid) -> Result<(), AppError
     let recommendation_started = Instant::now();
     let prepared =
         tokio::task::spawn_blocking(move || -> Result<PreparedResults, serde_json::Error> {
-            let current = prepare_results(current_result, RecommendationPhase::Current)?;
+            let current = prepare_results(current_result, RecommendationPhase::Current, deck_count)?;
             match void_result {
                 Some(result) => Ok(combine_prepared_results(
                     current,
-                    prepare_results(result, RecommendationPhase::Void)?,
+                    prepare_results(result, RecommendationPhase::Void, deck_count)?,
                 )),
                 None => Ok(current),
             }

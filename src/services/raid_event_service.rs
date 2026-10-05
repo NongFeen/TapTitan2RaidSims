@@ -1331,9 +1331,6 @@ async fn store_cycle_state(
     }))
 }
 
-/// Attacks each player gets per raid cycle.
-const ATTACKS_PER_CYCLE: i64 = 6;
-
 /// Players who have already made all of their attacks in the current cycle.
 /// "Current cycle" matches `routes/raid_cycle.rs`: the latest raid and that
 /// raid's highest TT2 `cycle` number.
@@ -1353,7 +1350,7 @@ async fn players_finished_this_cycle(state: &AppState) -> Result<HashSet<String>
          GROUP BY l.player_id
          HAVING COUNT(*) >= $1",
     )
-    .bind(ATTACKS_PER_CYCLE)
+    .bind(job_service::ATTACKS_PER_CYCLE)
     .fetch_all(state.db()?)
     .await?;
     Ok(player_ids.into_iter().collect())
