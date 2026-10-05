@@ -1,4 +1,8 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -1327,6 +1331,34 @@ async fn store_cycle_state(
     }))
 }
 
+/// Attacks each player gets per raid cycle.
+const ATTACKS_PER_CYCLE: i64 = 6;
+
+/// Players who have already made all of their attacks in the current cycle.
+/// "Current cycle" matches `routes/raid_cycle.rs`: the latest raid and that
+/// raid's highest TT2 `cycle` number.
+async fn players_finished_this_cycle(state: &AppState) -> Result<HashSet<String>, AppError> {
+    let player_ids: Vec<String> = sqlx::query_scalar(
+        "WITH current_raid AS (
+             SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1
+         ),
+         current_cycle AS (
+             SELECT COALESCE(MAX(l.cycle), 0) AS cycle
+             FROM raid_attack_logs l JOIN current_raid r ON r.raid_id=l.raid_id
+         )
+         SELECT l.player_id
+         FROM raid_attack_logs l
+         JOIN current_raid r ON r.raid_id=l.raid_id
+         JOIN current_cycle cc ON cc.cycle=l.cycle
+         GROUP BY l.player_id
+         HAVING COUNT(*) >= $1",
+    )
+    .bind(ATTACKS_PER_CYCLE)
+    .fetch_all(state.db()?)
+    .await?;
+    Ok(player_ids.into_iter().collect())
+}
+
 async fn queue_auto_simulations(
     state: &Arc<AppState>,
     phase_change_mask: Option<u8>,
@@ -1336,7 +1368,13 @@ async fn queue_auto_simulations(
     )
     .fetch_all(state.db()?)
     .await?;
-    for player_id in player_ids {
+    // Jobs run in creation order, so players who still owe attacks this cycle
+    // are queued first and players who already finished theirs go after them.
+    let finished = players_finished_this_cycle(state).await?;
+    let (finished_ids, unfinished_ids): (Vec<String>, Vec<String>) = player_ids
+        .into_iter()
+        .partition(|player_id| finished.contains(player_id));
+    for player_id in unfinished_ids.into_iter().chain(finished_ids) {
         let request = CreateSimulationJobRequest {
             player_id: player_id.clone(),
             include_body_phase: true,
