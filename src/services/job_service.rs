@@ -1014,27 +1014,15 @@ async fn persist_results(
 
 #[derive(Clone, sqlx::FromRow)]
 struct CustomRecommendationRow {
+    id: Uuid,
     card_mask: i64,
     average_damage: String,
-    pattern: String,
-    card1: String,
-    card1_damage: i64,
-    card2: String,
-    card2_damage: i64,
-    card3: String,
-    card3_damage: i64,
-    deck_lowest_damage: i64,
-    deck_highest_damage: i64,
 }
 
-/// Re-selects top decks from a player's already-completed simulation,
-/// excluding any deck that uses one of `excluded_cards` (e.g. cards the
-/// player already threw this cycle and can't reuse). Unlike
-/// `generate_deck_recommendations`, this never runs a new simulation and
-/// never persists a `deck_recommendations` row -- excluded-cards isn't a
-/// dimension that recommendation caching/dedup understands, and re-picking
-/// from decks the sim already computed is cheap enough to just do inline on
-/// every request.
+/// Best decks from a player's already-completed simulation, with the given
+/// cards excluded. Each distinct request is saved as a `deck_recommendations`
+/// row keyed by its exclusions, so a repeat request reads that row back
+/// instead of searching again. Never runs a new simulation.
 pub async fn custom_recommendation(
     state: &Arc<AppState>,
     player_id: &str,
@@ -1048,38 +1036,58 @@ pub async fn custom_recommendation(
             "deck_count must be between 1 and {MAX_RECOMMENDATION_DECK_COUNT}"
         )));
     }
+    // An unknown card can't be excluded, and mask 0 would collide with "no exclusions".
+    let excluded_mask = mask_from_cards(excluded_cards).ok_or_else(|| {
+        AppError::BadRequest("excluded_cards contains an unknown card".to_string())
+    })?;
     let recommendation_phase = if include_body_phase {
         RecommendationPhase::Void
     } else {
         RecommendationPhase::Current
     };
+    let db = state.db()?;
     let job_id: Uuid = sqlx::query_scalar(
         "SELECT j.id FROM simulation_jobs j WHERE j.player_id=$1 AND j.status='completed' AND j.boss_version=(SELECT version FROM current_boss WHERE singleton=TRUE) AND EXISTS (SELECT 1 FROM simulation_deck_results d WHERE d.simulation_job_id=j.id AND d.recommendation_phase=$2) ORDER BY j.completed_at DESC LIMIT 1",
     )
     .bind(player_id)
     .bind(recommendation_phase)
-    .fetch_optional(state.db()?)
+    .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::NotFound("Player has no completed simulation".to_string()))?;
 
+    let must_include_mirror_force = required_cards.contains(&CardName::MirrorForce);
+    let must_include_team_tactics = required_cards.contains(&CardName::TeamTactics);
+    let saved_id = find_saved_custom_recommendation(
+        db,
+        job_id,
+        deck_count,
+        must_include_mirror_force,
+        must_include_team_tactics,
+        recommendation_phase,
+        excluded_mask,
+    )
+    .await?;
+    if let Some(id) = saved_id {
+        return load_recommendation_view(db, id).await;
+    }
+
     let rows: Vec<CustomRecommendationRow> = sqlx::query_as(
-        "SELECT card_mask,average_damage::TEXT AS average_damage,pattern,card1,card1_damage,card2,card2_damage,card3,card3_damage,deck_lowest_damage,deck_highest_damage FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2",
+        "SELECT id,card_mask,average_damage::TEXT AS average_damage FROM simulation_deck_results WHERE simulation_job_id=$1 AND recommendation_phase=$2",
     )
     .bind(job_id)
     .bind(recommendation_phase)
-    .fetch_all(state.db()?)
+    .fetch_all(db)
     .await?;
     if rows.is_empty() {
         return Err(AppError::NotFound(
             "Completed simulation has no deck results".to_string(),
         ));
     }
+    let row_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
 
-    let excluded_mask = mask_from_cards(excluded_cards).unwrap_or(0);
     let required_cards = required_cards.to_vec();
-    let must_include_mirror_force = required_cards.contains(&CardName::MirrorForce);
-    let must_include_team_tactics = required_cards.contains(&CardName::TeamTactics);
-    let (decks, total_average_damage) = tokio::task::spawn_blocking(move || {
+    // Each picked deck is the index of its row in `rows`, best first.
+    let picked = tokio::task::spawn_blocking(move || {
         let candidates: Vec<CandidateDeck> = rows
             .iter()
             .enumerate()
@@ -1091,55 +1099,125 @@ pub async fn custom_recommendation(
                 average_damage: row.average_damage.parse().unwrap_or(0),
             })
             .collect();
-        let recommendation =
-            optimize_decks_with_required_cards(&candidates, deck_count, &required_cards);
-        let Some(recommendation) = recommendation else {
-            return (serde_json::Value::Array(Vec::new()), 0u64);
-        };
-        let decks: Vec<serde_json::Value> = recommendation
-            .decks
-            .iter()
-            .enumerate()
-            .map(|(position, deck)| {
-                let row = &rows[deck.source_index];
-                serde_json::json!({
-                    "position": position,
-                    "cards": deck.cards.iter().map(|card| card.id()).collect::<Vec<_>>(),
-                    "average_damage": deck.average_damage.to_string(),
-                    "result": {
-                        "best_pattern": {
-                            "pattern": row.pattern,
-                            "lowest_round_damage": row.deck_lowest_damage,
-                            "highest_round_damage": row.deck_highest_damage,
-                            "card_damage": [
-                                {"card": row.card1, "average_damage": row.card1_damage},
-                                {"card": row.card2, "average_damage": row.card2_damage},
-                                {"card": row.card3, "average_damage": row.card3_damage},
-                            ],
-                        },
-                    },
-                })
-            })
-            .collect();
-        (
-            serde_json::Value::Array(decks),
-            recommendation.total_average_damage,
+        optimize_decks_with_required_cards(&candidates, deck_count, &required_cards).map(
+            |recommendation| {
+                let indexes: Vec<usize> = recommendation
+                    .decks
+                    .iter()
+                    .map(|deck| deck.source_index)
+                    .collect();
+                (indexes, recommendation.total_average_damage)
+            },
         )
     })
     .await
     .map_err(|error| AppError::Internal(format!("Custom recommendation worker panicked: {error}")))?;
 
-    Ok(RecommendationView {
-        id: Uuid::new_v4(),
-        simulation_job_id: job_id,
-        deck_count: deck_count as i32,
-        must_include_mirror_force,
-        must_include_team_tactics,
-        total_average_damage: total_average_damage.to_string(),
-        body_phase_ran: include_body_phase,
-        decks,
-        created_at: Utc::now(),
-    })
+    let Some((picked, total_average_damage)) = picked else {
+        return Ok(RecommendationView {
+            id: Uuid::new_v4(),
+            simulation_job_id: job_id,
+            deck_count: deck_count as i32,
+            must_include_mirror_force,
+            must_include_team_tactics,
+            total_average_damage: "0".to_string(),
+            body_phase_ran: include_body_phase,
+            decks: serde_json::Value::Array(Vec::new()),
+            created_at: Utc::now(),
+        });
+    };
+
+    let recommendation_id = Uuid::new_v4();
+    let mut tx = db.begin().await?;
+    let inserted = sqlx::query(
+        "INSERT INTO deck_recommendations (id, simulation_job_id, deck_count, must_include_mirror_force, must_include_team_tactics, recommendation_phase, total_average_damage, excluded_cards_mask) VALUES ($1,$2,$3,$4,$5,$6,CAST($7 AS NUMERIC),$8) ON CONFLICT DO NOTHING",
+    )
+    .bind(recommendation_id)
+    .bind(job_id)
+    .bind(deck_count as i32)
+    .bind(must_include_mirror_force)
+    .bind(must_include_team_tactics)
+    .bind(recommendation_phase)
+    .bind(total_average_damage.to_string())
+    .bind(excluded_mask as i64)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if inserted == 0 {
+        // Another request saved the same key first; read that one back.
+        tx.rollback().await?;
+        let saved_id = find_saved_custom_recommendation(
+            db,
+            job_id,
+            deck_count,
+            must_include_mirror_force,
+            must_include_team_tactics,
+            recommendation_phase,
+            excluded_mask,
+        )
+        .await?
+        .ok_or_else(|| AppError::Internal("custom recommendation vanished after save".to_string()))?;
+        return load_recommendation_view(db, saved_id).await;
+    }
+    for (position, source_index) in picked.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO deck_recommendation_items (recommendation_id, position, simulation_deck_result_id) VALUES ($1,$2,$3)",
+        )
+        .bind(recommendation_id)
+        .bind(position as i32)
+        .bind(row_ids[*source_index])
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    load_recommendation_view(db, recommendation_id).await
+}
+
+async fn find_saved_custom_recommendation(
+    db: &sqlx::PgPool,
+    job_id: Uuid,
+    deck_count: usize,
+    must_include_mirror_force: bool,
+    must_include_team_tactics: bool,
+    recommendation_phase: RecommendationPhase,
+    excluded_mask: u64,
+) -> Result<Option<Uuid>, AppError> {
+    Ok(sqlx::query_scalar(
+        "SELECT id FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND must_include_mirror_force=$3 AND must_include_team_tactics=$4 AND recommendation_phase=$5 AND excluded_cards_mask=$6",
+    )
+    .bind(job_id)
+    .bind(deck_count as i32)
+    .bind(must_include_mirror_force)
+    .bind(must_include_team_tactics)
+    .bind(recommendation_phase)
+    .bind(excluded_mask as i64)
+    .fetch_optional(db)
+    .await?)
+}
+
+/// Reads a saved recommendation back in the same shape the custom endpoint
+/// returns: decks carry their `cards` decoded from `card_mask`.
+async fn load_recommendation_view(
+    db: &sqlx::PgPool,
+    recommendation_id: Uuid,
+) -> Result<RecommendationView, AppError> {
+    let mut recommendation: RecommendationView = sqlx::query_as(
+        "SELECT r.id, r.simulation_job_id, r.deck_count, r.must_include_mirror_force, r.must_include_team_tactics, r.total_average_damage::TEXT AS total_average_damage, (r.recommendation_phase='void') AS body_phase_ran, COALESCE(jsonb_agg(jsonb_build_object('position', i.position, 'card_mask', d.card_mask, 'average_damage', d.average_damage::TEXT, 'result', jsonb_build_object('best_pattern', jsonb_build_object('pattern', d.pattern, 'lowest_round_damage', d.deck_lowest_damage, 'highest_round_damage', d.deck_highest_damage, 'card_damage', jsonb_build_array(jsonb_build_object('card', d.card1, 'average_damage', d.card1_damage), jsonb_build_object('card', d.card2, 'average_damage', d.card2_damage), jsonb_build_object('card', d.card3, 'average_damage', d.card3_damage))))) ORDER BY i.position) FILTER (WHERE i.position IS NOT NULL), '[]'::jsonb) AS decks, r.created_at FROM deck_recommendations r LEFT JOIN deck_recommendation_items i ON i.recommendation_id=r.id LEFT JOIN simulation_deck_results d ON d.id=i.simulation_deck_result_id WHERE r.id=$1 GROUP BY r.id",
+    )
+    .bind(recommendation_id)
+    .fetch_one(db)
+    .await?;
+    if let Some(decks) = recommendation.decks.as_array_mut() {
+        for deck in decks.iter_mut() {
+            let mask = deck.get("card_mask").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            if let Some(deck) = deck.as_object_mut() {
+                deck.remove("card_mask");
+                let cards: Vec<String> = cards_from_mask(mask).iter().map(|card| card.id().to_string()).collect();
+                deck.insert("cards".to_string(), serde_json::json!(cards));
+            }
+        }
+    }
+    Ok(recommendation)
 }
 
 pub async fn generate_deck_recommendations(
@@ -1176,7 +1254,7 @@ pub async fn generate_deck_recommendations(
     .ok_or_else(|| AppError::NotFound("Player has no completed simulation".to_string()))?;
 
     let already_generated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3)",
+        "SELECT EXISTS(SELECT 1 FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3 AND excluded_cards_mask=0)",
     )
     .bind(job_id)
     .bind(deck_count as i32)
@@ -1226,7 +1304,7 @@ pub async fn generate_deck_recommendations(
     })??;
 
     let mut tx = state.db()?.begin().await?;
-    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3")
+    sqlx::query("DELETE FROM deck_recommendations WHERE simulation_job_id=$1 AND deck_count=$2 AND recommendation_phase=$3 AND excluded_cards_mask=0")
         .bind(job_id)
         .bind(deck_count as i32)
         .bind(recommendation_phase)
