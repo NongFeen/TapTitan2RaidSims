@@ -75,7 +75,8 @@ pub(super) fn global_raid_modifiers(
             1.0
         },
         support_effect_mult: if selected == GlobalRaidModifier::SupportEffect {
-            amount.map_or(GLOBAL_RAID_SUPPORT_EFFECT_MULT, |value| 1.0 + value)
+            // amount.map_or(GLOBAL_RAID_SUPPORT_EFFECT_MULT, |value|  value)
+            GLOBAL_RAID_SUPPORT_EFFECT_MULT
         } else {
             1.0
         },
