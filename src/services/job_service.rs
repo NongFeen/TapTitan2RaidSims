@@ -37,7 +37,7 @@ use crate::{
     state::AppState,
 };
 
-const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v2");
+const SIMULATOR_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-raid-cycle-v3");
 pub const DEFAULT_RECOMMENDATION_DECK_COUNT: usize = 6;
 pub const MAX_RECOMMENDATION_DECK_COUNT: usize = 14;
 /// Attacks each player gets per raid cycle.
