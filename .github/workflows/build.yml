@@ -1,0 +1,69 @@
+name: Build and push images
+
+# Runs on every push to master (the deploy branch -- see git history, both
+# `dev` and `seperate-services`/`resolveasset` are already merged into it).
+# Builds the API image (Dockerfile) and the sim worker image
+# (Dockerfile.worker) and pushes both to GHCR. Coolify's docker-compose
+# deploy (docker-compose.coolify.yml) pulls these by tag rather than
+# building from source itself.
+#
+# Built for linux/arm64 specifically -- that's the actual architecture of
+# the Coolify server this gets deployed to. Runs on GitHub's native arm64
+# runner (real ARM hardware, not QEMU-emulated on an amd64 box) since Rust
+# release builds are brutally slow under emulation -- every rustc/linker
+# invocation is instruction-translated in software, which multiplies an
+# already CPU-heavy build by 10-20x or more.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  backend:
+    # Native arm64 hardware -- no QEMU involved, so no setup-qemu-action step
+    # needed at all here (that's only for emulating an architecture your
+    # runner doesn't natively have).
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ghcr.io requires a lowercase image name even though the GitHub
+      # owner/repo casing isn't.
+      - id: owner
+        run: echo "lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.lower }}/feen-backend:latest
+            ghcr.io/${{ steps.owner.outputs.lower }}/feen-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.worker
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.lower }}/feen-worker:latest
+            ghcr.io/${{ steps.owner.outputs.lower }}/feen-worker:${{ github.sha }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
