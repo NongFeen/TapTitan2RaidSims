@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-    sync::Arc,
-};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -1331,11 +1327,11 @@ async fn store_cycle_state(
     }))
 }
 
-/// Players who have already made all of their attacks in the current cycle.
-/// "Current cycle" matches `routes/raid_cycle.rs`: the latest raid and that
-/// raid's highest TT2 `cycle` number.
-async fn players_finished_this_cycle(state: &AppState) -> Result<HashSet<String>, AppError> {
-    let player_ids: Vec<String> = sqlx::query_scalar(
+/// How many attacks each player has made in the current cycle; players with
+/// none are absent. "Current cycle" matches `routes/raid_cycle.rs`: the latest
+/// raid and that raid's highest TT2 `cycle` number.
+async fn attacks_this_cycle(state: &AppState) -> Result<HashMap<String, i64>, AppError> {
+    let counts: Vec<(String, i64)> = sqlx::query_as(
         "WITH current_raid AS (
              SELECT raid_id FROM raid_cycle_state ORDER BY updated_at DESC LIMIT 1
          ),
@@ -1343,35 +1339,36 @@ async fn players_finished_this_cycle(state: &AppState) -> Result<HashSet<String>
              SELECT COALESCE(MAX(l.cycle), 0) AS cycle
              FROM raid_attack_logs l JOIN current_raid r ON r.raid_id=l.raid_id
          )
-         SELECT l.player_id
+         SELECT l.player_id, COUNT(*)
          FROM raid_attack_logs l
          JOIN current_raid r ON r.raid_id=l.raid_id
          JOIN current_cycle cc ON cc.cycle=l.cycle
-         GROUP BY l.player_id
-         HAVING COUNT(*) >= $1",
+         GROUP BY l.player_id",
     )
-    .bind(job_service::ATTACKS_PER_CYCLE)
     .fetch_all(state.db()?)
     .await?;
-    Ok(player_ids.into_iter().collect())
+    Ok(counts.into_iter().collect())
 }
 
 async fn queue_auto_simulations(
     state: &Arc<AppState>,
     phase_change_mask: Option<u8>,
 ) -> Result<(), AppError> {
-    let player_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.player_id)",
+    let mut player_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT p.player_id FROM players p WHERE p.auto_sims=TRUE AND EXISTS (SELECT 1 FROM player_stats s WHERE s.player_id=p.player_id) ORDER BY p.player_id",
     )
     .fetch_all(state.db()?)
     .await?;
-    // Jobs run in creation order, so players who still owe attacks this cycle
-    // are queued first and players who already finished theirs go after them.
-    let finished = players_finished_this_cycle(state).await?;
-    let (finished_ids, unfinished_ids): (Vec<String>, Vec<String>) = player_ids
-        .into_iter()
-        .partition(|player_id| finished.contains(player_id));
-    for player_id in unfinished_ids.into_iter().chain(finished_ids) {
+    // Jobs run in creation order, so the players closest to finishing this cycle
+    // (most attacks used) get their sims first; players with every attack used
+    // can't attack again this cycle and go last.
+    let attacks_used = attacks_this_cycle(state).await?;
+    player_ids.sort_by_key(|player_id| {
+        let used = attacks_used.get(player_id).copied().unwrap_or(0);
+        let finished = used >= job_service::ATTACKS_PER_CYCLE;
+        (finished, std::cmp::Reverse(used))
+    });
+    for player_id in player_ids {
         let request = CreateSimulationJobRequest {
             player_id: player_id.clone(),
             include_body_phase: true,

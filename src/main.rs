@@ -64,6 +64,7 @@ async fn run() {
         Some(database_url) => {
             let pool = database::connect_with_retry(database_url).await;
             tracing::info!("database connected and migrations applied");
+            database::spawn_watchdog(pool.clone());
             Some(pool)
         }
         None => {
