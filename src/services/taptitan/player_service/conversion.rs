@@ -11,6 +11,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
     // ── Build card_list from raw raidCards ─────────────────────────
     // ── Build card_list from raw raidCards ─────────────────────────
     let mut card_list: Vec<Card> = Vec::new();
+    let mut raid_crystal_boosts: Vec<RaidCrystalBoost> = Vec::new();
     let boosted_levels = player_data.boosted_cards.iter().fold(
         HashMap::<CardName, u16>::new(),
         |mut levels, boosted| {
@@ -27,14 +28,18 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
     for (raw_name, raw_card) in &player_data.raid_cards {
         match CardName::from_str(raw_name.as_str()) {
             Ok(parsed_enum_id) => {
+                let boost_level = boosted_levels.get(&parsed_enum_id).copied();
+                if let Some(boost_level) = boost_level {
+                    raid_crystal_boosts.push(RaidCrystalBoost {
+                        card_id: parsed_enum_id,
+                        base_level: raw_card.lv,
+                        boost_level,
+                    });
+                }
                 card_list.push(Card {
-                    card_id: parsed_enum_id, // <-- Updated field assignment matching your rename
+                    card_id: parsed_enum_id,
                     cardtype: parsed_enum_id.card_type(),
-                    level: boosted_levels
-                        .get(&parsed_enum_id)
-                        .copied()
-                        .map(|boosted| boosted.max(raw_card.lv))
-                        .unwrap_or(raw_card.lv),
+                    level: boost_level.map_or(raw_card.lv, |boosted| boosted.max(raw_card.lv)),
                     enabled: true,
                     tap_count: 0,
                     chained_parts: Default::default(),
@@ -50,6 +55,7 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
         }
     }
     card_list.sort_by_key(|card| card.card_id);
+    raid_crystal_boosts.sort_by_key(|boost| boost.card_id);
     // Warn if card count is off
     if card_list.len() != 44 {
         tracing::warn!(
@@ -490,5 +496,6 @@ pub fn clean_data(player_data: &PlayerData) -> PlayerRaidData {
         gem_stone_research,
         card_list,
         title: 0.0, // fill in later
+        raid_crystal_boosts,
     }
 }

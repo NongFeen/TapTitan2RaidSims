@@ -2,7 +2,8 @@ use crate::models::{
     cards::{Card, CardName},
     player_data::PlayerData,
     player_raid_data::{
-        GemstoneResearch, PlayerRaidData, RaidCardResearch, RaidSet, TitanSoulResearch,
+        GemstoneResearch, PlayerRaidData, RaidCardResearch, RaidCrystalBoost, RaidSet,
+        TitanSoulResearch,
     },
 };
 use std::str::FromStr;

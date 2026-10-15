@@ -1,6 +1,6 @@
 use crate::models::{
     boss::{BossName, BossPartName, PartState},
-    cards::{Card, CardType},
+    cards::{Card, CardName, CardType},
 };
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -15,6 +15,17 @@ pub struct PlayerRaidData {
 
     pub card_list: Vec<Card>,
     pub title: f32,
+    /// Cards raised by the raid crystal. `card_list` levels already include
+    /// this boost; this keeps the player's own level for display.
+    #[serde(default)]
+    pub raid_crystal_boosts: Vec<RaidCrystalBoost>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RaidCrystalBoost {
+    pub card_id: CardName,
+    pub base_level: u16,
+    pub boost_level: u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

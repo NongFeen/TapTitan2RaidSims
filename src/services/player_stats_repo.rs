@@ -6,7 +6,10 @@ use strum::IntoEnumIterator;
 
 use crate::models::{
     cards::{Card, CardName},
-    player_raid_data::{GemstoneResearch, PlayerRaidData, RaidCardResearch, RaidSet, TitanSoulResearch},
+    player_raid_data::{
+        GemstoneResearch, PlayerRaidData, RaidCardResearch, RaidCrystalBoost, RaidSet,
+        TitanSoulResearch,
+    },
 };
 
 pub struct LoadedPlayerStats {
@@ -401,6 +404,21 @@ where
             .collect()
     });
 
+    let boost_rows: Vec<(CardName, i32, i32)> = sqlx::query_as(
+        "SELECT card_id, base_level, boost_level FROM player_raid_crystal_boosts WHERE player_id = $1 ORDER BY card_id",
+    )
+    .bind(player_id)
+    .fetch_all(executor)
+    .await?;
+    let raid_crystal_boosts = boost_rows
+        .into_iter()
+        .map(|(card_id, base_level, boost_level)| RaidCrystalBoost {
+            card_id,
+            base_level: base_level as u16,
+            boost_level: boost_level as u16,
+        })
+        .collect();
+
     let data = PlayerRaidData {
         player_raid_level: row.player_raid_level as u16,
         player_raid_base_damage: row.player_raid_base_damage as u16,
@@ -416,6 +434,7 @@ where
         gem_stone_research: row_to_gemstone_research(&row),
         card_list,
         title: row.title,
+        raid_crystal_boosts,
     };
 
     Ok(Some(LoadedPlayerStats {
@@ -794,6 +813,22 @@ pub async fn store(
     .bind(disabled_card_mask)
     .execute(&mut **tx)
     .await?;
+
+    sqlx::query("DELETE FROM player_raid_crystal_boosts WHERE player_id = $1")
+        .bind(player_id)
+        .execute(&mut **tx)
+        .await?;
+    for boost in &data.raid_crystal_boosts {
+        sqlx::query(
+            "INSERT INTO player_raid_crystal_boosts (player_id, card_id, base_level, boost_level) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(player_id)
+        .bind(boost.card_id)
+        .bind(i32::from(boost.base_level))
+        .bind(i32::from(boost.boost_level))
+        .execute(&mut **tx)
+        .await?;
+    }
 
     Ok(LoadedPlayerStats {
         revision: row.revision,
