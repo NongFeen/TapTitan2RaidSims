@@ -76,3 +76,23 @@ fn tt2_refresh_preserves_existing_card_preferences() {
             .all(|card| card.enabled)
     );
 }
+
+#[test]
+fn raw_export_keeps_raid_crystal_boosts_with_the_players_own_level() {
+    use std::str::FromStr;
+    let raw: crate::models::player_data::PlayerData =
+        serde_json::from_str(include_str!("../../../playerDataSample.json"))
+            .expect("raw player sample should deserialize");
+    let stats = crate::services::taptitan::player_service::clean_data(&raw);
+    let weaken = crate::models::cards::CardName::from_str("Weaken").unwrap();
+
+    let boost = stats
+        .raid_crystal_boosts
+        .iter()
+        .find(|boost| boost.card_id == weaken)
+        .expect("Weaken is crystal-boosted in the sample");
+    assert_eq!((boost.base_level, boost.boost_level), (33, 48));
+    let card = stats.card_list.iter().find(|card| card.card_id == weaken).unwrap();
+    assert_eq!(card.level, 48, "card_list keeps the boosted level the sims use");
+    assert_eq!(stats.raid_crystal_boosts.len(), 8);
+}
