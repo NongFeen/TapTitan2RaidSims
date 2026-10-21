@@ -346,7 +346,7 @@ impl SimService {
     /// deterministic "sim-to-real" golden tests (see
     /// `run_deterministic_single_tap_simulation`), never by the real
     /// `/simulation-debug` route. `apply_seasonal_boosts` gates whether each
-    /// card's level gets bumped by `seasonal_card_boosts.json` before the
+    /// card's level gets bumped by the `SEASONAL_CARD_BOOSTS` env var before the
     /// sim runs -- also real-route-only: a seasonal boost is a time-varying
     /// external modifier, so a golden test comparing against a number
     /// measured by hand at some other point in time must not have one

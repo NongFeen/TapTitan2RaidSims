@@ -43,6 +43,9 @@ async fn run() {
 
     let config = config::Config::from_env().expect("invalid application configuration");
     tracing::info!(role = ?config.role, "service role configured");
+    let seasonal_boosts = models::seasonal_card_boosts::load_from_env()
+        .expect("invalid SEASONAL_CARD_BOOSTS configuration");
+    tracing::info!(?seasonal_boosts, "seasonal card boosts configured");
     services::taptitan::sim_service::configure_sim_worker_count(config.simulation_worker_count);
     tracing::info!(
         simulation_worker_count = config.simulation_worker_count,
