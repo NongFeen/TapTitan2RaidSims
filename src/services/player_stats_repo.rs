@@ -34,6 +34,7 @@ struct PlayerStatsRow {
     raid_set_airforce_ace: bool,
     raid_set_dancer_venom: bool,
     raid_set_rose_anniversary: bool,
+    raid_set_decade_anniversary: bool, 
 
     titan_soul_head_mult: f32,
     titan_soul_torso_mult: f32,
@@ -131,7 +132,7 @@ struct PlayerStatsRow {
 const PLAYER_STATS_COLUMNS: &str = "revision, created_at, updated_at, \
     player_raid_level, player_raid_base_damage, title, \
     raid_set_jade_anniversary, raid_set_jukk_juggernaut, raid_set_airforce_ace, \
-    raid_set_dancer_venom, raid_set_rose_anniversary, \
+    raid_set_dancer_venom, raid_set_rose_anniversary, raid_set_decade_anniversary, \
     titan_soul_head_mult, titan_soul_torso_mult, titan_soul_limbs_mult, titan_soul_armor_mult, \
     titan_soul_body_mult, titan_soul_lojak_mult, titan_soul_takedar_mult, titan_soul_jukk_mult, \
     titan_soul_sterl_mult, titan_soul_mohaca_mult, titan_soul_terro_mult, titan_soul_klonk_mult, \
@@ -428,6 +429,7 @@ where
             airforce_ace: row.raid_set_airforce_ace,
             dancer_venom: row.raid_set_dancer_venom,
             rose_anniversary: row.raid_set_rose_anniversary,
+            decade_anniversary: row.raid_set_decade_anniversary, 
         },
         titan_soul_research: row_to_titan_soul_research(&row),
         raid_card_research: row_to_raid_card_research(&row),
@@ -486,14 +488,15 @@ pub async fn store(
             gem_burst_terro_damage, gem_burst_klonk_damage, gem_burst_priker_damage,
             gem_base_affliction_damage, gem_affliction_lojak_damage, gem_affliction_takedar_damage,
             gem_affliction_jukk_damage, gem_affliction_sterl_damage, gem_affliction_mohaca_damage,
-            gem_affliction_terro_damage, gem_affliction_klonk_damage, gem_affliction_priker_damage
+            gem_affliction_terro_damage, gem_affliction_klonk_damage, gem_affliction_priker_damage,
+            raid_set_decade_anniversary
         ) VALUES (
             $1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
             $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39,
             $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58,
             $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77,
             $78, $79, $80, $81, $82, $83, $84, $85, $86, $87, $88, $89, $90, $91, $92, $93, $94, $95,
-            $96, $97, $98
+            $96, $97, $98, $99
         )
         ON CONFLICT (player_id) DO UPDATE SET
             revision = player_stats.revision + 1,
@@ -505,6 +508,7 @@ pub async fn store(
             raid_set_airforce_ace = EXCLUDED.raid_set_airforce_ace,
             raid_set_dancer_venom = EXCLUDED.raid_set_dancer_venom,
             raid_set_rose_anniversary = EXCLUDED.raid_set_rose_anniversary,
+            raid_set_decade_anniversary = EXCLUDED.raid_set_decade_anniversary,
             titan_soul_head_mult = EXCLUDED.titan_soul_head_mult,
             titan_soul_torso_mult = EXCLUDED.titan_soul_torso_mult,
             titan_soul_limbs_mult = EXCLUDED.titan_soul_limbs_mult,
@@ -695,6 +699,7 @@ pub async fn store(
     .bind(gem.affliction_terro_damage as i32)
     .bind(gem.affliction_klonk_damage as i32)
     .bind(gem.affliction_priker_damage as i32)
+    .bind(raid_set.decade_anniversary)
     .fetch_one(&mut **tx)
     .await?;
 

@@ -35,6 +35,8 @@ pub struct RaidSet {
     pub airforce_ace: bool,     // +120 Raid Burst Base Damage
     pub dancer_venom: bool,     // +120 Raid Affliction Base Damage
     pub rose_anniversary: bool, // +100 Raid Base Damage
+    #[serde(default)] // older saved JSON predates this set
+    pub decade_anniversary: bool, // +100 Raid Base Damage
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
