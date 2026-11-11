@@ -268,7 +268,13 @@ impl SimDamageContext {
             100.0
         } else {
             0.0
-        };
+        }
+        + if player_raid_data.raid_set.decade_anniversary {
+            100.0
+        } else {
+            0.0
+        }
+        ;
         let base_add_total = (player_raid_data.raid_card_research.base_damage
             + player_raid_data.gem_stone_research.base_damage) as f32;
         let base_tap_without_part_state = player_raid_data.player_raid_base_damage as f32
